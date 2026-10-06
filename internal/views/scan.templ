@@ -1,0 +1,67 @@
+package views
+
+type ScanDetailData struct {
+	Cats []string
+	Row  ScanRow
+}
+
+type ScanRow struct {
+	ID           string
+	SKU, Name    string
+	Category     string
+	Location     string
+	CurrentStock int
+	MinStock     int
+	Unit         string
+	Condition    string
+	Merk         string
+	TypeModel    string
+	SerialNumber string
+	Year         string
+	Funding      string
+	Distributor  string
+	Description  string
+	PhotoURL     string
+	IsAvailable  bool
+}
+
+// ScanDetail is the public (no-login) item page opened by scanning the barcode.
+templ ScanDetail(d ScanDetailData) {
+	<div class="scan-head">
+		<div class="scan-badge">� Barcode Terdeteksi</div>
+		<h1>{ d.Row.Name }</h1>
+		<p class="muted"><code>{ d.Row.SKU }</code> — { d.Row.Category }</p>
+	</div>
+
+	if !d.Row.IsAvailable {
+		<div class="alert alert-error">Barang ini tercatat TIDAK ADA (hilang/dipinjam).</div>
+	}
+	if d.Row.CurrentStock <= d.Row.MinStock {
+		<div class="alert alert-warn">�� Stok menipis: { fmtInt(d.Row.CurrentStock) } { d.Row.Unit } (min { fmtInt(d.Row.MinStock) })</div>
+	}
+
+	<div class="grid-2">
+		<div class="card scan-card">
+			if d.Row.PhotoURL != "" {
+				<img src={ templ.URL(d.Row.PhotoURL) } alt={ d.Row.Name } class="scan-photo"/>
+			}
+			<img src={ templ.URL("/barcode/" + d.Row.ID + ".png?fmt=qr") } alt={ "QR " + d.Row.SKU } class="scan-qr"/>
+			<p class="muted scan-sku">{ d.Row.SKU }</p>
+		</div>
+		<div class="card">
+			<h2>Detail Barang</h2>
+			<table class="kv-table">
+				<tr><th>Stok Saat Ini</th><td class={ lowClass(d.Row.CurrentStock, d.Row.MinStock) }>{ fmtInt(d.Row.CurrentStock) } { d.Row.Unit }</td></tr>
+				<tr><th>Lokasi</th><td>{ d.Row.Location }</td></tr>
+				<tr><th>Kondisi</th><td>{ d.Row.Condition }</td></tr>
+				<tr><th>Merk / Type</th><td>{ d.Row.Merk } { d.Row.TypeModel }</td></tr>
+				<tr><th>No Seri</th><td>{ d.Row.SerialNumber }</td></tr>
+				<tr><th>Thn Pengadaan</th><td>{ d.Row.Year }</td></tr>
+				<tr><th>Pendanaan</th><td>{ d.Row.Funding }</td></tr>
+				<tr><th>Distributor</th><td>{ d.Row.Distributor }</td></tr>
+				<tr><th>Keterangan</th><td>{ d.Row.Description }</td></tr>
+			</table>
+		</div>
+	</div>
+	<p class="scan-foot muted">Halaman publik — data hanya baca. Petugas: <a href="/login">masuk ke sistem</a>.</p>
+}

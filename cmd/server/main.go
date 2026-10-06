@@ -78,6 +78,10 @@ func main() {
 	r.Post("/login", h.RateLimitedLogin(h.LoginPost))
 	r.Post("/logout", h.LogoutPost)
 
+	// Halaman publik hasil scan barcode (tanpa login, read-only)
+	r.Get("/scan/{itemID}", h.ScanDetail)
+	r.Get("/scan/sku/{sku}", h.ScanBySKU)
+
 	r.Group(func(a chi.Router) {
 		a.Use(auth.RequireAuth(sess))
 		a.Get("/", h.Dashboard)

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -60,8 +62,13 @@ func (h *Handlers) ItemsCreate(w http.ResponseWriter, r *http.Request) {
 	if !parseForm(w, r) {
 		return
 	}
+	// SKU opsional: jika kosong, generate otomatis CAT-YYYY-XXX
+	if strings.TrimSpace(r.PostFormValue("sku")) == "" {
+		r.PostForm.Set("sku", "AUTO") // placeholder, digenerate di insertItem setelah tahu id
+	}
 	photoURL := h.processUpload(r, "")
-	if _, err := h.insertItem(r.Context(), r.PostForm, photoURL); err != nil {
+	it, err := h.insertItem(r.Context(), r.PostForm, photoURL)
+	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique") {
 			http.Error(w, "SKU sudah dipakai barang lain", http.StatusConflict)
 			return
@@ -70,7 +77,7 @@ func (h *Handlers) ItemsCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.broker.Publish("items")
-	http.Redirect(w, r, "/items?created=1", http.StatusSeeOther)
+	http.Redirect(w, r, "/items?created="+it.Sku, http.StatusSeeOther)
 }
 
 func (h *Handlers) ItemsUpdate(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +205,15 @@ func (h *Handlers) listCats(ctx context.Context) ([]string, error) {
 }
 
 func (h *Handlers) insertItem(ctx context.Context, form formValues, photoURL string) (models.InventoryItem, error) {
+	// SKU otomatis: jika kosong/"AUTO", generate <KATEGORI>-<TAHUN>-<3digit seri>
+	sku := strings.TrimSpace(form.Get("sku"))
+	if sku == "" || sku == "AUTO" {
+		generated, err := h.nextSKU(ctx, form.Get("category"))
+		if err != nil {
+			return models.InventoryItem{}, err
+		}
+		sku = generated
+	}
 	sql := `INSERT INTO inventory_items
 		(sku, name, category, location, current_stock, min_stock, unit, price_per_unit,
 		 description, photo_url, merk, type_model, serial_number, procurement_year,
@@ -205,7 +221,7 @@ func (h *Handlers) insertItem(ctx context.Context, form formValues, photoURL str
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
 		RETURNING *`
 	rows, err := h.pool.Query(ctx, sql,
-		form.Get("sku"), form.Get("name"), form.Get("category"), form.Get("location"),
+		sku, form.Get("name"), form.Get("category"), form.Get("location"),
 		atoi0(form.Get("current_stock")), atoi0(form.Get("min_stock")), form.Get("unit"),
 		nullInt8(form.Get("price_per_unit")),
 		nullStr(form.Get("description")), nullStr(photoURL),
@@ -216,6 +232,42 @@ func (h *Handlers) insertItem(ctx context.Context, form formValues, photoURL str
 		return models.InventoryItem{}, err
 	}
 	return pgx.CollectOneRow(rows, pgx.RowToStructByPos[models.InventoryItem])
+}
+
+// nextSKU generates <KODEKATEGORI>-<TAHUN>-<3digit> berurutan per kategori per tahun.
+// Kode kategori diambil dari 2-4 huruf awal slug kategori.
+func (h *Handlers) nextSKU(ctx context.Context, category string) (string, error) {
+	var slug string
+	err := h.pool.QueryRow(ctx, `SELECT id FROM categories WHERE name=$1`, category).Scan(&slug)
+	if err != nil {
+		slug = slugify(category)
+	}
+	parts := strings.Split(strings.Trim(slug, "-"), "-")
+	prefix := strings.ToUpper(parts[0])
+	if len(prefix) < 2 {
+		prefix = strings.ToUpper(slugify(category))[:3]
+	}
+	prefix = strings.Trim(prefix, "-")[:min2(len(prefix), 4)]
+
+	year := time.Now().Format("2006")
+	pattern := prefix + "-" + year + "-%"
+	var last string
+	err = h.pool.QueryRow(ctx,
+		`SELECT sku FROM inventory_items WHERE sku LIKE $1 ORDER BY sku DESC LIMIT 1`, pattern).Scan(&last)
+	serial := 1
+	if err == nil && len(last) > len(prefix)+5 {
+		if n, e := strconv.Atoi(last[len(prefix)+5:]); e == nil {
+			serial = n + 1
+		}
+	}
+	return fmt.Sprintf("%s-%s-%03d", prefix, year, serial), nil
+}
+
+func min2(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (h *Handlers) updateItem(ctx context.Context, id uuid.UUID, form formValues, photoURL string) error {

@@ -53,20 +53,20 @@ func ItemForm(d ItemFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" class=\"stack card\" enctype=\"multipart/form-data\"><div class=\"grid-2-form\"><label>SKU / Barcode * <input type=\"text\" name=\"sku\" required value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" class=\"stack card\" enctype=\"multipart/form-data\"><div class=\"grid-2-form\"><label>SKU / Barcode (kosongkan = otomatis) <input type=\"text\" name=\"sku\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(itemVal(d.Item, func(v *ItemFormValues) string { return v.SKU }))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `item_form.templ`, Line: 12, Col: 115}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `item_form.templ`, Line: 12, Col: 106}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"></label> <label>Nama Barang * <input type=\"text\" name=\"name\" required value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" placeholder=\"otomatis: KAT-2026-001\"></label> <label>Nama Barang * <input type=\"text\" name=\"name\" required value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

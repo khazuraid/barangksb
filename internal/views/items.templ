@@ -33,6 +33,7 @@ templ Items(d ItemsData) {
 					<td class={ lowClass(it.CurrentStock, it.MinStock) }>{ fmtInt(it.CurrentStock) } { it.Unit }</td>
 					<td>{ it.Condition }</td>
 					<td class="row-actions">
+						<img src={ templ.URL("/barcode/" + it.ID + ".png") } alt="" height="22" style="vertical-align:middle"/>
 						<a href={ templ.URL("/items/" + it.ID + "/edit") }>Edit</a>
 						<a href={ templ.URL("/barcode?item=" + it.ID) }>Barcode</a>
 						<form method="post" action={ templ.URL("/items/" + it.ID + "/delete") } class="inline"

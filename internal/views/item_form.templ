@@ -8,8 +8,8 @@ templ ItemForm(d ItemFormData) {
 	}
 	<form method="post" action={ itemAction(d.Item) } class="stack card" enctype="multipart/form-data">
 		<div class="grid-2-form">
-			<label>SKU / Barcode *
-				<input type="text" name="sku" required value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.SKU }) }/>
+			<label>SKU / Barcode (kosongkan = otomatis)
+				<input type="text" name="sku" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.SKU }) } placeholder="otomatis: KAT-2026-001"/>
 			</label>
 			<label>Nama Barang *
 				<input type="text" name="name" required value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Name }) }/>
