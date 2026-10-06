@@ -5,8 +5,9 @@ import (
 )
 
 type UserInfo struct {
-	Name string
-	Role string
+	Name   string
+	Role   string
+	Active string // path aktif untuk highlight navbar
 }
 
 type DashboardData struct {

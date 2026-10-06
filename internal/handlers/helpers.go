@@ -200,7 +200,11 @@ func wibLoc() *time.Location {
 // show renders a templ component inside the layout.
 func (h *Handlers) show(w http.ResponseWriter, r *http.Request, title string, content templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	info := userInfo(r)
+	info := views.UserInfo{Active: r.URL.Path}
+	if u := authUserOf(r); u != nil {
+		info.Name = u.Name
+		info.Role = u.Role
+	}
 	if err := views.Layout(title, info, content).Render(r.Context(), w); err != nil {
 		slog.Error("render failed", "page", title, "err", err)
 	}
