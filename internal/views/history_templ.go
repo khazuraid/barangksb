@@ -313,26 +313,4 @@ func History(d HistoryData) templ.Component {
 	})
 }
 
-func txBadge(t string) string {
-	switch t {
-	case "IN":
-		return "badge-in"
-	case "OUT":
-		return "badge-out"
-	default:
-		return "badge-adj"
-	}
-}
-
-func txQty(t string, q int, unit string) string {
-	switch t {
-	case "IN":
-		return "+" + fmtInt(q) + " " + unit
-	case "OUT":
-		return "−" + fmtInt(q) + " " + unit
-	default:
-		return "� " + fmtInt(q) + " " + unit
-	}
-}
-
 var _ = templruntime.GeneratedTemplate

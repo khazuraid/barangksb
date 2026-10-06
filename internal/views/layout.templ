@@ -1,5 +1,6 @@
 package views
 
+// Layout shell utama: sidebar gelap + topbar glass + konten.
 templ Layout(title string, user UserInfo, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="id">
@@ -7,54 +8,82 @@ templ Layout(title string, user UserInfo, content templ.Component) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } — Inventaris Kantor</title>
-			<link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css"/>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 			<link rel="stylesheet" href="/static/vendor/icons/tabler-icons.min.css"/>
-			<link rel="stylesheet" href="/static/css/app.css"/>
 			<link rel="stylesheet" href="/static/css/theme.css"/>
 		</head>
 		<body>
 			if user.Name != "" {
-				<nav class="navbar navbar-expand-md d-print-none">
-					<div class="container-xl">
-						<h1 class="navbar-brand mb-0 h1">📦 Inventaris Kantor</h1>
-						<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar-menu">
-							<span class="navbar-toggler-icon"></span>
-						</button>
-						<div class="collapse navbar-collapse" id="navbar-menu">
-							<ul class="navbar-nav mx-auto">
-								<li class={ "nav-item", navActive("/", user.Active) }><a class="nav-link" href="/"><i class="ti ti-dashboard icon"></i> Dashboard</a></li>
-								<li class={ "nav-item", navActive("/items", user.Active) }><a class="nav-link" href="/items"><i class="ti ti-box icon"></i> Barang</a></li>
-								<li class={ "nav-item", navActive("/categories", user.Active) }><a class="nav-link" href="/categories"><i class="ti ti-category icon"></i> Kategori</a></li>
-								<li class={ "nav-item", navActive("/locations", user.Active) }><a class="nav-link" href="/locations"><i class="ti ti-map-pin icon"></i> Lokasi</a></li>
-								<li class={ "nav-item", navActive("/movement", user.Active) }><a class="nav-link" href="/movement"><i class="ti ti-arrows-left-right icon"></i> Mutasi</a></li>
-								<li class={ "nav-item", navActive("/history", user.Active) }><a class="nav-link" href="/history"><i class="ti ti-history icon"></i> Riwayat</a></li>
-								<li class={ "nav-item", navActive("/barcode", user.Active) }><a class="nav-link" href="/barcode"><i class="ti ti-qrcode icon"></i> QR</a></li>
-								if user.Role == "admin" {
-									<li class={ "nav-item", navActive("/users", user.Active) }><a class="nav-link" href="/users"><i class="ti ti-users icon"></i> Pengguna</a></li>
-									<li class={ "nav-item", navActive("/audit", user.Active) }><a class="nav-link" href="/audit"><i class="ti ti-shield-lock icon"></i> Audit</a></li>
+				<aside class="app-sidebar" id="sidebar">
+					<a href="/" class="sidebar-brand"><span class="brand-logo">IK</span> Inventaris</a>
+					<nav class="sidebar-nav">
+						for _, g := range sidebarGroups {
+							if g.Admin && user.Role != "admin" {
+								continue
+							}
+							<div class="sidebar-label">{ g.Label }</div>
+							for _, it := range g.Items {
+								if it.Admin && user.Role != "admin" {
+									continue
 								}
-							</ul>
-							<div class="nav-item d-flex align-items-center gap-2">
-								<a href="/drivesync" class="btn btn-outline-secondary btn-sm"><i class="ti ti-cloud-upload icon"></i> Sinkron</a>
-								<a href="/password" class="avatar avatar-sm rounded-circle bg-green-lt">{ user.Name[0:1] }</a>
-								<form method="post" action="/logout" class="d-inline"><button type="submit" class="btn btn-link btn-sm">Keluar</button></form>
+								<a href={ templ.URL(it.Href) } class={ "sidebar-link", activeClass(it.Href, user.Active) }>
+									<i class={ "ti " + it.Icon }></i> { it.Label }
+								</a>
+							}
+						}
+					</nav>
+					<div class="sidebar-footer">
+						<div class="sidebar-user">
+							<span class="sidebar-avatar">{ user.Initial() }</span>
+							<div class="sidebar-user-info">
+								<div class="sidebar-user-name">{ user.Name }</div>
+								<div class="sidebar-user-role">{ user.Role }</div>
 							</div>
+							<form method="post" action="/logout">
+								<button type="submit" class="icon-btn danger" title="Keluar"><i class="ti ti-logout"></i></button>
+							</form>
 						</div>
 					</div>
-				</nav>
-			}
-			<main class="container-xl py-4">
+				</aside>
+
+				<div class="app-main">
+					<header class="topbar">
+						<button type="button" class="icon-btn d-lg-none" onclick="document.getElementById('sidebar').classList.toggle('open')">
+							<i class="ti ti-menu-2"></i>
+						</button>
+						<span class="topbar-title">{ user.ActiveTitle() }</span>
+						<div class="topbar-actions">
+							<button type="button" class="icon-btn" id="theme-toggle" title="Mode gelap/terang"><i class="ti ti-moon"></i></button>
+							<a href="/password" class="icon-btn" title="Ganti password"><i class="ti ti-key"></i></a>
+						</div>
+					</header>
+					<main class="content">
+						@content
+					</main>
+				</div>
+			} else {
 				@content
-			</main>
-			<script src="/static/vendor/tabler/tabler.min.js" defer></script>
+			}
+			<div id="toast-zone"></div>
+			<script src="/static/vendor/htmx.min.js" defer></script>
 			<script src="/static/js/app.js" defer></script>
+			<script src="/static/vendor/alpine.min.js" defer></script>
 		</body>
 	</html>
 }
 
-func navActive(path, current string) string {
-	if current == path || (path == "/" && (current == "" || current == "/")) {
+func activeClass(href, current string) string {
+	if current == href || (href == "/" && (current == "" || current == "/")) {
 		return "active"
 	}
 	return ""
+}
+
+// AdminOnly — helper agar group "Admin" hanya tampil di atas (dipakai via if di atas).
+func (g sidebarGroupMeta) AdminOnly() bool { return g.admin }
+
+type sidebarGroupMeta struct {
+	Label string
+	admin bool
 }

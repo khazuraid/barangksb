@@ -374,3 +374,7 @@ func buildPager(r *http.Request, page, perPage, total int) views.Pager {
 func isDuplicateErr(err error) bool {
 	return containsStr(err.Error(), "duplicate key") || containsStr(err.Error(), "unique")
 }
+
+func fmtWIBTime(t time.Time) string {
+	return t.In(wibLoc()).Format("02-01-2006 15:04")
+}

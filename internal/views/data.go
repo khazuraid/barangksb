@@ -10,27 +10,6 @@ type UserInfo struct {
 	Active string // path aktif untuk highlight navbar
 }
 
-type DashboardData struct {
-	User       UserInfo
-	TotalItems int
-	LowStock   []LowStockRow
-	RecentTX   []RecentTXRow
-	StockByCat map[string]int
-	Categories []string
-}
-
-type LowStockRow struct {
-	Name, SKU string
-	Current   int
-	Min       int
-	Unit      string
-}
-
-type RecentTXRow struct {
-	Time, ItemName, SKU, Unit string
-	Quantity                  int
-}
-
 type ItemsData struct {
 	User  UserInfo
 	Items []ItemRow
