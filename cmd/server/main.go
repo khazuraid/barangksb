@@ -3,17 +3,18 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-telegram/bot"
 
 	"inventariskantor/internal/auth"
 	"inventariskantor/internal/db"
 	"inventariskantor/internal/handlers"
+	"inventariskantor/internal/telegram"
 )
 
 func main() {
@@ -48,6 +49,23 @@ func main() {
 
 	sess := auth.NewSessionManager(sessionKey)
 	h := handlers.New(pool, sess)
+	core := &handlers.Core{Pool: pool}
+
+	// Telegram bot (opsional): notifikasi + input + pencarian
+	tgToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if tgToken != "" {
+		tgBot, err := bot.New(tgToken)
+		if err != nil {
+			slog.Error("telegram init failed", "err", err)
+		} else {
+			tgHandler := telegram.NewHandler(core, os.Getenv("TELEGRAM_ALLOWED_CHAT_IDS"))
+			tgHandler.Register(tgBot)
+			notif := &telegram.Notifier{Bot: tgBot, Core: core, ChatIDs: tgHandler.ChatIDList()}
+			notif.StartDailyAlert(context.Background())
+			go tgBot.Start(context.Background())
+			slog.Info("telegram bot started")
+		}
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
@@ -57,7 +75,7 @@ func main() {
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("web/uploads"))))
 
 	r.Get("/login", h.LoginForm)
-	r.Post("/login", h.LoginPost)
+	r.Post("/login", h.RateLimitedLogin(h.LoginPost))
 	r.Post("/logout", h.LogoutPost)
 
 	r.Group(func(a chi.Router) {
@@ -99,5 +117,3 @@ func env(k, def string) string {
 	}
 	return def
 }
-
-var _ = fmt.Sprintf

@@ -1,4 +1,5 @@
 package db
+
 import (
 	"context"
 	"embed"
@@ -11,7 +12,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations/001_init.sql migrations/002_audit.sql
 var migrationsFS embed.FS
 
 func Open(dsn string) (*pgxpool.Pool, error) {
@@ -25,7 +26,6 @@ func Open(dsn string) (*pgxpool.Pool, error) {
 }
 
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	// goose embed FS perlu root di "migrations/"
 	sub, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
 		return err
