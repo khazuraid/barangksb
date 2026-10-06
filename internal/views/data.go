@@ -1,0 +1,101 @@
+package views
+
+type UserInfo struct {
+	Name string
+	Role string
+}
+
+type DashboardData struct {
+	User       UserInfo
+	TotalItems int
+	LowStock   []LowStockRow
+	RecentTX   []RecentTXRow
+	StockByCat map[string]int
+	Categories []string
+}
+
+type LowStockRow struct {
+	Name, SKU string
+	Current   int
+	Min       int
+	Unit      string
+}
+
+type RecentTXRow struct {
+	Time, ItemName, SKU, Unit string
+	Quantity                  int
+}
+
+type ItemsData struct {
+	User  UserInfo
+	Items []ItemRow
+	Query string
+	Cat   string
+	Cats  []string
+}
+
+type ItemRow struct {
+	ID           string
+	SKU, Name    string
+	Category     string
+	Location     string
+	CurrentStock int
+	MinStock     int
+	Unit         string
+	Condition    string
+}
+
+type ItemFormData struct {
+	User UserInfo
+	Item *ItemFormValues
+	Cats []string
+}
+
+type ItemFormValues struct {
+	ID              string
+	SKU, Name       string
+	Category        string
+	Location        string
+	CurrentStock    int
+	MinStock        int
+	Unit            string
+	PricePerUnit    int64
+	Description     string
+	Merk            string
+	TypeModel       string
+	SerialNumber    string
+	ProcurementYear string
+	ConditionStatus string
+	FundingSource   string
+	Distributor     string
+	AklAkd          string
+}
+
+type MovementData struct {
+	User  UserInfo
+	Cats  []string
+	SKU   string
+	Items []ItemRow
+}
+
+type HistoryData struct {
+	User UserInfo
+	TX   []TXRow
+}
+
+type TXRow struct {
+	Time, SKU, Name, Unit, ReceivedBy, Distributor, PONumber, Condition, Geo string
+	Quantity                                                                int
+}
+
+type BarcodeData struct {
+	User  UserInfo
+	Items []ItemRow
+}
+
+type DriveSyncData struct {
+	User       UserInfo
+	Configured bool
+	LastRun    string
+	Result     string
+}

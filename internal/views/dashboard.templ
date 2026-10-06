@@ -1,0 +1,71 @@
+package views
+
+templ Dashboard(d DashboardData) {
+	<h1>Dashboard</h1>
+	<div class="cards">
+		<div class="card stat">
+			<span class="stat-num">{ fmtInt(d.TotalItems) }</span>
+			<span class="stat-label">Jenis Barang</span>
+		</div>
+		<div class="card stat">
+			<span class="stat-num warn">{ fmtInt(len(d.LowStock)) }</span>
+			<span class="stat-label">Stok Menipis</span>
+		</div>
+		<div class="card stat">
+			<span class="stat-num">{ fmtInt(len(d.Categories)) }</span>
+			<span class="stat-label">Kategori</span>
+		</div>
+	</div>
+
+	<div class="grid-2">
+		<div class="card">
+			<h2>Stok Menipis (≤ min)</h2>
+			if len(d.LowStock) == 0 {
+				<p class="muted">Semua stok aman.</p>
+			} else {
+				<table>
+					<thead><tr><th>Nama</th><th>SKU</th><th>Stok</th></tr></thead>
+					<tbody>
+						for _, r := range d.LowStock {
+							<tr><td>{ r.Name }</td><td><code>{ r.SKU }</code></td><td class="warn">{ fmtInt(r.Current) } / { fmtInt(r.Min) } { r.Unit }</td></tr>
+						}
+					</tbody>
+				</table>
+			}
+		</div>
+		<div class="card">
+			<h2>Barang Masuk Terbaru</h2>
+			if len(d.RecentTX) == 0 {
+				<p class="muted">Belum ada transaksi.</p>
+			} else {
+				<table>
+					<thead><tr><th>Waktu</th><th>Barang</th><th>Qty</th></tr></thead>
+					<tbody>
+						for _, r := range d.RecentTX {
+							<tr><td>{ r.Time }</td><td>{ r.ItemName } <code>{ r.SKU }</code></td><td>+{ fmtInt(r.Quantity) } { r.Unit }</td></tr>
+						}
+					</tbody>
+				</table>
+			}
+		</div>
+	</div>
+
+	<div class="card">
+		<h2>Stok per Kategori</h2>
+		<div class="chart">
+			for _, c := range sortedKeys(d.StockByCat) {
+				<div class="chart-row">
+					<span class="chart-label">{ c }</span>
+					<div class="chart-bar"><div class="chart-fill" style={ barWidth(d.StockByCat[c], d.StockByCat) }></div></div>
+					<span class="chart-num">{ fmtInt(d.StockByCat[c]) }</span>
+				</div>
+			}
+		</div>
+	</div>
+
+	<div class="actions">
+		<a href="/export/items.csv" class="btn">Unduh CSV</a>
+		<a href="/export/items.xlsx" class="btn">Unduh Excel</a>
+		<a href="/report.pdf" class="btn">Unduh PDF</a>
+	</div>
+}

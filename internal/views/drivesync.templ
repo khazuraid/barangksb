@@ -1,0 +1,23 @@
+package views
+
+templ DriveSync(d DriveSyncData) {
+	<h1>Sinkronisasi Google Drive</h1>
+	<div class="card stack">
+		<h2>Ambil Data dari Drive (one-way)</h2>
+		if !d.Configured {
+			<div class="alert alert-info">
+				Drive belum dikonfigurasi. Set env <code>GOOGLE_SA_JSON</code> + <code>GOOGLE_FOLDER_ID</code>.
+				Bagikan folder Drive ke email service account.
+			</div>
+		} else {
+			<p>File CSV / Google Sheet di folder Drive akan di-upsert ke database (cocokkan kolom SKU).</p>
+			if d.LastRun != "" {
+				<p><strong>Sinkron terakhir:</strong> { d.LastRun }</p>
+				<pre class="sync-result">{ d.Result }</pre>
+			}
+			<form method="post" action="/drivesync">
+				<button type="submit" class="btn btn-primary">Sync Sekarang</button>
+			</form>
+		}
+	</div>
+}

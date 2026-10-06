@@ -1,0 +1,57 @@
+package views
+
+templ Movement(d MovementData) {
+	<h1>Barang Masuk</h1>
+	<div class="grid-2">
+		<div class="card stack">
+			<h2>Scan / Cari Barang</h2>
+			<label>SKU
+				<input type="text" id="movement-sku" value={ d.SKU } placeholder="Scan barcode atau ketik SKU…" autofocus/>
+			</label>
+			<button type="button" class="btn" id="btn-scan">📷 Scan Kamera</button>
+			<div id="scanner-box" class="hidden"></div>
+			<div id="item-lookup" class="muted">Ketik SKU untuk mencari barang…</div>
+		</div>
+		<div class="card stack">
+			<h2>Data Penerimaan</h2>
+			<form method="post" action="/movement" class="stack" enctype="multipart/form-data" id="movement-form">
+				<input type="hidden" name="geo_lat" id="geo_lat"/>
+				<input type="hidden" name="geo_lng" id="geo_lng"/>
+				<input type="hidden" name="geo_acc" id="geo_acc"/>
+				<input type="hidden" name="geo_name" id="geo_name"/>
+				<div class="grid-2-form">
+					<label>Item *
+						<select name="item_id" id="item-select" required>
+							<option value="">— pilih barang —</option>
+							for _, it := range d.Items {
+								<option value={ it.ID } data-sku={ it.SKU }>{ it.Name } ({ it.SKU })</option>
+							}
+						</select>
+					</label>
+					<label>Jumlah Masuk *
+						<input type="number" name="quantity" min="1" required/>
+					</label>
+					<label>Petugas Penerima<input type="text" name="received_by" value={ d.User.Name }/></label>
+					<label>Distributor / Vendor<input type="text" name="supplier_or_source"/></label>
+					<label>No PO / Surat Jalan<input type="text" name="invoice_or_po_number"/></label>
+					<label>Kondisi
+						<select name="condition_status">
+							<option>Berfungsi</option><option>Rusak Ringan</option>
+							<option>Rusak Berat</option><option>Perlu Kalibrasi</option>
+						</select>
+					</label>
+					<label>Sumber Pendanaan<input type="text" name="funding_source"/></label>
+					<label>Thn Pengadaan<input type="text" name="procurement_year"/></label>
+				</div>
+				<label>Foto Bukti Fisik (opsional)<input type="file" name="photo" accept="image/*" capture="environment"/></label>
+				<label>Keterangan<textarea name="notes" rows="2"></textarea></label>
+				<button type="submit" class="btn btn-primary">Simpan Barang Masuk</button>
+			</form>
+			<button type="button" class="btn" id="btn-geotag">📍 Ambil Geotag</button>
+			<span id="geotag-status" class="muted"></span>
+		</div>
+	</div>
+	<script src="/static/js/vendor/html5-qrcode.min.js" defer></script>
+	<script src="/static/js/scanner.js" defer></script>
+	<script src="/static/js/geotag.js" defer></script>
+}

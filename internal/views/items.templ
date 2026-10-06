@@ -1,0 +1,50 @@
+package views
+
+templ Items(d ItemsData) {
+	<div class="page-head">
+		<h1>Daftar Barang</h1>
+		<a href="/items/new" class="btn btn-primary">+ Tambah Barang</a>
+	</div>
+	<form method="get" action="/items" class="filters">
+		<input type="search" name="q" placeholder="Cari nama / SKU / lokasi…" value={ d.Query }/>
+		<select name="cat">
+			<option value="">Semua Kategori</option>
+			for _, c := range d.Cats {
+				if c == d.Cat {
+					<option value={ c } selected>{ c }</option>
+				} else {
+					<option value={ c }>{ c }</option>
+				}
+			}
+		</select>
+		<button type="submit" class="btn">Filter</button>
+	</form>
+	<table class="data-table">
+		<thead>
+			<tr><th>SKU</th><th>Nama</th><th>Kategori</th><th>Lokasi</th><th>Stok</th><th>Kondisi</th><th></th></tr>
+		</thead>
+		<tbody>
+			for _, it := range d.Items {
+				<tr>
+					<td><code>{ it.SKU }</code></td>
+					<td>{ it.Name }</td>
+					<td>{ it.Category }</td>
+					<td>{ it.Location }</td>
+					<td class={ lowClass(it.CurrentStock, it.MinStock) }>{ fmtInt(it.CurrentStock) } { it.Unit }</td>
+					<td>{ it.Condition }</td>
+					<td class="row-actions">
+						<a href={ templ.URL("/items/" + it.ID + "/edit") }>Edit</a>
+						<a href={ templ.URL("/barcode?item=" + it.ID) }>Barcode</a>
+						<form method="post" action={ templ.URL("/items/" + it.ID + "/delete") } class="inline"
+							onsubmit="return confirm('Hapus barang ini?')">
+							<button type="submit" class="btn-link danger">Hapus</button>
+						</form>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+	if len(d.Items) == 0 {
+		<p class="muted">Tidak ada barang. <a href="/items/new">Tambah barang pertama</a>.</p>
+	}
+}

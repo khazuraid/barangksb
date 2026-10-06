@@ -1,0 +1,36 @@
+package views
+
+templ Layout(title string, user UserInfo, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="id">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } — Inventaris Kantor</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+		</head>
+		<body>
+			if user.Name != "" {
+				<nav class="topnav">
+					<a href="/" class="brand">Inventaris Kantor</a>
+					<div class="navlinks">
+						<a href="/">Dashboard</a>
+						<a href="/items">Barang</a>
+						<a href="/movement">Barang Masuk</a>
+						<a href="/history">Riwayat</a>
+						<a href="/barcode">Barcode</a>
+						<a href="/drivesync">Sinkronisasi</a>
+					</div>
+					<div class="navuser">
+						<span>{ user.Name }</span>
+						<form method="post" action="/logout"><button type="submit" class="btn-link">Keluar</button></form>
+					</div>
+				</nav>
+			}
+			<main class="container">
+				@content
+			</main>
+			<script src="/static/js/app.js" defer></script>
+		</body>
+	</html>
+}

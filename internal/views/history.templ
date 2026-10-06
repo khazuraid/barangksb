@@ -1,0 +1,34 @@
+package views
+
+templ History(d HistoryData) {
+	<div class="page-head">
+		<h1>Riwayat Barang Masuk</h1>
+		<a href="/export/tx.csv" class="btn">Unduh CSV</a>
+	</div>
+	<table class="data-table">
+		<thead>
+			<tr>
+				<th>Waktu</th><th>SKU</th><th>Nama Barang</th><th>Qty</th>
+				<th>Petugas</th><th>Distributor</th><th>No PO</th><th>Kondisi</th><th>Geotag</th>
+			</tr>
+		</thead>
+		<tbody>
+			for _, t := range d.TX {
+				<tr>
+					<td>{ t.Time }</td>
+					<td><code>{ t.SKU }</code></td>
+					<td>{ t.Name }</td>
+					<td>+{ fmtInt(t.Quantity) } { t.Unit }</td>
+					<td>{ t.ReceivedBy }</td>
+					<td>{ t.Distributor }</td>
+					<td>{ t.PONumber }</td>
+					<td>{ t.Condition }</td>
+					<td>{ t.Geo }</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+	if len(d.TX) == 0 {
+		<p class="muted">Belum ada transaksi barang masuk.</p>
+	}
+}
