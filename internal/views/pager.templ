@@ -1,84 +1,25 @@
 package views
 
-import "fmt"
-
-// Metode pager.
-
-func (p Pager) Pages() int {
-	if p.PerPage < 1 {
-		return 1
-	}
-	n := p.Total / p.PerPage
-	if p.Total%p.PerPage > 0 {
-		n++
-	}
-	if n < 1 {
-		n = 1
-	}
-	return n
-}
-
-func (p Pager) HasPrev() bool { return p.Page > 1 }
-func (p Pager) HasNext() bool { return p.Page < p.Pages() }
-
-// Window returns the slice of page numbers to show (sliding window).
-func (p Pager) Window() []int {
-	if p.MaxShow < 1 {
-		p.MaxShow = 7
-	}
-	total := p.Pages()
-	start := p.Page - p.MaxShow/2
-	if start < 1 {
-		start = 1
-	}
-	end := start + p.MaxShow - 1
-	if end > total {
-		end = total
-		start = end - p.MaxShow + 1
-		if start < 1 {
-			start = 1
-		}
-	}
-	out := make([]int, 0, end-start+1)
-	for i := start; i <= end; i++ {
-		out = append(out, i)
-	}
-	return out
-}
-
-func (p Pager) URL(page int) string {
-	sep := "?"
-	if len(p.BaseURL) > 0 {
-		for i := len(p.BaseURL) - 1; i >= 0; i-- {
-			if p.BaseURL[i] == '?' {
-				sep = "&"
-				break
-			} else if p.BaseURL[i] == '/' {
-				break
-			}
-		}
-	}
-	return fmt.Sprintf("%s%spage=%d", p.BaseURL, sep, page)
-}
-
-// Pager renders the pagination bar.
-templ Pagination(p Pager) {
+// Pagination renders the pager bar.
+templ Pagination(p PaginationData) {
 	if p.Pages() > 1 {
-		<nav class="pager">
+		<div class="d-flex align-items-center flex-wrap gap-1">
 			if p.HasPrev() {
-				<a href={ templ.URL(p.URL(p.Page - 1)) } class="pager-btn">‹ Prev</a>
+				<a href={ templ.URL(p.URL(p.Page-1)) } class="btn btn-sm">‹</a>
 			}
 			for _, pg := range p.Window() {
 				if pg == p.Page {
-					<span class="pager-btn pager-current">{ fmtInt(pg) }</span>
+					<button class="btn btn-sm btn-primary">{ fmtInt(pg) }</button>
 				} else {
-					<a href={ templ.URL(p.URL(pg)) } class="pager-btn">{ fmtInt(pg) }</a>
+					<a href={ templ.URL(p.URL(pg)) } class="btn btn-sm">{ fmtInt(pg) }</a>
 				}
 			}
 			if p.HasNext() {
-				<a href={ templ.URL(p.URL(p.Page + 1)) } class="pager-btn">Next ›</a>
+				<a href={ templ.URL(p.URL(p.Page+1)) } class="btn btn-sm">›</a>
 			}
-			<span class="pager-info muted">{ fmtInt(p.Total) } data</span>
-		</nav>
+			<span class="text-secondary ms-auto" style="font-size:.75rem">{ fmtInt(p.Total) } data — hal. { fmtInt(p.Page) }/{ fmtInt(p.Pages()) }</span>
+		</div>
+	} else {
+		<span class="text-secondary" style="font-size:.75rem">{ fmtInt(p.Total) } data</span>
 	}
 }
