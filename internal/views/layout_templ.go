@@ -47,14 +47,14 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 			return templ_7745c5c3_Err
 		}
 		if user.Name != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<nav class=\"topnav\"><a href=\"/\" class=\"brand\">Inventaris Kantor</a><div class=\"navlinks\"><a href=\"/\">Dashboard</a> <a href=\"/items\">Barang</a> <a href=\"/movement\">Barang Masuk</a> <a href=\"/history\">Riwayat</a> <a href=\"/barcode\">Barcode</a> <a href=\"/drivesync\">Sinkronisasi</a></div><div class=\"navuser\"><span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<nav class=\"topnav\"><a href=\"/\" class=\"brand\">Inventaris Kantor</a><div class=\"navlinks\"><a href=\"/\">Dashboard</a> <a href=\"/items\">Barang</a> <a href=\"/categories\">Kategori</a> <a href=\"/movement\">Barang Masuk</a> <a href=\"/history\">Riwayat</a> <a href=\"/barcode\">Barcode</a> <a href=\"/drivesync\">Sinkronisasi</a></div><div class=\"navuser\"><span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(user.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 25, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 26, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {

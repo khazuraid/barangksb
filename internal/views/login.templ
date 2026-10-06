@@ -1,20 +1,28 @@
 package views
 
 templ Login(err string) {
+	@Layout("Masuk — Inventaris Kantor", UserInfo{}, LoginContent(err))
+}
+
+templ LoginContent(err string) {
 	<div class="login-box">
-		<h1>Inventaris Kantor</h1>
-		<p class="muted">Sistem Barcode & Stok Real-Time</p>
+		<div class="login-brand">
+			<div class="login-logo">IK</div>
+			<h1>Inventaris Kantor</h1>
+			<p class="muted">Sistem Barcode & Stok Real-Time</p>
+		</div>
 		if err != "" {
 			<div class="alert alert-error">{ err }</div>
 		}
 		<form method="post" action="/login" class="stack">
 			<label>Email
-				<input type="email" name="email" required autofocus/>
+				<input type="email" name="email" required autofocus placeholder="nama@kantor.id"/>
 			</label>
 			<label>Password
-				<input type="password" name="password" required/>
+				<input type="password" name="password" required placeholder="••••••••"/>
 			</label>
-			<button type="submit" class="btn btn-primary">Masuk</button>
+			<button type="submit" class="btn btn-primary btn-block">Masuk</button>
 		</form>
+		<p class="login-foot muted">Akses terbatas untuk petugas & admin kantor.</p>
 	</div>
 }

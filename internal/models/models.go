@@ -68,3 +68,8 @@ type StockTransaction struct {
 	SyncedToDrive    pgtype.Bool        `json:"synced_to_drive"`
 	Timestamp        pgtype.Timestamptz `json:"timestamp"`
 }
+
+type Category struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}

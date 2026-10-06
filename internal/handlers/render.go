@@ -41,15 +41,14 @@ func (h *Handlers) show(w http.ResponseWriter, r *http.Request, title string, co
 	}
 }
 
-// render is the login-only shim.
+// render renders pages that live outside RequireAuth (login only) WITH layout.
 func (h *Handlers) render(w http.ResponseWriter, r *http.Request, page string, data any) {
 	if page == "login" {
 		var err string
 		if d, ok := data.(map[string]any); ok {
 			err, _ = d["Error"].(string)
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = views.Login(err).Render(r.Context(), w)
+		h.show(w, r, "Masuk", views.LoginContent(err))
 		return
 	}
 	http.Error(w, "unknown page", http.StatusInternalServerError)

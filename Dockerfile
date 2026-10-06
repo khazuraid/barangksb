@@ -9,6 +9,9 @@ FROM alpine:3.20
 RUN adduser -D -u 10001 app
 COPY --from=build /server /server
 COPY web/ /web/
+RUN mkdir -p /web/uploads \
+	&& chown -R app:app /web/uploads \
+	&& chmod -R a+rX /web
 WORKDIR /
 ENV APP_PORT=8080
 # DATABASE_URL wajib: menunjuk ke container Postgres terpisah (postgres:16)
