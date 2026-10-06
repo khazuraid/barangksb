@@ -61,7 +61,16 @@ type SearchResult struct {
 	Current                   int32
 }
 
-// SearchItems finds items by name/SKU/location, returns max n.
+// AttachPhoto menghubungkan URL foto ke transaksi terakhir SKU (fitur bot).
+func (c *Core) AttachPhoto(ctx context.Context, sku, photoURL string) error {
+	_, err := c.Pool.Exec(ctx, `UPDATE stock_transactions SET photo_url=$2
+		WHERE id = (SELECT id FROM stock_transactions WHERE item_sku=$1 ORDER BY timestamp DESC LIMIT 1)`,
+		sku, &photoURL)
+	return err
+}
+
+// SearchItems di core.go — versi lama dengan signature berbeda dihilangkan.
+
 func (c *Core) SearchItems(ctx context.Context, keyword string, n int) []SearchResult {
 	rows, err := c.Pool.Query(ctx,
 		`SELECT name, sku, unit, location, current_stock FROM inventory_items

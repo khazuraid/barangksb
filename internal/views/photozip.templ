@@ -1,0 +1,16 @@
+package views
+
+import "fmt"
+
+// ---------- F6: Zip foto per barang ----------
+
+templ PhotoZipDone(user UserInfo, count int) {
+	<h1>Arsip Foto</h1>
+	<div class="card stack">
+		<p>{ fmtInt(count) } foto ditemukan di penyimpanan lokal.</p>
+		<p class="muted">Arsip tersedia di folder <code>backups/</code>.</p>
+		<a href="/" class="btn">Kembali</a>
+	</div>
+}
+
+var _ = fmt.Sprintf

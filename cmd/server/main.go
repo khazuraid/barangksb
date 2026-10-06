@@ -28,6 +28,12 @@ func main() {
 	dsn := env("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/inventaris?sslmode=disable")
 	sessionKey := env("SESSION_KEY", "dev-only-insecure-key")
 
+	// F2: guard produksi — tolak SESSION_KEY default saat APP_ENV=prod
+	if os.Getenv("APP_ENV") == "prod" && sessionKey == "dev-only-insecure-key" {
+		slog.Error("SESSION_KEY harus diset saat APP_ENV=prod")
+		os.Exit(1)
+	}
+
 	pool, err := db.Open(dsn)
 	if err != nil {
 		slog.Error("db open failed", "err", err)
@@ -57,6 +63,8 @@ func main() {
 		if tgBot, err := bot.New(tgToken); err == nil {
 			tgHandler := telegram.NewHandler(core, os.Getenv("TELEGRAM_ALLOWED_CHAT_IDS"))
 			tgHandler.Register(tgBot)
+			tgAdv := telegram.NewAdvanced(core, tgToken, os.Getenv("TELEGRAM_ALLOWED_CHAT_IDS"))
+			tgAdv.Register(tgBot)
 			notif := &telegram.Notifier{Bot: tgBot, Core: core, ChatIDs: tgHandler.ChatIDList()}
 			notif.StartDailyAlert(context.Background())
 			go tgBot.Start(context.Background())
@@ -130,6 +138,12 @@ func main() {
 		// Ganti password sendiri
 		a.Get("/password", h.PasswordForm)
 		a.Post("/password", h.PasswordPost)
+
+		// F3: opname massal, F4: audit log, F6: arsip foto
+		a.Get("/adjust/bulk", h.BulkAdjustForm)
+		a.Post("/adjust/bulk", h.BulkAdjustRun)
+		a.Get("/audit", h.AuditLogPage)
+		a.Get("/photozip", h.PhotoZip)
 
 		// API JSON
 		a.Get("/api/items", h.APIItems)

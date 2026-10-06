@@ -110,17 +110,4 @@ func (h *Handlers) ItemDetail(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/items", http.StatusSeeOther)
 }
 
-func requireAdmin(w http.ResponseWriter, r *http.Request) bool {
-	u := authUserOf(r)
-	if u == nil || u.Role != "admin" {
-		http.Error(w, "403 — hanya admin", http.StatusForbidden)
-		return false
-	}
-	return true
-}
-
-func isDuplicateErr(err error) bool {
-	return containsStr(err.Error(), "duplicate key") || containsStr(err.Error(), "unique")
-}
-
 var _ = strconv.Itoa

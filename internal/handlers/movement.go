@@ -5,15 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
-
 	"inventariskantor/internal/service"
 	"inventariskantor/internal/views"
 )
-
-func atoi64(s string) (int64, error) {
-	return strconvParseInt(s)
-}
 
 func (h *Handlers) MovementForm(w http.ResponseWriter, r *http.Request) {
 	tab := r.URL.Query().Get("tab")
@@ -185,22 +179,6 @@ func (h *Handlers) History(w http.ResponseWriter, r *http.Request) {
 
 // ---------- formatting ----------
 
-func fmtWIB(t pgtype.Timestamptz) string {
-	if !t.Valid {
-		return "—"
-	}
-	return t.Time.In(wibLoc()).Format("02-01-2006 15:04")
-}
 
-func geoDisplay(lat, lng pgtype.Float8) string {
-	if !lat.Valid || !lng.Valid {
-		return "—"
-	}
-	return formatGeo(lat.Float64, lng.Float64)
-}
-
-func wibLoc() *time.Location {
-	return time.FixedZone("WIB", 7*3600)
-}
 
 var _ = time.Now

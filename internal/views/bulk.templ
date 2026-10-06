@@ -1,0 +1,84 @@
+package views
+
+import (
+	"fmt"
+	"time"
+)
+
+// ---------- F3: Opname massal ----------
+
+templ BulkAdjust(user UserInfo) {
+	<h1>Stok Opname Massal</h1>
+	<div class="card stack">
+		<p class="muted">Unggah CSV dua kolom: <code>sku,fisik</code>. Contoh:</p>
+		<pre class="sync-result">sku,fisik
+ATK-2026-001,12
+ATK-2026-002,3</pre>
+		<form method="post" action="/adjust/bulk" enctype="multipart/form-data" class="stack">
+			<label>File CSV<input type="file" name="file" accept=".csv,text/csv" required/></label>
+			<button type="submit" class="btn btn-primary">Proses Opname</button>
+		</form>
+	</div>
+}
+
+templ BulkAdjustResult(user UserInfo, ok, fail int, errs []string) {
+	<h1>Hasil Opname Massal</h1>
+	<div class="cards">
+		<div class="card stat"><span class="stat-num">{ fmtInt(ok) }</span><span class="stat-label">Berhasil</span></div>
+		<div class="card stat"><span class="stat-num warn">{ fmtInt(fail) }</span><span class="stat-label">Gagal</span></div>
+	</div>
+	if len(errs) > 0 {
+		<div class="card">
+			<h2>Rincian Gagal</h2>
+			<ul class="error-list">
+				for _, e := range errs {
+					<li class="warn">{ e }</li>
+				}
+			</ul>
+		</div>
+	}
+	<div class="actions">
+		<a href="/adjust/bulk" class="btn">Opname Lagi</a>
+		<a href="/history" class="btn">Lihat Riwayat</a>
+	</div>
+}
+
+// ---------- F4: Audit log UI ----------
+
+templ AuditLog(d AuditData) {
+	<h1>Audit Log</h1>
+	<p class="muted">{ fmtInt(d.Total) } perubahan terakhir (auto oleh trigger Postgres).</p>
+	<table class="data-table">
+		<thead><tr><th>Waktu</th><th>Tabel</th><th>Aksi</th><th>Row ID</th></tr></thead>
+		<tbody>
+			for _, a := range d.Rows {
+				<tr>
+					<td>{ fmtTimeA(a.At) }</td>
+					<td>{ a.Table }</td>
+					<td><span class={ "badge " + auditBadge(a.Op) }>{ a.Op }</span></td>
+					<td><code>{ a.RowID }</code></td>
+				</tr>
+			}
+		</tbody>
+	</table>
+	if len(d.Rows) == 0 {
+		<p class="muted">Belum ada aktivitas.</p>
+	}
+}
+
+func auditBadge(op string) string {
+	switch op {
+	case "INSERT":
+		return "badge-in"
+	case "DELETE":
+		return "badge-out"
+	default:
+		return "badge-adj"
+	}
+}
+
+func fmtTime(t time.Time) string {
+	return t.In(time.FixedZone("WIB", 7*3600)).Format("02-01-2006 15:04:05")
+}
+
+var _ = fmt.Sprintf

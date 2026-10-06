@@ -32,11 +32,13 @@ func NewSessionManager(key string) *scs.SessionManager {
 	sess.Cookie.Name = "inventaris_session"
 	sess.Cookie.HttpOnly = true
 	sess.Cookie.SameSite = http.SameSiteLaxMode
-	sess.Cookie.Secure = false // ponytail: set true saat di-deploy di belakang HTTPS
+	// Secure otomatis: ikuti APP_URL / APP_ENV (F1)
+	if strings.HasPrefix(os.Getenv("APP_URL"), "https://") || os.Getenv("APP_ENV") == "prod" {
+		sess.Cookie.Secure = true
+	}
 	sess.Lifetime = 24 * 7 * time.Hour
 	if key != "dev-only-insecure-key" {
 		sess.Cookie.Persist = true
-		_ = key // scs cookie-store encodes via its own key; HMAC via CookieStore below
 	}
 	return sess
 }
