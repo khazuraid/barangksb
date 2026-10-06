@@ -172,13 +172,7 @@ func cellDef(row []string, i int, def string) string {
 	return def
 }
 
-func wibLoc() *time.Location {
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		return time.FixedZone("WIB", 7*3600)
-	}
-	return loc
-}
+// wibLoc di timefmt.go (satu deklarasi saja)
 
 var (
 	_ = io.EOF

@@ -17,6 +17,16 @@ templ Items(d ItemsData) {
 				}
 			}
 		</select>
+		<select name="loc">
+			<option value="">Semua Lokasi</option>
+			for _, l := range d.Locs {
+				if l == d.Loc {
+					<option value={ l } selected>{ l }</option>
+				} else {
+					<option value={ l }>{ l }</option>
+				}
+			}
+		</select>
 		<button type="submit" class="btn">Filter</button>
 	</form>
 	<table class="data-table">
@@ -48,4 +58,5 @@ templ Items(d ItemsData) {
 	if len(d.Items) == 0 {
 		<p class="muted">Tidak ada barang. <a href="/items/new">Tambah barang pertama</a>.</p>
 	}
+	@Pagination(d.Pager)
 }

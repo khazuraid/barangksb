@@ -1,0 +1,139 @@
+package views
+
+import (
+	"inventariskantor/internal/models"
+)
+
+// ---------- Kelola User (admin) ----------
+
+type UsersData struct {
+	User  UserInfo
+	Users []models.UserRow
+}
+
+templ Users(d UsersData) {
+	<div class="page-head">
+		<h1>Kelola Pengguna</h1>
+	</div>
+	<div class="grid-2">
+		<div class="card">
+			<h2>Tambah / Reset Pengguna</h2>
+			<form method="post" action="/users" class="stack">
+				<label>Nama<input type="text" name="name" required/></label>
+				<label>Email<input type="email" name="email" required/></label>
+				<label>Password (min 8)<input type="password" name="password" required minlength="8"/></label>
+				<label>Role
+					<select name="role">
+						<option value="petugas">Petugas</option>
+						<option value="admin">Admin</option>
+					</select>
+				</label>
+				<button type="submit" class="btn btn-primary">Simpan</button>
+			</form>
+		</div>
+		<div class="card">
+			<h2>Daftar ({ fmtInt(len(d.Users)) })</h2>
+			<table class="data-table">
+				<thead><tr><th>Nama</th><th>Email</th><th>Role</th><th></th></tr></thead>
+				<tbody>
+					for _, u := range d.Users {
+						<tr>
+							<td>{ u.Name }</td>
+							<td>{ u.Email }</td>
+							<td>{ u.Role }</td>
+							<td class="row-actions">
+								if u.Role == "petugas" {
+									<form method="post" action={ templ.URL("/users/" + u.Email + "/role") } class="inline">
+										<input type="hidden" name="role" value="admin"/>
+										<button type="submit" class="btn-link">Jadikan Admin</button>
+									</form>
+								} else {
+									<form method="post" action={ templ.URL("/users/" + u.Email + "/role") } class="inline">
+										<input type="hidden" name="role" value="petugas"/>
+										<button type="submit" class="btn-link">Jadikan Petugas</button>
+									</form>
+								}
+								<form method="post" action={ templ.URL("/users/" + u.Email + "/delete") } class="inline"
+									onsubmit="return confirm('Hapus user ini?')">
+									<button type="submit" class="btn-link danger">Hapus</button>
+								</form>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+}
+
+// ---------- Ganti password sendiri ----------
+
+templ Password(user UserInfo, msg string, isErr bool) {
+	<h1>Ganti Password</h1>
+	<div class="card" style="max-width:420px">
+		if msg != "" {
+			if isErr {
+				<div class="alert alert-error">{ msg }</div>
+			} else {
+				<div class="alert alert-info">{ msg }</div>
+			}
+		}
+		<form method="post" action="/password" class="stack">
+			<label>Password Lama<input type="password" name="old" required/></label>
+			<label>Password Baru (min 8)<input type="password" name="new" required minlength="8"/></label>
+			<label>Ulangi Password Baru<input type="password" name="confirm" required minlength="8"/></label>
+			<button type="submit" class="btn btn-primary">Simpan</button>
+		</form>
+	</div>
+}
+
+// ---------- Master Lokasi ----------
+
+type LocationsData struct {
+	User UserInfo
+	Locs []models.Location
+}
+
+templ Locations(d LocationsData) {
+	<div class="page-head">
+		<h1>Lokasi / Ruangan</h1>
+	</div>
+	<div class="grid-2">
+		<div class="card">
+			<h2>Tambah Lokasi</h2>
+			<form method="post" action="/locations" class="stack">
+				<label>Nama Ruangan<input type="text" name="name" required placeholder="cth: Ruang Poli Lt 2"/></label>
+				<button type="submit" class="btn btn-primary">Tambah</button>
+			</form>
+		</div>
+		<div class="card">
+			<h2>Daftar ({ fmtInt(len(d.Locs)) })</h2>
+			<table class="data-table">
+				<thead><tr><th>Nama</th><th>Aksi</th></tr></thead>
+				<tbody>
+					for _, l := range d.Locs {
+						<tr>
+							<td>{ l.Name }</td>
+							<td class="row-actions">
+								<button type="button" class="btn-link" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) }>Edit</button>
+								<form method="post" action={ templ.URL("/locations/" + l.ID + "/delete") } class="inline"
+									onsubmit="return confirm('Hapus lokasi ini?')">
+									<button type="submit" class="btn-link danger">Hapus</button>
+								</form>
+							</td>
+						</tr>
+						<tr id={ "rename-loc-" + l.ID } class="hidden">
+							<td colspan="2">
+								<form method="post" action={ templ.URL("/locations/" + l.ID + "/rename") } class="inline-form">
+									<input type="text" name="name" value={ l.Name } required/>
+									<button type="submit" class="btn btn-primary btn-sm">Simpan</button>
+									<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) }>Batal</button>
+								</form>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+}

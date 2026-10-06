@@ -6,4 +6,3 @@ import "net/url"
 type formValues interface{ Get(key string) string }
 
 var _ formValues = (*url.Values)(nil)
-

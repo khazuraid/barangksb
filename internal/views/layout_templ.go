@@ -47,25 +47,35 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 			return templ_7745c5c3_Err
 		}
 		if user.Name != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<nav class=\"topnav\"><a href=\"/\" class=\"brand\">Inventaris Kantor</a><div class=\"navlinks\"><a href=\"/\">Dashboard</a> <a href=\"/items\">Barang</a> <a href=\"/categories\">Kategori</a> <a href=\"/movement\">Barang Masuk</a> <a href=\"/history\">Riwayat</a> <a href=\"/barcode\">Barcode</a> <a href=\"/drivesync\">Sinkronisasi</a></div><div class=\"navuser\"><span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<nav class=\"topnav\"><a href=\"/\" class=\"brand\">Inventaris Kantor</a><div class=\"navlinks\"><a href=\"/\">Dashboard</a> <a href=\"/items\">Barang</a> <a href=\"/categories\">Kategori</a> <a href=\"/locations\">Lokasi</a> <a href=\"/movement\">Mutasi</a> <a href=\"/history\">Riwayat</a> <a href=\"/barcode\">QR</a> <a href=\"/drivesync\">Sinkron</a> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if user.Role == "admin" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<a href=\"/users\">Pengguna</a>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><div class=\"navuser\"><a href=\"/password\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(user.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 26, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 30, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</span><form method=\"post\" action=\"/logout\"><button type=\"submit\" class=\"btn-link\">Keluar</button></form></div></nav>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</a><form method=\"post\" action=\"/logout\"><button type=\"submit\" class=\"btn-link\">Keluar</button></form></div></nav>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<main class=\"container\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<main class=\"container\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -73,7 +83,7 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</main><script src=\"/static/js/app.js\" defer></script></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</main><script src=\"/static/js/app.js\" defer></script></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

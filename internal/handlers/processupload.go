@@ -21,10 +21,7 @@ func (h *Handlers) processUpload(r *http.Request, keepOld string) string {
 		return keepOld
 	}
 	geo := geoFromForm(r.PostForm)
-	petugas := ""
-	if u := authUserOf(r); u != nil {
-		petugas = u.Name
-	}
+	petugas := authUserName(r)
 	processed, err := processPhoto(buf.Bytes(), geo, petugas)
 	if err != nil {
 		return keepOld

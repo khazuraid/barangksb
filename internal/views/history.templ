@@ -2,26 +2,46 @@ package views
 
 templ History(d HistoryData) {
 	<div class="page-head">
-		<h1>Riwayat Barang Masuk</h1>
-		<a href="/export/tx.csv" class="btn">Unduh CSV</a>
+		<h1>Riwayat Mutasi Barang</h1>
+		<div class="actions" style="margin:0">
+			<a href="/export/tx.csv" class="btn">CSV</a>
+			<a href="/export/items.xlsx" class="btn">Excel</a>
+		</div>
 	</div>
+	<form method="get" action="/history" class="filters">
+		<input type="search" name="sku" placeholder="SKU…" value={ d.FSKU }/>
+		<select name="type">
+			<option value="">Semua Jenis</option>
+			for _, t := range d.Types {
+				if t == d.FType {
+					<option value={ t } selected>{ t }</option>
+				} else {
+					<option value={ t }>{ t }</option>
+				}
+			}
+		</select>
+		<input type="date" name="from" value={ d.FFrom }/>
+		<span class="muted">s/d</span>
+		<input type="date" name="to" value={ d.FTo }/>
+		<button type="submit" class="btn">Filter</button>
+		<a href="/history" class="btn">Reset</a>
+	</form>
 	<table class="data-table">
 		<thead>
 			<tr>
-				<th>Waktu</th><th>SKU</th><th>Nama Barang</th><th>Qty</th>
-				<th>Petugas</th><th>Distributor</th><th>No PO</th><th>Kondisi</th><th>Geotag</th>
+				<th>Waktu</th><th>Jenis</th><th>SKU</th><th>Nama Barang</th><th>Qty</th>
+				<th>Person</th><th>Kondisi</th><th>Geotag</th>
 			</tr>
 		</thead>
 		<tbody>
 			for _, t := range d.TX {
 				<tr>
 					<td>{ t.Time }</td>
+					<td><span class={ txBadge(t.Type) }>{ t.Type }</span></td>
 					<td><code>{ t.SKU }</code></td>
 					<td>{ t.Name }</td>
-					<td>+{ fmtInt(t.Quantity) } { t.Unit }</td>
+					<td>{ txQty(t.Type, t.Quantity, t.Unit) }</td>
 					<td>{ t.ReceivedBy }</td>
-					<td>{ t.Distributor }</td>
-					<td>{ t.PONumber }</td>
 					<td>{ t.Condition }</td>
 					<td>{ t.Geo }</td>
 				</tr>
@@ -29,6 +49,29 @@ templ History(d HistoryData) {
 		</tbody>
 	</table>
 	if len(d.TX) == 0 {
-		<p class="muted">Belum ada transaksi barang masuk.</p>
+		<p class="muted">Tidak ada transaksi sesuai filter.</p>
+	}
+	@Pagination(d.Pager)
+}
+
+func txBadge(t string) string {
+	switch t {
+	case "IN":
+		return "badge badge-in"
+	case "OUT":
+		return "badge badge-out"
+	default:
+		return "badge badge-adj"
+	}
+}
+
+func txQty(t string, q int, unit string) string {
+	switch t {
+	case "IN":
+		return "+" + fmtInt(q) + " " + unit
+	case "OUT":
+		return "-" + fmtInt(q) + " " + unit
+	default:
+		return "� " + fmtInt(q) + " " + unit
 	}
 }

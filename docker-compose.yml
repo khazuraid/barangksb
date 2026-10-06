@@ -30,5 +30,28 @@ services:
       db:
         condition: service_healthy
 
+  backup:
+    image: postgres:16
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: inventaris
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          STAMP=$$(date +%Y%m%d_%H%M%S)
+          pg_dump -h db -U postgres inventaris | gzip > /backups/inventaris_$$STAMP.sql.gz
+          find /backups -name "inventaris_*.sql.gz" -mtime +30 -delete
+          echo "backup done: $$STAMP"
+          sleep 86400
+        done
+
 volumes:
   inventaris_pgdata:

@@ -16,6 +16,7 @@ templ ItemForm(d ItemFormData) {
 			</label>
 			<label>Kategori *
 				<select name="category" required>
+					<option value="">— pilih kategori —</option>
 					for _, c := range d.Cats {
 						if d.Item != nil && d.Item.Category == c {
 							<option value={ c } selected>{ c }</option>
@@ -26,7 +27,15 @@ templ ItemForm(d ItemFormData) {
 				</select>
 			</label>
 			<label>Lokasi / Ruangan *
-				<input type="text" name="location" required value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Location }) }/>
+				<select name="location" required>
+					for _, l := range d.Locs {
+						if d.Item != nil && d.Item.Location == l {
+							<option value={ l } selected>{ l }</option>
+						} else {
+							<option value={ l }>{ l }</option>
+						}
+					}
+				</select>
 			</label>
 			<label>Stok Saat Ini
 				<input type="number" name="current_stock" min="0" value={ itemVal(d.Item, func(v *ItemFormValues) string { return fmtInt(v.CurrentStock) }) }/>

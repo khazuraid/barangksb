@@ -1,9 +1,10 @@
 package views
 
 templ BarcodePage(d BarcodeData) {
-	<h1>Generator Barcode / QR</h1>
+	<h1>Generator QR Code</h1>
 	<div class="card">
-		<p class="muted">Centang barang lalu cetak label. Scan hasil dengan kamera untuk verifikasi.</p>
+		<h2>Generator QR Code</h2>
+		<p class="muted">Setiap barang punya QR unik. Scan QR → buka halaman detail barang (publik, tanpa login). Centang lalu cetak label.</p>
 		<table class="data-table">
 			<thead><tr><th></th><th>SKU</th><th>Nama</th><th>Preview</th></tr></thead>
 			<tbody>
@@ -12,7 +13,7 @@ templ BarcodePage(d BarcodeData) {
 						<td><input type="checkbox" class="sheet-check" value={ it.ID }/></td>
 						<td><code>{ it.SKU }</code></td>
 						<td>{ it.Name }</td>
-						<td><img src={ templ.URL("/barcode/" + it.ID + ".png") } alt={ "barcode " + it.SKU } height="40"/></td>
+						<td><img src={ templ.URL("/barcode/" + it.ID + ".png?fmt=qr") } alt={ "QR " + it.SKU } height="60"/></td>
 					</tr>
 				}
 			</tbody>
@@ -43,7 +44,7 @@ templ BarcodeSheet(items []ItemRow) {
 				for _, it := range items {
 					<div class="label">
 						<div class="name">{ it.Name }</div>
-						<img src={ templ.URL("/barcode/" + it.ID + ".png") } height="50"/>
+						<img src={ templ.URL("/barcode/" + it.ID + ".png?fmt=qr") } height="70"/>
 						<div class="sku">{ it.SKU }</div>
 					</div>
 				}

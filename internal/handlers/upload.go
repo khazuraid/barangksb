@@ -37,10 +37,3 @@ func (h *Handlers) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"url":"` + url + `"}`))
 }
-
-func authUserName(r *http.Request) string {
-	if u := authUserOf(r); u != nil {
-		return u.Name
-	}
-	return ""
-}

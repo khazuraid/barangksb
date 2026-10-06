@@ -1,76 +1,87 @@
 package handlers
-
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"inventariskantor/internal/auth"
+	"inventariskantor/internal/service"
 	"inventariskantor/internal/views"
 )
 
-type geoData struct {
-	lat, lng, acc pgtype.Float8
-	at            pgtype.Timestamptz
-	name          pgtype.Text
-}
-
-func userInfo(r *http.Request) views.UserInfo {
-	info := views.UserInfo{}
-	if u := auth.FromContext(r.Context()); u != nil {
-		info = views.UserInfo{Name: u.Name, Role: u.Role}
-	}
-	return info
-}
-
-func geoFromForm(f formValues) geoData {
-	lat := atof(f.Get("geo_lat"))
-	lng := atof(f.Get("geo_lng"))
-	acc := atof(f.Get("geo_acc"))
-	if lat == 0 && lng == 0 {
-		return geoData{}
-	}
-	g := geoData{
-		lat: pgtype.Float8{Float64: lat, Valid: true},
-		lng: pgtype.Float8{Float64: lng, Valid: true},
-		acc: pgtype.Float8{Float64: acc, Valid: acc > 0},
-		at:  pgtype.Timestamptz{Time: time.Now(), Valid: true},
-	}
-	if n := f.Get("geo_name"); n != "" {
-		g.name = pgtype.Text{String: n, Valid: true}
-	}
-	return g
+func atoi64(s string) (int64, error) {
+	return strconvParseInt(s)
 }
 
 func (h *Handlers) MovementForm(w http.ResponseWriter, r *http.Request) {
-	cats, _ := h.listCats(r.Context())
-	items, err := h.listItems(r.Context(), "", "")
+	tab := r.URL.Query().Get("tab")
+	if tab != "out" && tab != "adjust" {
+		tab = "in"
+	}
+	items, _, err := h.svc.ListItems(r.Context(), serviceFilterAll())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	rows := make([]views.ItemRow, 0, len(items))
-	for i := range items {
-		rows = append(rows, toItemRow(&items[i]))
-	}
-	h.show(w, r, "Barang Masuk", views.Movement(views.MovementData{
-		User: userInfo(r), Cats: cats,
-		SKU: r.URL.Query().Get("sku"), Items: rows,
+	cats, _ := h.svc.CategoryNames(r.Context())
+	locs, _ := h.svc.LocationNames(r.Context())
+	h.show(w, r, "Mutasi Barang", views.Movement(views.MovementData{
+		User: userInfo(r), Cats: cats, Locs: locs,
+		SKU: r.URL.Query().Get("sku"), Items: itemRows(items), Tab: tab,
 	}))
 }
 
-// MovementPost records a stock-in inside ONE db transaction: insert tx + bump stock.
+func strconvParseInt(s string) (int64, error) {
+	var n int64
+	neg := false
+	i := 0
+	if len(s) > 0 && (s[0] == '-' || s[0] == '+') {
+		neg = s[0] == '-'
+		i = 1
+	}
+	for ; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0, fmt.Errorf("invalid number")
+		}
+		n = n*10 + int64(s[i]-'0')
+	}
+	if neg {
+		n = -n
+	}
+	return n, nil
+}
+
+func serviceFilterAll() (f serviceItemFilter) { return }
+
+// RecordStockInFull: stock-in dengan foto/geotag (dipakai form web).
+func (h *Handlers) RecordStockInFull(ctx context.Context, sku string, qty int32, receivedBy, notes, photoURL string, geo geoData) (*service.StockInResult, error) {
+	res, err := h.svc.RecordStockIn(ctx, sku, qty, receivedBy, notes)
+	if err == nil && (photoURL != "" || geo.lat.Valid) {
+		h.pool.Exec(ctx, `UPDATE stock_transactions SET photo_url=$2, geo_lat=$3, geo_lng=$4, geo_acc=$5, geo_at=$6, geo_name=$7
+			WHERE id = (SELECT id FROM stock_transactions WHERE item_sku=$1 ORDER BY timestamp DESC LIMIT 1)`,
+			sku, nullStr(photoURL), geo.lat, geo.lng, geo.acc, geo.at, geo.name)
+	}
+	return res, err
+}
+
+// MovementPost: barang MASUK (dengan foto/geotag lengkap).
 func (h *Handlers) MovementPost(w http.ResponseWriter, r *http.Request) {
 	if !parseForm(w, r) {
 		return
 	}
 	form := formValues(r.PostForm)
-	itemID, err := parseUUID(form.Get("item_id"))
-	if err != nil {
+	itemID := form.Get("item_id")
+	var sku string
+	if _, err := parseUUID(itemID); err == nil {
+		if it, err := h.svc.GetItem(r.Context(), itemID); err == nil {
+			sku = it.Sku
+		}
+	} else {
+		sku = itemID // bot/API kirim SKU langsung
+	}
+	if sku == "" {
 		http.Error(w, "item tidak valid", http.StatusBadRequest)
 		return
 	}
@@ -79,107 +90,117 @@ func (h *Handlers) MovementPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "jumlah harus > 0", http.StatusBadRequest)
 		return
 	}
-	geo := geoFromForm(form)
 	photoURL := h.processUpload(r, "")
+	geo := geoFromForm(form)
 
-	ctx := r.Context()
-	tx, err := h.pool.Begin(ctx)
+	res, err := h.RecordStockInFull(r.Context(), sku, qty, form.Get("received_by"), form.Get("notes"), photoURL, geo)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer tx.Rollback(ctx)
-
-	var sku, name, unit string
-	var prev, next int32
-	err = tx.QueryRow(ctx,
-		`UPDATE inventory_items SET current_stock = current_stock + $2, updated_at = now()
-		 WHERE id = $1 RETURNING sku, name, unit, current_stock - $2, current_stock`,
-		itemID, qty).Scan(&sku, &name, &unit, &prev, &next)
-	if err != nil {
-		http.Error(w, "barang tidak ditemukan: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	_, err = tx.Exec(ctx, `INSERT INTO stock_transactions
-		(type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock,
-		 supplier_or_source, received_by, invoice_or_po_number, photo_url,
-		 geo_lat, geo_lng, geo_acc, geo_at, geo_name,
-		 merk, type_model, serial_number, procurement_year, condition_status,
-		 funding_source, distributor, akl_akd, notes)
-		VALUES ('IN',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
-		itemID, sku, name, qty, unit, prev, next,
-		nullStr(form.Get("supplier_or_source")), nullStr(form.Get("received_by")),
-		nullStr(form.Get("invoice_or_po_number")), nullStr(photoURL),
-		geo.lat, geo.lng, geo.acc, geo.at, geo.name,
-		nullStr(form.Get("merk")), nullStr(form.Get("type_model")),
-		nullStr(form.Get("serial_number")), nullStr(form.Get("procurement_year")),
-		nullStr(form.Get("condition_status")), nullStr(form.Get("funding_source")),
-		nullStr(form.Get("distributor")), nullStr(form.Get("akl_akd")),
-		nullStr(form.Get("notes")))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := tx.Commit(ctx); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	h.broker.Publish("tx")
 	h.broker.Publish("items")
-	http.Redirect(w, r, "/history?ok="+sku, http.StatusSeeOther)
+	http.Redirect(w, r, "/history?ok="+res.SKU, http.StatusSeeOther)
 }
 
-func (h *Handlers) History(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.pool.Query(r.Context(), `SELECT * FROM stock_transactions ORDER BY timestamp DESC LIMIT 500`)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+// MovementOut: barang KELUAR.
+func (h *Handlers) MovementOut(w http.ResponseWriter, r *http.Request) {
+	if !parseForm(w, r) {
 		return
 	}
-	txs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[modelsTX])
+	form := formValues(r.PostForm)
+	qty := atoi0(form.Get("quantity"))
+	if qty <= 0 {
+		http.Error(w, "jumlah harus > 0", http.StatusBadRequest)
+		return
+	}
+	res, err := h.svc.RecordStockOut(r.Context(), form.Get("item_id"), qty, form.Get("received_by"), form.Get("notes"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.broker.Publish("tx")
+	h.broker.Publish("items")
+	http.Redirect(w, r, "/history?ok="+res.SKU, http.StatusSeeOther)
+}
+
+// MovementAdjust: stok opname.
+func (h *Handlers) MovementAdjust(w http.ResponseWriter, r *http.Request) {
+	if !parseForm(w, r) {
+		return
+	}
+	form := formValues(r.PostForm)
+	actual, err := atoi64(form.Get("quantity"))
+	if err != nil || actual < 0 {
+		http.Error(w, "stok fisik harus angka ≥ 0", http.StatusBadRequest)
+		return
+	}
+	res, err := h.svc.AdjustStock(r.Context(), form.Get("item_id"), int32(actual), form.Get("received_by"), form.Get("notes"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.broker.Publish("tx")
+	h.broker.Publish("items")
+	http.Redirect(w, r, "/history?ok="+res.SKU, http.StatusSeeOther)
+}
+
+// History: riwayat dengan filter + pagination.
+func (h *Handlers) History(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := serviceTXFilter{
+		SKU: q.Get("sku"), Type: q.Get("type"),
+		From: q.Get("from"), To: q.Get("to"),
+		Page: pageParam(r), PerPage: 50,
+	}
+	txs, total, err := h.svc.ListTransactions(r.Context(), f)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	vrows := make([]views.TXRow, 0, len(txs))
-	for _, t := range txs {
+	for i := range txs {
+		t := &txs[i]
 		vrows = append(vrows, views.TXRow{
-			Time:       fmtWIB(t.Timestamp),
-			SKU:        t.ItemSku,
-			Name:       t.ItemName,
-			Unit:       t.Unit,
-			Quantity:   int(t.Quantity),
-			ReceivedBy: tstr(t.ReceivedBy),
+			Time:        fmtWIB(t.Timestamp),
+			Type:        t.Type,
+			SKU:         t.ItemSku,
+			Name:        t.ItemName,
+			Unit:        t.Unit,
+			Quantity:    int(t.Quantity),
+			ReceivedBy:  tstr(t.ReceivedBy),
 			Distributor: tstr(t.Distributor),
-			PONumber:   tstr(t.InvoiceOrPoNum),
-			Condition:  tstr(t.ConditionStatus),
-			Geo:        geoDisplay(t.GeoLat, t.GeoLng),
+			PONumber:    tstr(t.InvoiceOrPoNum),
+			Condition:   tstr(t.ConditionStatus),
+			Geo:         geoDisplay(t.GeoLat, t.GeoLng),
 		})
 	}
-	h.show(w, r, "Riwayat", views.History(views.HistoryData{User: userInfo(r), TX: vrows}))
+	h.show(w, r, "Riwayat", views.History(views.HistoryData{
+		User: userInfo(r), TX: vrows,
+		Pager: buildPager(r, f.Page, f.PerPage, total),
+		FSKU: f.SKU, FType: f.Type, FFrom: f.From, FTo: f.To,
+		Types: []string{"IN", "OUT", "ADJUST+", "ADJUST-"},
+	}))
 }
 
-// --- formatting helpers ---
+// ---------- formatting ----------
 
 func fmtWIB(t pgtype.Timestamptz) string {
 	if !t.Valid {
 		return "—"
 	}
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		loc = time.FixedZone("WIB", 7*3600)
-	}
-	return t.Time.In(loc).Format("02-01-2006 15:04")
+	return t.Time.In(wibLoc()).Format("02-01-2006 15:04")
 }
 
 func geoDisplay(lat, lng pgtype.Float8) string {
 	if !lat.Valid || !lng.Valid {
 		return "—"
 	}
-	return fmt.Sprintf("%.6f, %.6f", lat.Float64, lng.Float64)
+	return formatGeo(lat.Float64, lng.Float64)
 }
 
-func parseUUID(s string) (uuid.UUID, error) { return uuid.Parse(s) }
+func wibLoc() *time.Location {
+	return time.FixedZone("WIB", 7*3600)
+}
 
-var _ = pgtype.Text{}
+var _ = time.Now

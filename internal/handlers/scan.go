@@ -17,12 +17,12 @@ func (h *Handlers) ScanDetail(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	it, err := h.getItem(r.Context(), id)
+	it, err := h.svc.GetItem(r.Context(), id.String())
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	cats, _ := h.listCats(r.Context())
+	cats, _ := h.svc.CategoryNames(r.Context())
 	h.show(w, r, "Detail Barang", views.ScanDetail(views.ScanDetailData{
 		Cats: cats,
 		Row:  views.ScanRow{

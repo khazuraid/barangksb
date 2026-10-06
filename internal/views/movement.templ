@@ -1,57 +1,117 @@
 package views
 
+// ---------- Barang Masuk / Keluar / Opname ----------
+
 templ Movement(d MovementData) {
-	<h1>Barang Masuk</h1>
+	<h1>Mutasi Barang</h1>
+	<div class="tabs">
+		<a href="/movement?tab=in" class={ "tab", tabActive(d.Tab, "in") }>�� Barang Masuk</a>
+		<a href="/movement?tab=out" class={ "tab", tabActive(d.Tab, "out") }>�� Barang Keluar</a>
+		<a href="/movement?tab=adjust" class={ "tab", tabActive(d.Tab, "adjust") }>�� Stok Opname</a>
+	</div>
 	<div class="grid-2">
 		<div class="card stack">
 			<h2>Scan / Cari Barang</h2>
 			<label>SKU
-				<input type="text" id="movement-sku" value={ d.SKU } placeholder="Scan barcode atau ketik SKU…" autofocus/>
+				<input type="text" id="movement-sku" value={ d.SKU } placeholder="Scan QR / ketik SKU…" autofocus/>
 			</label>
-			<button type="button" class="btn" id="btn-scan">📷 Scan Kamera</button>
+			<button type="button" class="btn" id="btn-scan">�� Scan Kamera</button>
 			<div id="scanner-box" class="hidden"></div>
 			<div id="item-lookup" class="muted">Ketik SKU untuk mencari barang…</div>
 		</div>
 		<div class="card stack">
-			<h2>Data Penerimaan</h2>
-			<form method="post" action="/movement" class="stack" enctype="multipart/form-data" id="movement-form">
-				<input type="hidden" name="geo_lat" id="geo_lat"/>
-				<input type="hidden" name="geo_lng" id="geo_lng"/>
-				<input type="hidden" name="geo_acc" id="geo_acc"/>
-				<input type="hidden" name="geo_name" id="geo_name"/>
-				<div class="grid-2-form">
-					<label>Item *
-						<select name="item_id" id="item-select" required>
-							<option value="">— pilih barang —</option>
-							for _, it := range d.Items {
-								<option value={ it.ID } data-sku={ it.SKU }>{ it.Name } ({ it.SKU })</option>
-							}
-						</select>
-					</label>
-					<label>Jumlah Masuk *
-						<input type="number" name="quantity" min="1" required/>
-					</label>
-					<label>Petugas Penerima<input type="text" name="received_by" value={ d.User.Name }/></label>
-					<label>Distributor / Vendor<input type="text" name="supplier_or_source"/></label>
-					<label>No PO / Surat Jalan<input type="text" name="invoice_or_po_number"/></label>
-					<label>Kondisi
-						<select name="condition_status">
-							<option>Berfungsi</option><option>Rusak Ringan</option>
-							<option>Rusak Berat</option><option>Perlu Kalibrasi</option>
-						</select>
-					</label>
-					<label>Sumber Pendanaan<input type="text" name="funding_source"/></label>
-					<label>Thn Pengadaan<input type="text" name="procurement_year"/></label>
-				</div>
-				<label>Foto Bukti Fisik (opsional)<input type="file" name="photo" accept="image/*" capture="environment"/></label>
-				<label>Keterangan<textarea name="notes" rows="2"></textarea></label>
-				<button type="submit" class="btn btn-primary">Simpan Barang Masuk</button>
-			</form>
-			<button type="button" class="btn" id="btn-geotag">📍 Ambil Geotag</button>
+			if d.Tab == "out" {
+				<h2>Form Barang Keluar</h2>
+				<form method="post" action="/movement/out" class="stack" id="movement-form">
+					<input type="hidden" name="geo_lat" id="geo_lat"/>
+					<input type="hidden" name="geo_lng" id="geo_lng"/>
+					<input type="hidden" name="geo_acc" id="geo_acc"/>
+					<input type="hidden" name="geo_name" id="geo_name"/>
+					<div class="grid-2-form">
+						<label>Item *
+							<select name="item_id" id="item-select" required>
+								<option value="">— pilih barang —</option>
+								for _, it := range d.Items {
+									<option value={ it.SKU } data-sku={ it.SKU }>{ it.Name } ({ it.SKU }) — stok { fmtInt(it.CurrentStock) }</option>
+								}
+							</select>
+						</label>
+						<label>Jumlah Keluar *
+							<input type="number" name="quantity" min="1" required/>
+						</label>
+						<label>Dituruskan Kepada<input type="text" name="received_by" placeholder="nama penerima"/></label>
+					</div>
+					<label>Keterangan<textarea name="notes" rows="2"></textarea></label>
+					<button type="submit" class="btn btn-primary">Catat Barang Keluar</button>
+				</form>
+			} else if d.Tab == "adjust" {
+				<h2>Form Stok Opname</h2>
+				<form method="post" action="/movement/adjust" class="stack" id="movement-form">
+					<div class="grid-2-form">
+						<label>Item *
+							<select name="item_id" id="item-select" required>
+								<option value="">— pilih barang —</option>
+								for _, it := range d.Items {
+									<option value={ it.SKU } data-sku={ it.SKU }>{ it.Name } ({ it.SKU }) — stok sistem { fmtInt(it.CurrentStock) }</option>
+								}
+							</select>
+						</label>
+						<label>Stok Fisik Aktual *
+							<input type="number" name="quantity" min="0" required/>
+						</label>
+					</div>
+					<label>Catatan Opname<textarea name="notes" rows="2" placeholder="alasan penyesuaian"></textarea></label>
+					<button type="submit" class="btn btn-primary">Simpan Penyesuaian</button>
+				</form>
+			} else {
+				<h2>Form Barang Masuk</h2>
+				<form method="post" action="/movement" class="stack" enctype="multipart/form-data" id="movement-form">
+					<input type="hidden" name="geo_lat" id="geo_lat"/>
+					<input type="hidden" name="geo_lng" id="geo_lng"/>
+					<input type="hidden" name="geo_acc" id="geo_acc"/>
+					<input type="hidden" name="geo_name" id="geo_name"/>
+					<div class="grid-2-form">
+						<label>Item *
+							<select name="item_id" id="item-select" required>
+								<option value="">— pilih barang —</option>
+								for _, it := range d.Items {
+									<option value={ it.ID } data-sku={ it.SKU }>{ it.Name } ({ it.SKU })</option>
+								}
+							</select>
+						</label>
+						<label>Jumlah Masuk *
+							<input type="number" name="quantity" min="1" required/>
+						</label>
+						<label>Petugas Penerima<input type="text" name="received_by" value={ d.User.Name }/></label>
+						<label>Distributor / Vendor<input type="text" name="supplier_or_source"/></label>
+						<label>No PO / Surat Jalan<input type="text" name="invoice_or_po_number"/></label>
+						<label>Kondisi
+							<select name="condition_status">
+								<option>Berfungsi</option><option>Rusak Ringan</option>
+								<option>Rusak Berat</option><option>Perlu Kalibrasi</option>
+							</select>
+						</label>
+						<label>Sumber Pendanaan<input type="text" name="funding_source"/></label>
+						<label>Thn Pengadaan<input type="text" name="procurement_year"/></label>
+					</div>
+					<label>Foto Bukti Fisik (opsional)<input type="file" name="photo" accept="image/*" capture="environment"/></label>
+					<label>Keterangan<textarea name="notes" rows="2"></textarea></label>
+					<button type="submit" class="btn btn-primary">Simpan Barang Masuk</button>
+				</form>
+			}
+			<button type="button" class="btn" id="btn-geotag">�� Ambil Geotag</button>
 			<span id="geotag-status" class="muted"></span>
 		</div>
 	</div>
+	@toggleRename()
 	<script src="/static/js/vendor/html5-qrcode.min.js" defer></script>
 	<script src="/static/js/scanner.js" defer></script>
 	<script src="/static/js/geotag.js" defer></script>
+}
+
+func tabActive(cur, tab string) string {
+	if cur == tab || (cur == "" && tab == "in") {
+		return "active"
+	}
+	return ""
 }

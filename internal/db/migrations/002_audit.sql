@@ -39,3 +39,9 @@ DROP TRIGGER IF EXISTS audit_tx ON stock_transactions;
 CREATE TRIGGER audit_tx
 AFTER INSERT OR UPDATE OR DELETE ON stock_transactions
 FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+
+-- +goose Down
+DROP TRIGGER IF EXISTS audit_tx ON stock_transactions;
+DROP TRIGGER IF EXISTS audit_items ON inventory_items;
+DROP FUNCTION IF EXISTS audit_row_change();
+DROP TABLE IF EXISTS audit_log;

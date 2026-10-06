@@ -1,12 +1,5 @@
 package views
 
-import "inventariskantor/internal/models"
-
-type CategoriesData struct {
-	User UserInfo
-	Cats []models.Category
-}
-
 templ Categories(d CategoriesData) {
 	@toggleRename()
 	<div class="page-head">

@@ -12,7 +12,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-//go:embed migrations/001_init.sql migrations/002_audit.sql
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 func Open(dsn string) (*pgxpool.Pool, error) {

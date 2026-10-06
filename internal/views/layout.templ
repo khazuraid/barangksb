@@ -17,13 +17,17 @@ templ Layout(title string, user UserInfo, content templ.Component) {
 						<a href="/">Dashboard</a>
 						<a href="/items">Barang</a>
 						<a href="/categories">Kategori</a>
-						<a href="/movement">Barang Masuk</a>
+						<a href="/locations">Lokasi</a>
+						<a href="/movement">Mutasi</a>
 						<a href="/history">Riwayat</a>
-						<a href="/barcode">Barcode</a>
-						<a href="/drivesync">Sinkronisasi</a>
+						<a href="/barcode">QR</a>
+						<a href="/drivesync">Sinkron</a>
+						if user.Role == "admin" {
+							<a href="/users">Pengguna</a>
+						}
 					</div>
 					<div class="navuser">
-						<span>{ user.Name }</span>
+						<a href="/password">{ user.Name }</a>
 						<form method="post" action="/logout"><button type="submit" class="btn-link">Keluar</button></form>
 					</div>
 				</nav>

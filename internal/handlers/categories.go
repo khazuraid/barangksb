@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -9,6 +10,9 @@ import (
 	"inventariskantor/internal/models"
 	"inventariskantor/internal/views"
 )
+
+type context2 = context.Context
+var _ = context.Background
 
 func (h *Handlers) CategoriesList(w http.ResponseWriter, r *http.Request) {
 	cats, err := h.listCategoryRows(r.Context())
@@ -91,12 +95,21 @@ func (h *Handlers) CategoriesDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/categories", http.StatusSeeOther)
 }
 
-func (h *Handlers) listCategoryRows(ctx ctx2) ([]models.Category, error) {
+func (h *Handlers) listCategoryRows(ctx context.Context) ([]models.Category, error) {
 	rows, err := h.pool.Query(ctx, `SELECT id, name FROM categories ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
-	return collectCategories(rows)
+	defer rows.Close()
+	var out []models.Category
+	for rows.Next() {
+		var c models.Category
+		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func slugify(s string) string {
