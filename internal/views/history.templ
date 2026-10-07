@@ -4,12 +4,12 @@ package views
 templ History(d HistoryData) {
 	<div class="page-header">
 		<div>
-			<h1 class="page-title"><i class="ti ti-clock-hour-4 icon" style="color:var(--accent)"></i> Riwayat Mutasi</h1>
+			<h1 class="page-title"><i class="ti ti-clock-hour-4"></i> Riwayat Mutasi</h1>
 			<div class="page-subtitle">{ fmtInt(d.Pager.Total) } transaksi tercatat</div>
 		</div>
 		<div class="d-flex gap-2">
-			<a href="/export/tx.csv" class="btn"><i class="ti ti-file-download icon"></i> CSV</a>
-			<a href="/export/items.xlsx" class="btn"><i class="ti ti-table icon"></i> Excel</a>
+			<a href="/export/tx.csv" class="btn btn-sm"><i class="ti ti-file-download"></i> CSV</a>
+			<a href="/export/items.xlsx" class="btn btn-sm"><i class="ti ti-table"></i> Excel</a>
 		</div>
 	</div>
 
@@ -27,13 +27,13 @@ templ History(d HistoryData) {
 		</select>
 		<input type="date" name="from" value={ d.FFrom }/>
 		<input type="date" name="to" value={ d.FTo }/>
-		<button class="btn btn-primary"><i class="ti ti-filter icon"></i> Filter</button>
-		<a href="/history" class="btn"><i class="ti ti-rotate icon"></i></a>
+		<button class="btn btn-primary btn-sm"><i class="ti ti-filter"></i> Filter</button>
+		<a href="/history" class="btn btn-sm"><i class="ti ti-rotate"></i></a>
 	</div>
 
-	<div class="panel">
-		<div class="table-responsive">
-			<table class="data-table">
+	<div class="card">
+		<div class="table-wrap">
+			<table class="tbl">
 				<thead>
 					<tr><th>Waktu</th><th>Jenis</th><th>Barang</th><th>Qty</th><th>Person</th><th>Kondisi</th><th>Geotag</th></tr>
 				</thead>
@@ -59,7 +59,7 @@ templ History(d HistoryData) {
 				<div>Coba ubah filter atau catat mutasi baru.</div>
 			</div>
 		}
-		<div class="panel-foot">
+		<div class="card-foot">
 			@Pagination(d.Pager)
 		</div>
 	</div>

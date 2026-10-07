@@ -30,7 +30,7 @@ func BarcodePage(d BarcodeData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-qrcode icon\" style=\"color:var(--accent)\"></i> QR Generator</h1><div class=\"page-subtitle\">Setiap barang punya QR unik. Scan QR → buka halaman detail (publik, tanpa login).</div></div></div><div class=\"panel\"><div class=\"table-responsive\"><table class=\"data-table\"><thead><tr><th></th><th>SKU</th><th>Nama</th><th>Preview QR</th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-qrcode\"></i> QR Generator</h1><div class=\"page-subtitle\">Centang barang lalu cetak label QR. Scan QR → buka halaman detail publik.</div></div></div><div class=\"card\"><div class=\"card-head\"><span class=\"card-title\"><i class=\"ti ti-list-check\" style=\"color:var(--accent)\"></i> Pilih Barang</span><div class=\"d-flex gap-2\"><button type=\"button\" class=\"btn btn-sm btn-primary\" onclick=\"printSheet()\"><i class=\"ti ti-printer\"></i> Cetak Terpilih</button> <button type=\"button\" class=\"btn btn-sm\" onclick=\"selectAll()\"><i class=\"ti ti-checkbox\"></i> Pilih Semua</button></div></div><div class=\"table-wrap\"><table class=\"tbl\"><thead><tr><th></th><th>SKU</th><th>Nama</th><th>QR Preview</th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -42,7 +42,7 @@ func BarcodePage(d BarcodeData) templ.Component {
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 18, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 26, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 			if templ_7745c5c3_Err != nil {
@@ -55,33 +55,33 @@ func BarcodePage(d BarcodeData) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 19, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 27, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</code></td><td>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</code></td><td><strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 20, Col: 20}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 28, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</td><td><img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</strong></td><td><img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/barcode/" + it.ID + ".png?fmt=qr"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 21, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 29, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -92,7 +92,17 @@ func BarcodePage(d BarcodeData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</tbody></table></div><div class=\"panel-foot d-flex gap-2\"><button type=\"button\" class=\"btn btn-primary\" onclick=\"printSheet()\"><i class=\"ti ti-printer icon\"></i> Cetak Terpilih</button> <button type=\"button\" class=\"btn\" onclick=\"selectAll()\"><i class=\"ti ti-checkbox icon\"></i> Pilih Semua</button></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</tbody></table></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if len(d.Items) == 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"empty\"><i class=\"ti ti-qrcode empty-icon\"></i><div class=\"empty-title\">Belum ada barang</div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -122,56 +132,56 @@ func BarcodeSheet(items []ItemRow) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><title>Label QR</title><link rel=\"stylesheet\" href=\"/static/vendor/icons/tabler-icons.min.css\"><link rel=\"stylesheet\" href=\"/static/css/theme.css\"><style>\n\t\t\t\tbody { background: #fff; margin: 12mm; font-family: var(--font); }\n\t\t\t\t.label-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; }\n\t\t\t\t.label { text-align: center; border: 1px dashed #ddd; border-radius: 10px; padding: 6px; page-break-inside: avoid; }\n\t\t\t\t.label .name { font-size: 11px; font-weight: 700; margin-bottom: 4px; }\n\t\t\t\t.label .sku { font-size: 10px; font-family: monospace; color: #666; }\n\t\t\t</style></head><body onload=\"window.print()\"><div class=\"label-grid\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><title>Label QR</title><link rel=\"stylesheet\" href=\"/static/vendor/icons/tabler-icons.min.css\"><link rel=\"stylesheet\" href=\"/static/css/theme.css\"><style>\n\t\t\t\tbody { background:#fff; margin:12mm; font-family:var(--font); }\n\t\t\t\t.label-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8mm; }\n\t\t\t\t.label { text-align:center; border:1px dashed #ccc; border-radius:10px; padding:6px; page-break-inside:avoid; }\n\t\t\t\t.label .name { font-size:11px; font-weight:700; margin-bottom:4px; }\n\t\t\t\t.label .sku { font-size:10px; font-family:monospace; color:#666; }\n\t\t\t</style></head><body onload=\"window.print()\"><div class=\"label-grid\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, it := range items {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"label\"><div class=\"name\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div class=\"label\"><div class=\"name\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 55, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 62, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div><img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div><img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/barcode/" + it.ID + ".png?fmt=qr"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 56, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 63, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" height=\"60\"><div class=\"sku\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" height=\"60\"><div class=\"sku\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 57, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 64, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -30,42 +30,42 @@ func DriveSync(d DriveSyncData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-cloud-download icon\" style=\"color:var(--accent)\"></i> Sinkron Google Drive</h1><div class=\"page-subtitle\">Ambil data dari Drive (one-way: Drive → DB)</div></div></div><div class=\"panel\" style=\"padding:22px\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-cloud-download\"></i> Sinkron Google Drive</h1><div class=\"page-subtitle\">Ambil data dari Drive (one-way: Drive → DB)</div></div></div><div class=\"card\" style=\"padding:24px\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !d.Configured {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"alert\" style=\"background:rgba(59,130,246,.1); color:#2563EB; padding:12px 16px; border-radius:10px; margin-bottom:14px\"><i class=\"ti ti-info-circle icon\"></i> Drive belum dikonfigurasi. Set env <code>GOOGLE_SA_JSON</code> + <code>GOOGLE_FOLDER_ID</code>. Bagikan folder Drive ke email service account.</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"alert\" style=\"background:var(--info-soft);color:var(--info);padding:14px 18px;border-radius:10px;margin-bottom:16px\"><i class=\"ti ti-info-circle\"></i> Drive belum dikonfigurasi.<br>Set env <code>GOOGLE_SA_JSON</code> + <code>GOOGLE_FOLDER_ID</code>. Bagikan folder Drive ke email service account.</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"panel-title\" style=\"margin-bottom:14px\">File CSV / Google Sheet di folder Drive akan di-upsert ke database (cocokkan kolom SKU).</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div style=\"display:flex;align-items:center;gap:16px;margin-bottom:20px\"><div class=\"stat-icon green\" style=\"margin:0\"><i class=\"ti ti-cloud-check\"></i></div><div><div style=\"font-weight:700;font-size:.95rem\">Drive terhubung</div><div class=\"muted\" style=\"font-size:.8rem\">File CSV/Sheet akan di-upsert by SKU</div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if d.LastRun != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div style=\"margin-bottom:14px\"><strong>Sinkron terakhir:</strong> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div style=\"margin-bottom:16px\"><div class=\"muted\" style=\"font-size:.78rem;margin-bottom:4px\">Sinkron terakhir:</div><strong>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(d.LastRun)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `drivesync.templ`, Line: 21, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `drivesync.templ`, Line: 29, Col: 24}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<pre class=\"sync-result\" style=\"margin-top:8px\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</strong><pre class=\"sync-result\" style=\"margin-top:8px\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(d.Result)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `drivesync.templ`, Line: 22, Col: 63}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `drivesync.templ`, Line: 30, Col: 63}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -76,7 +76,7 @@ func DriveSync(d DriveSyncData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " <form method=\"post\" action=\"/drivesync\"><button type=\"submit\" class=\"btn btn-primary\"><i class=\"ti ti-refresh icon\"></i> Sync Sekarang</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " <form method=\"post\" action=\"/drivesync\"><button type=\"submit\" class=\"btn btn-primary\"><i class=\"ti ti-refresh\"></i> Sync Sekarang</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

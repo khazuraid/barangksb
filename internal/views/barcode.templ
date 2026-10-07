@@ -4,30 +4,37 @@ package views
 templ BarcodePage(d BarcodeData) {
 	<div class="page-header">
 		<div>
-			<h1 class="page-title"><i class="ti ti-qrcode icon" style="color:var(--accent)"></i> QR Generator</h1>
-			<div class="page-subtitle">Setiap barang punya QR unik. Scan QR → buka halaman detail (publik, tanpa login).</div>
+			<h1 class="page-title"><i class="ti ti-qrcode"></i> QR Generator</h1>
+			<div class="page-subtitle">Centang barang lalu cetak label QR. Scan QR → buka halaman detail publik.</div>
 		</div>
 	</div>
-	<div class="panel">
-		<div class="table-responsive">
-			<table class="data-table">
-				<thead><tr><th></th><th>SKU</th><th>Nama</th><th>Preview QR</th></tr></thead>
+
+	<div class="card">
+		<div class="card-head">
+			<span class="card-title"><i class="ti ti-list-check" style="color:var(--accent)"></i> Pilih Barang</span>
+			<div class="d-flex gap-2">
+				<button type="button" class="btn btn-sm btn-primary" onclick="printSheet()"><i class="ti ti-printer"></i> Cetak Terpilih</button>
+				<button type="button" class="btn btn-sm" onclick="selectAll()"><i class="ti ti-checkbox"></i> Pilih Semua</button>
+			</div>
+		</div>
+		<div class="table-wrap">
+			<table class="tbl">
+				<thead><tr><th></th><th>SKU</th><th>Nama</th><th>QR Preview</th></tr></thead>
 				<tbody>
 					for _, it := range d.Items {
 						<tr>
 							<td><input type="checkbox" class="sheet-check" value={ it.ID }/></td>
 							<td><code>{ it.SKU }</code></td>
-							<td>{ it.Name }</td>
+							<td><strong>{ it.Name }</strong></td>
 							<td><img src={ templ.URL("/barcode/" + it.ID + ".png?fmt=qr") } alt="" class="qr-thumb"/></td>
 						</tr>
 					}
 				</tbody>
 			</table>
 		</div>
-		<div class="panel-foot d-flex gap-2">
-			<button type="button" class="btn btn-primary" onclick="printSheet()"><i class="ti ti-printer icon"></i> Cetak Terpilih</button>
-			<button type="button" class="btn" onclick="selectAll()"><i class="ti ti-checkbox icon"></i> Pilih Semua</button>
-		</div>
+		if len(d.Items) == 0 {
+			<div class="empty"><i class="ti ti-qrcode empty-icon"></i><div class="empty-title">Belum ada barang</div></div>
+		}
 	</div>
 }
 
@@ -41,11 +48,11 @@ templ BarcodeSheet(items []ItemRow) {
 			<link rel="stylesheet" href="/static/vendor/icons/tabler-icons.min.css"/>
 			<link rel="stylesheet" href="/static/css/theme.css"/>
 			<style>
-				body { background: #fff; margin: 12mm; font-family: var(--font); }
-				.label-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; }
-				.label { text-align: center; border: 1px dashed #ddd; border-radius: 10px; padding: 6px; page-break-inside: avoid; }
-				.label .name { font-size: 11px; font-weight: 700; margin-bottom: 4px; }
-				.label .sku { font-size: 10px; font-family: monospace; color: #666; }
+				body { background:#fff; margin:12mm; font-family:var(--font); }
+				.label-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8mm; }
+				.label { text-align:center; border:1px dashed #ccc; border-radius:10px; padding:6px; page-break-inside:avoid; }
+				.label .name { font-size:11px; font-weight:700; margin-bottom:4px; }
+				.label .sku { font-size:10px; font-family:monospace; color:#666; }
 			</style>
 		</head>
 		<body onload="window.print()">

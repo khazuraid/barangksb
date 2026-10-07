@@ -30,7 +30,7 @@ func History(d HistoryData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-clock-hour-4 icon\" style=\"color:var(--accent)\"></i> Riwayat Mutasi</h1><div class=\"page-subtitle\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-clock-hour-4\"></i> Riwayat Mutasi</h1><div class=\"page-subtitle\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -43,7 +43,7 @@ func History(d HistoryData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " transaksi tercatat</div></div><div class=\"d-flex gap-2\"><a href=\"/export/tx.csv\" class=\"btn\"><i class=\"ti ti-file-download icon\"></i> CSV</a> <a href=\"/export/items.xlsx\" class=\"btn\"><i class=\"ti ti-table icon\"></i> Excel</a></div></div><div class=\"filter-bar\"><input type=\"search\" name=\"sku\" placeholder=\"SKU…\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " transaksi tercatat</div></div><div class=\"d-flex gap-2\"><a href=\"/export/tx.csv\" class=\"btn btn-sm\"><i class=\"ti ti-file-download\"></i> CSV</a> <a href=\"/export/items.xlsx\" class=\"btn btn-sm\"><i class=\"ti ti-table\"></i> Excel</a></div></div><div class=\"filter-bar\"><input type=\"search\" name=\"sku\" placeholder=\"SKU…\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -151,7 +151,7 @@ func History(d HistoryData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\"> <button class=\"btn btn-primary\"><i class=\"ti ti-filter icon\"></i> Filter</button> <a href=\"/history\" class=\"btn\"><i class=\"ti ti-rotate icon\"></i></a></div><div class=\"panel\"><div class=\"table-responsive\"><table class=\"data-table\"><thead><tr><th>Waktu</th><th>Jenis</th><th>Barang</th><th>Qty</th><th>Person</th><th>Kondisi</th><th>Geotag</th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\"> <button class=\"btn btn-primary btn-sm\"><i class=\"ti ti-filter\"></i> Filter</button> <a href=\"/history\" class=\"btn btn-sm\"><i class=\"ti ti-rotate\"></i></a></div><div class=\"card\"><div class=\"table-wrap\"><table class=\"tbl\"><thead><tr><th>Waktu</th><th>Jenis</th><th>Barang</th><th>Qty</th><th>Person</th><th>Kondisi</th><th>Geotag</th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -297,7 +297,7 @@ func History(d HistoryData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"panel-foot\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"card-foot\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

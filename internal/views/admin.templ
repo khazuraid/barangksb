@@ -2,41 +2,48 @@ package views
 
 import "inventariskantor/internal/models"
 
-// Users — kelola pengguna (admin).
+// UsersData — kelola pengguna.
 type UsersData struct {
 	User  UserInfo
 	Users []models.UserRow
 }
 
+// Users — CRUD pengguna (admin).
 templ Users(d UsersData) {
 	<div class="page-header">
 		<div>
-			<h1 class="page-title"><i class="ti ti-users-group icon" style="color:var(--accent)"></i> Kelola Pengguna</h1>
+			<h1 class="page-title"><i class="ti ti-users-group"></i> Kelola Pengguna</h1>
 			<div class="page-subtitle">{ fmtInt(len(d.Users)) } pengguna terdaftar</div>
 		</div>
 	</div>
-	<div class="grid-2">
-		<div class="panel" style="padding:20px">
-			<div class="panel-title" style="margin-bottom:14px"><i class="ti ti-user-plus icon" style="color:var(--accent)"></i> Tambah / Reset</div>
-			<form method="post" action="/users" class="stack">
-				<label>Nama<input type="text" name="name" required/></label>
-				<label>Email<input type="email" name="email" required/></label>
-				<label>Password (min 8)<input type="password" name="password" required minlength="8"/></label>
-				<label>Role
+
+	<div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start" class="usr-grid">
+		<!-- form tambah -->
+		<div class="card">
+			<div class="card-head"><span class="card-title"><i class="ti ti-user-plus" style="color:var(--accent)"></i> Tambah / Reset</span></div>
+			<div class="card-body">
+				<form method="post" action="/users" class="stack">
+					<label>Nama</label>
+					<input type="text" name="name" required placeholder="Nama lengkap"/>
+					<label>Email</label>
+					<input type="email" name="email" required placeholder="email@kantor.id"/>
+					<label>Password (min 8)</label>
+					<input type="password" name="password" required minlength="8" placeholder="••••••••"/>
+					<label>Role</label>
 					<select name="role">
 						<option value="petugas">Petugas</option>
 						<option value="admin">Admin</option>
 					</select>
-				</label>
-				<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-device-floppy icon"></i> Simpan</button>
-			</form>
-		</div>
-		<div class="panel">
-			<div class="panel-head">
-				<span class="panel-title"><i class="ti ti-list icon" style="color:var(--accent)"></i> Daftar ({ fmtInt(len(d.Users)) })</span>
+					<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-device-floppy"></i> Simpan</button>
+				</form>
 			</div>
-			<div class="table-responsive">
-				<table class="data-table">
+		</div>
+
+		<!-- daftar -->
+		<div class="card">
+			<div class="card-head"><span class="card-title"><i class="ti ti-list" style="color:var(--accent)"></i> Daftar ({ fmtInt(len(d.Users)) })</span></div>
+			<div class="table-wrap">
+				<table class="tbl">
 					<thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Aksi</th></tr></thead>
 					<tbody>
 						for _, u := range d.Users {
@@ -48,11 +55,11 @@ templ Users(d UsersData) {
 									<div class="row-actions">
 										<form method="post" action={ templ.URL("/users/" + u.Email + "/role") } class="inline">
 											<input type="hidden" name="role" value={ toggleRole(u.Role) }/>
-											<button type="submit" class="btn btn-sm"><i class="ti ti-refresh icon"></i></button>
+											<button type="submit" class="icon-btn" title={ "Jadikan " + toggleRole(u.Role) }><i class="ti ti-refresh"></i></button>
 										</form>
 										<form method="post" action={ templ.URL("/users/" + u.Email + "/delete") } class="inline"
 											onsubmit="return confirm('Hapus user ini?')">
-											<button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-trash icon"></i></button>
+											<button type="submit" class="icon-btn danger" title="Hapus"><i class="ti ti-trash"></i></button>
 										</form>
 									</div>
 								</td>
@@ -61,8 +68,12 @@ templ Users(d UsersData) {
 					</tbody>
 				</table>
 			</div>
+			if len(d.Users) == 0 {
+				<div class="empty"><i class="ti ti-users-group empty-icon"></i><div class="empty-title">Belum ada pengguna</div></div>
+			}
 		</div>
 	</div>
+	<style>@media(max-width:768px){.usr-grid{grid-template-columns:1fr !important}}</style>
 }
 
 func roleBadge(r string) string {
@@ -83,22 +94,25 @@ func toggleRole(r string) string {
 templ Password(user UserInfo, msg string, isErr bool) {
 	<div class="page-header">
 		<div>
-			<h1 class="page-title"><i class="ti ti-key icon" style="color:var(--accent)"></i> Ganti Password</h1>
+			<h1 class="page-title"><i class="ti ti-key"></i> Ganti Password</h1>
 		</div>
 	</div>
-	<div class="panel" style="max-width:440px; padding:22px">
+	<div class="card" style="max-width:440px;padding:24px">
 		if msg != "" {
 			if isErr {
-				<div class="alert" style="background:rgba(239,68,68,.1); color:#DC2626; padding:10px 14px; border-radius:10px; margin-bottom:14px">{ msg }</div>
+				<div class="alert" style="background:var(--danger-soft);color:var(--danger);padding:12px 16px;border-radius:10px;margin-bottom:14px">{ msg }</div>
 			} else {
-				<div class="alert" style="background:var(--accent-soft); color:var(--accent-dark); padding:10px 14px; border-radius:10px; margin-bottom:14px">{ msg }</div>
+				<div class="alert" style="background:var(--accent-soft);color:var(--accent);padding:12px 16px;border-radius:10px;margin-bottom:14px">{ msg }</div>
 			}
 		}
 		<form method="post" action="/password" class="stack">
-			<label>Password Lama<input type="password" name="old" required/></label>
-			<label>Password Baru (min 8)<input type="password" name="new" required minlength="8"/></label>
-			<label>Ulangi Password Baru<input type="password" name="confirm" required minlength="8"/></label>
-			<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-device-floppy icon"></i> Simpan</button>
+			<label>Password Lama</label>
+			<input type="password" name="old" required placeholder="••••••••"/>
+			<label>Password Baru (min 8)</label>
+			<input type="password" name="new" required minlength="8" placeholder="••••••••"/>
+			<label>Ulangi Password Baru</label>
+			<input type="password" name="confirm" required minlength="8" placeholder="••••••••"/>
+			<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-device-floppy"></i> Simpan</button>
 		</form>
 	</div>
 }
