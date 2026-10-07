@@ -62,8 +62,9 @@ templ Items(d ItemsData) {
 	</div>
 
 	<div class="card">
-		<div class="table-wrap">
-			<table class="tbl">
+		<div id="data-target">
+			<div class="table-wrap">
+				<table class="tbl">
 				<thead>
 					<tr>
 						<th>QR</th><th>SKU</th><th>Nama</th><th>Kategori</th>
@@ -111,6 +112,7 @@ templ Items(d ItemsData) {
 		}
 		<div class="card-foot">
 			@Pagination(d.Pager)
+		</div>
 		</div>
 	</div>
 }
