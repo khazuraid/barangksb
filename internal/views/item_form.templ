@@ -1,0 +1,102 @@
+package views
+
+// ItemForm — form tambah/edit barang.
+templ ItemForm(d ItemFormData) {
+	if d.Item == nil {
+		<div class="page-header">
+			<div>
+				<h1 class="page-title"><i class="ti ti-plus"></i> Tambah Barang</h1>
+				<div class="page-subtitle">Kosongkan SKU untuk generate otomatis</div>
+			</div>
+		</div>
+	} else {
+		<div class="page-header">
+			<div>
+				<h1 class="page-title"><i class="ti ti-edit"></i> Edit Barang</h1>
+				<div class="page-subtitle"><code>{ d.Item.SKU }</code></div>
+			</div>
+		</div>
+	}
+	<form method="post" action={ itemAction(d.Item) } class="card" style="padding:22px" enctype="multipart/form-data">
+		<div class="grid-2-form">
+			<label>SKU / Barcode
+				<input type="text" name="sku" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.SKU }) } placeholder="otomatis"/>
+				<div class="field-hint">kosongkan = generate</div>
+			</label>
+			<label>Nama Barang *
+				<input type="text" name="name" required value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Name }) }/>
+			</label>
+			<label>Kategori *
+				<select name="category" required>
+					<option value="">— pilih —</option>
+					for _, c := range d.Cats {
+						if d.Item != nil && d.Item.Category == c {
+							<option value={ c } selected>{ c }</option>
+						} else {
+							<option value={ c }>{ c }</option>
+						}
+					}
+				</select>
+			</label>
+			<label>Lokasi *
+				<select name="location" required>
+					<option value="">— pilih —</option>
+					for _, l := range d.Locs {
+						if d.Item != nil && d.Item.Location == l {
+							<option value={ l } selected>{ l }</option>
+						} else {
+							<option value={ l }>{ l }</option>
+						}
+					}
+				</select>
+			</label>
+			<label>Stok Saat Ini
+				<input type="number" name="current_stock" min="0" value={ itemVal(d.Item, func(v *ItemFormValues) string { return fmtInt(v.CurrentStock) }) }/>
+			</label>
+			<label>Stok Minimum
+				<input type="number" name="min_stock" min="0" value={ itemVal(d.Item, func(v *ItemFormValues) string { return fmtInt(v.MinStock) }) }/>
+			</label>
+			<label>Satuan *
+				<select name="unit" required>
+					for _, u := range units {
+						if d.Item == nil && u == "Unit" || (d.Item != nil && d.Item.Unit == u) {
+							<option value={ u } selected>{ u }</option>
+						} else {
+							<option value={ u }>{ u }</option>
+						}
+					}
+				</select>
+			</label>
+			<label>Harga Satuan (Rp)
+				<input type="number" name="price_per_unit" min="0" value={ itemVal(d.Item, func(v *ItemFormValues) string { return fmtInt64(v.PricePerUnit) }) }/>
+			</label>
+			<label>Merk<input type="text" name="merk" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Merk }) }/></label>
+			<label>Type / Model<input type="text" name="type_model" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.TypeModel }) }/></label>
+			<label>No Seri<input type="text" name="serial_number" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.SerialNumber }) }/></label>
+			<label>Thn Pengadaan<input type="text" name="procurement_year" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.ProcurementYear }) }/></label>
+			<label>Kondisi
+				<select name="condition_status">
+					for _, c := range conditions {
+						if (d.Item == nil && c == "Berfungsi") || (d.Item != nil && d.Item.ConditionStatus == c) {
+							<option value={ c } selected>{ c }</option>
+						} else {
+							<option value={ c }>{ c }</option>
+						}
+					}
+				</select>
+			</label>
+			<label>Sumber Pendanaan<input type="text" name="funding_source" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.FundingSource }) }/></label>
+			<label>Distributor<input type="text" name="distributor" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Distributor }) }/></label>
+			<label>AKL / AKD<input type="text" name="akl_akd" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.AklAkd }) }/></label>
+		</div>
+		<div style="margin-top:14px">
+			<label>Keterangan<textarea name="description" rows="2">{ itemVal(d.Item, func(v *ItemFormValues) string { return v.Description }) }</textarea></label>
+			<label>Foto Barang (dikompres + geotag card otomatis)<input type="file" name="photo" accept="image/*"/></label>
+		</div>
+		<div class="actions">
+			<button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Simpan</button>
+			<a href="/items" class="btn">Batal</a>
+		</div>
+	</form>
+}
+

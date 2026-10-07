@@ -1,8 +1,5 @@
 package views
 
-import (
-	"inventariskantor/internal/models"
-)
 
 type UserInfo struct {
 	Name   string
@@ -23,32 +20,8 @@ type MovementData struct {
 	Tab   string
 }
 
-type ItemRow struct {
-	ID           string
-	SKU, Name    string
-	Category     string
-	Location     string
-	CurrentStock int
-	MinStock     int
-	Unit         string
-	Condition    string
-}
 
-type ItemsData struct {
-	User  UserInfo
-	Items []ItemRow
-	Query string
-	Cat   string
-	Loc   string
-	Cats  []string
-	Locs  []string
-	Pager PaginationData
-}
 
-type CategoriesData struct {
-	User UserInfo
-	Cats []models.Category
-}
 
 type HistoryData struct {
 	User    UserInfo
@@ -78,7 +51,3 @@ type DriveSyncData struct {
 	Result     string
 }
 
-type LocationsData struct {
-	User UserInfo
-	Locs []models.Location
-}

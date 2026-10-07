@@ -2,32 +2,71 @@ package views
 
 
 // ItemRow — baris tabel barang.
-// ItemsData — halaman daftar barang (data lengkap).
-// Kompatibilitas alias lama.
+type ItemRow struct {
+	ID           string
+	SKU, Name    string
+	Category     string
+	Location     string
+	CurrentStock int
+	MinStock     int
+	Unit         string
+	Condition    string
+}
+
+// ItemsData — halaman daftar barang.
+type ItemsData struct {
+	User  UserInfo
+	Items []ItemRow
+	Query string
+	Cat   string
+	Loc   string
+	Cats  []string
+	Locs  []string
+	Pager PaginationData
+}
+
+// Items — daftar barang dengan filter bar + QR thumbnail + badge stok + pagination.
 templ Items(d ItemsData) {
 	<div class="page-header">
 		<div>
-			<h1 class="page-title"><i class="ti ti-box-seam icon" style="color:var(--accent)"></i> Daftar Barang</h1>
+			<h1 class="page-title"><i class="ti ti-box-seam"></i> Daftar Barang</h1>
 			<div class="page-subtitle">{ fmtInt(d.Pager.Total) } item terdaftar</div>
 		</div>
-		<a href="/items/new" class="btn btn-primary"><i class="ti ti-plus icon"></i> Tambah Barang</a>
+		<a href="/items/new" class="btn btn-primary"><i class="ti ti-plus"></i> Tambah Barang</a>
 	</div>
 
 	<div class="filter-bar">
 		<input type="search" name="q" placeholder="Cari nama / SKU / lokasi…" value={ d.Query }/>
-		<select>
-			<option>Semua Kategori</option>
+		<select name="cat">
+			<option value="">Semua Kategori</option>
+			for _, c := range d.Cats {
+				if c == d.Cat {
+					<option value={ c } selected>{ c }</option>
+				} else {
+					<option value={ c }>{ c }</option>
+				}
+			}
 		</select>
-		<button class="btn btn-primary"><i class="ti ti-search icon"></i> Cari</button>
-		<a href="/items" class="btn"><i class="ti ti-rotate icon"></i></a>
+		<select name="loc">
+			<option value="">Semua Lokasi</option>
+			for _, l := range d.Locs {
+				if l == d.Loc {
+					<option value={ l } selected>{ l }</option>
+				} else {
+					<option value={ l }>{ l }</option>
+				}
+			}
+		</select>
+		<button class="btn btn-primary btn-sm"><i class="ti ti-search"></i> Cari</button>
+		<a href="/items" class="btn btn-sm"><i class="ti ti-rotate"></i></a>
 	</div>
 
-	<div class="panel">
-		<div class="table-responsive">
-			<table class="data-table">
+	<div class="card">
+		<div class="table-wrap">
+			<table class="tbl">
 				<thead>
 					<tr>
-						<th></th><th>SKU</th><th>Nama</th><th>Kategori</th>
+						<th>QR</th><th>SKU</th><th>Nama</th><th>Kategori</th>
 						<th>Lokasi</th><th>Stok</th><th>Kondisi</th><th></th>
 					</tr>
 				</thead>
@@ -49,11 +88,11 @@ templ Items(d ItemsData) {
 							<td class="muted">{ it.Condition }</td>
 							<td>
 								<div class="row-actions">
-									<a href={ templ.URL("/items/" + it.ID + "/edit") } class="btn btn-sm"><i class="ti ti-pencil icon"></i></a>
-									<a href={ templ.URL("/barcode/sheet?ids=" + it.ID) } target="_blank" class="btn btn-sm"><i class="ti ti-qrcode icon"></i></a>
+									<a href={ templ.URL("/items/" + it.ID + "/edit") } class="icon-btn" title="Edit"><i class="ti ti-pencil"></i></a>
+									<a href={ templ.URL("/barcode/sheet?ids=" + it.ID) } target="_blank" class="icon-btn" title="Cetak QR"><i class="ti ti-qrcode"></i></a>
 									<form method="post" action={ templ.URL("/items/" + it.ID + "/delete") } class="inline"
 										onsubmit="return confirm('Hapus barang ini?')">
-										<button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-trash icon"></i></button>
+										<button type="submit" class="icon-btn danger" title="Hapus"><i class="ti ti-trash"></i></button>
 									</form>
 								</div>
 							</td>
@@ -66,113 +105,12 @@ templ Items(d ItemsData) {
 			<div class="empty">
 				<i class="ti ti-box-seam empty-icon"></i>
 				<div class="empty-title">Tidak ada barang</div>
-				<div>Mulai dengan menambahkan barang pertama.</div>
-				<a href="/items/new" class="btn btn-primary" style="margin-top:12px">Tambah Barang</a>
+				<div style="margin-bottom:10px">Tambahkan barang pertama Anda.</div>
+				<a href="/items/new" class="btn btn-primary"><i class="ti ti-plus"></i> Tambah Barang</a>
 			</div>
 		}
-		<div class="panel-foot">
+		<div class="card-foot">
 			@Pagination(d.Pager)
 		</div>
 	</div>
 }
-
-// ItemForm — form tambah/edit barang.
-templ ItemForm(d ItemFormData) {
-	if d.Item == nil {
-		<div class="page-header">
-			<div>
-				<h1 class="page-title">Tambah Barang</h1>
-				<div class="page-subtitle">Kosongkan SKU untuk generate otomatis</div>
-			</div>
-		</div>
-	} else {
-		<div class="page-header">
-			<div>
-				<h1 class="page-title">Edit Barang</h1>
-				<div class="page-subtitle"><code>{ d.Item.SKU }</code></div>
-			</div>
-		</div>
-	}
-	<form method="post" action={ itemAction(d.Item) } class="panel" style="padding:22px" enctype="multipart/form-data">
-		<div class="grid-2-form">
-			<label>SKU / Barcode
-				<input type="text" name="sku" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.SKU }) } placeholder="otomatis"/>
-				<div class="field-hint">kosongkan = generate otomatis</div>
-			</label>
-			<label>Nama Barang *
-				<input type="text" name="name" required value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Name }) }/>
-			</label>
-			<label>Kategori *
-				<select name="category" required>
-					<option value="">— pilih —</option>
-					for _, c := range d.Cats {
-						if d.Item != nil && d.Item.Category == c {
-							<option value={ c } selected>{ c }</option>
-						} else {
-							<option value={ c }>{ c }</option>
-						}
-					}
-				</select>
-			</label>
-			<label>Lokasi / Ruangan *
-				<select name="location" required>
-					<option value="">— pilih —</option>
-					for _, l := range d.Locs {
-						if d.Item != nil && d.Item.Location == l {
-							<option value={ l } selected>{ l }</option>
-						} else {
-							<option value={ l }>{ l }</option>
-						}
-					}
-				</select>
-			</label>
-			<label>Stok Saat Ini
-				<input type="number" name="current_stock" min="0" value={ itemVal(d.Item, func(v *ItemFormValues) string { return fmtInt(v.CurrentStock) }) }/>
-			</label>
-			<label>Stok Minimum (alert)
-				<input type="number" name="min_stock" min="0" value={ itemVal(d.Item, func(v *ItemFormValues) string { return fmtInt(v.MinStock) }) }/>
-			</label>
-			<label>Satuan *
-				<select name="unit" required>
-					for _, u := range units {
-						if d.Item == nil && u == "Unit" || (d.Item != nil && d.Item.Unit == u) {
-							<option value={ u } selected>{ u }</option>
-						} else {
-							<option value={ u }>{ u }</option>
-						}
-					}
-				</select>
-			</label>
-			<label>Harga Satuan (Rp)
-				<input type="number" name="price_per_unit" min="0" value={ itemVal(d.Item, func(v *ItemFormValues) string { return fmtInt64(v.PricePerUnit) }) }/>
-			</label>
-			<label>Merk<input type="text" name="merk" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Merk }) }/></label>
-			<label>Type / Model<input type="text" name="type_model" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.TypeModel }) }/></label>
-			<label>No Seri<input type="text" name="serial_number" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.SerialNumber }) }/></label>
-			<label>Thn Pengadaan<input type="text" name="procurement_year" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.ProcurementYear }) }/></label>
-			<label>Kondisi
-				<select name="condition_status">
-					for _, c := range conditions {
-						if (d.Item == nil && c == "Berfungsi") || (d.Item != nil && d.Item.ConditionStatus == c) {
-							<option value={ c } selected>{ c }</option>
-						} else {
-							<option value={ c }>{ c }</option>
-						}
-					}
-				</select>
-			</label>
-			<label>Sumber Pendanaan<input type="text" name="funding_source" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.FundingSource }) }/></label>
-			<label>Distributor<input type="text" name="distributor" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.Distributor }) }/></label>
-			<label>AKL / AKD<input type="text" name="akl_akd" value={ itemVal(d.Item, func(v *ItemFormValues) string { return v.AklAkd }) }/></label>
-		</div>
-		<div style="margin-top:14px">
-			<label>Keterangan<textarea name="description" rows="2">{ itemVal(d.Item, func(v *ItemFormValues) string { return v.Description }) }</textarea></label>
-			<label>Foto Barang (dikompres + geotag card otomatis)<input type="file" name="photo" accept="image/*"/></label>
-		</div>
-		<div class="actions">
-			<button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy icon"></i> Simpan</button>
-			<a href="/items" class="btn">Batal</a>
-		</div>
-	</form>
-}
-
