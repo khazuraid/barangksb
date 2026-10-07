@@ -105,7 +105,7 @@ body{ font-family:var(--font); background:var(--bg); color:var(--ink); font-size
 .icon-btn:hover{ background:var(--accent-soft); color:var(--accent); border-color:var(--border); }
 .icon-btn.danger:hover{ background:var(--danger-soft); color:var(--danger); }
 
-.content{ padding:28px 24px 60px; max-width:1100px; }
+.content{ padding:28px 24px 60px; width:100%; max-width:none; }
 
 /* ====== PAGE HEADER ====== */
 .page-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:24px; flex-wrap:wrap; }
