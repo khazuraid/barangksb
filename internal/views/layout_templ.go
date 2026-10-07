@@ -8,6 +8,44 @@ package views
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
+// SidebarItem satu entri menu.
+type SidebarItem struct {
+	Href  string
+	Icon  string
+	Label string
+	Admin bool
+}
+
+type sidebarGroup struct {
+	Label string
+	Items []SidebarItem
+	Admin bool
+}
+
+var sidebarGroups = []sidebarGroup{
+	{"Menu Utama", []SidebarItem{
+		{"/", "ti-dashboard", "Dashboard", false},
+		{"/items", "ti-box-seam", "Barang", false},
+		{"/categories", "ti-category-2", "Kategori", false},
+		{"/locations", "ti-map-pin", "Lokasi", false},
+	}, false},
+	{"Transaksi", []SidebarItem{
+		{"/movement", "ti-arrows-exchange", "Mutasi Barang", false},
+		{"/history", "ti-clock-hour-4", "Riwayat", false},
+	}, false},
+	{"Alat", []SidebarItem{
+		{"/barcode", "ti-qrcode", "QR Generator", false},
+		{"/adjust/bulk", "ti-clipboard-list", "Opname Massal", false},
+		{"/drivesync", "ti-cloud-download", "Sinkron Drive", false},
+	}, false},
+	{"Admin", []SidebarItem{
+		{"/users", "ti-users-group", "Pengguna", true},
+		{"/audit", "ti-shield-check", "Audit Log", true},
+	}, true},
+}
+
+var _ = templ.URL
+
 // Layout shell utama: sidebar gelap + topbar glass + konten.
 func Layout(title string, user UserInfo, content templ.Component) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -30,14 +68,14 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\"><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 10, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 48, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -66,7 +104,7 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(g.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 25, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 66, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -99,7 +137,7 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 					var templ_7745c5c3_Var5 templ.SafeURL
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(it.Href))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 30, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 71, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -147,7 +185,7 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 					var templ_7745c5c3_Var9 string
 					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(it.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 31, Col: 53}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 72, Col: 53}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
@@ -166,7 +204,7 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(user.Initial())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 38, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 79, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -179,7 +217,7 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(user.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 40, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 81, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -192,20 +230,20 @@ func Layout(title string, user UserInfo, content templ.Component) templ.Componen
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(user.Role)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 41, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 82, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</div></div><form method=\"post\" action=\"/logout\"><button type=\"submit\" class=\"icon-btn danger\" title=\"Keluar\"><i class=\"ti ti-logout\"></i></button></form></div></div></aside><div class=\"app-main\"><header class=\"topbar\"><button type=\"button\" class=\"icon-btn d-lg-none\" onclick=\"document.getElementById('sidebar').classList.toggle('open')\"><i class=\"ti ti-menu-2\"></i></button> <span class=\"topbar-title\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</div></div><form method=\"post\" action=\"/logout\"><button type=\"submit\" class=\"icon-btn danger\" title=\"Keluar\"><i class=\"ti ti-logout\"></i></button></form></div></div></aside><div class=\"sidebar-overlay\" id=\"sidebar-overlay\" onclick=\"toggleSidebar()\"></div><div class=\"app-main\"><header class=\"topbar\"><button type=\"button\" class=\"hamburger d-lg-none\" onclick=\"toggleSidebar()\" aria-label=\"Menu\"><i class=\"ti ti-menu-2\"></i></button> <span class=\"topbar-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(user.ActiveTitle())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 55, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 97, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -242,14 +280,6 @@ func activeClass(href, current string) string {
 		return "active"
 	}
 	return ""
-}
-
-// AdminOnly — helper agar group "Admin" hanya tampil di atas (dipakai via if di atas).
-func (g sidebarGroupMeta) AdminOnly() bool { return g.admin }
-
-type sidebarGroupMeta struct {
-	Label string
-	admin bool
 }
 
 var _ = templruntime.GeneratedTemplate

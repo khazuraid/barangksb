@@ -1,12 +1,50 @@
 package views
 
+// SidebarItem satu entri menu.
+type SidebarItem struct {
+	Href  string
+	Icon  string
+	Label string
+	Admin bool
+}
+
+type sidebarGroup struct {
+	Label string
+	Items []SidebarItem
+	Admin bool
+}
+
+var sidebarGroups = []sidebarGroup{
+	{"Menu Utama", []SidebarItem{
+		{"/", "ti-dashboard", "Dashboard", false},
+		{"/items", "ti-box-seam", "Barang", false},
+		{"/categories", "ti-category-2", "Kategori", false},
+		{"/locations", "ti-map-pin", "Lokasi", false},
+	}, false},
+	{"Transaksi", []SidebarItem{
+		{"/movement", "ti-arrows-exchange", "Mutasi Barang", false},
+		{"/history", "ti-clock-hour-4", "Riwayat", false},
+	}, false},
+	{"Alat", []SidebarItem{
+		{"/barcode", "ti-qrcode", "QR Generator", false},
+		{"/adjust/bulk", "ti-clipboard-list", "Opname Massal", false},
+		{"/drivesync", "ti-cloud-download", "Sinkron Drive", false},
+	}, false},
+	{"Admin", []SidebarItem{
+		{"/users", "ti-users-group", "Pengguna", true},
+		{"/audit", "ti-shield-check", "Audit Log", true},
+	}, true},
+}
+
+var _ = templ.URL
+
 // Layout shell utama: sidebar gelap + topbar glass + konten.
 templ Layout(title string, user UserInfo, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="id">
 		<head>
 			<meta charset="utf-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 			<title>{ title } — Inventaris Kantor</title>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -16,7 +54,10 @@ templ Layout(title string, user UserInfo, content templ.Component) {
 		<body>
 			if user.Name != "" {
 				<aside class="app-sidebar" id="sidebar">
-					<a href="/" class="sidebar-brand"><span class="brand-logo">IK</span> Inventaris</a>
+					<a href="/" class="sidebar-brand">
+						<span class="brand-logo">IK</span>
+						Inventaris
+					</a>
 					<nav class="sidebar-nav">
 						for _, g := range sidebarGroups {
 							if g.Admin && user.Role != "admin" {
@@ -46,10 +87,11 @@ templ Layout(title string, user UserInfo, content templ.Component) {
 						</div>
 					</div>
 				</aside>
+				<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 				<div class="app-main">
 					<header class="topbar">
-						<button type="button" class="icon-btn d-lg-none" onclick="document.getElementById('sidebar').classList.toggle('open')">
+						<button type="button" class="hamburger d-lg-none" onclick="toggleSidebar()" aria-label="Menu">
 							<i class="ti ti-menu-2"></i>
 						</button>
 						<span class="topbar-title">{ user.ActiveTitle() }</span>
@@ -78,12 +120,4 @@ func activeClass(href, current string) string {
 		return "active"
 	}
 	return ""
-}
-
-// AdminOnly — helper agar group "Admin" hanya tampil di atas (dipakai via if di atas).
-func (g sidebarGroupMeta) AdminOnly() bool { return g.admin }
-
-type sidebarGroupMeta struct {
-	Label string
-	admin bool
 }

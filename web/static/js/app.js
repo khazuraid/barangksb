@@ -35,9 +35,24 @@ document.body.addEventListener('htmx:afterSwap', function (e) {
   if (t) toast(t);
 });
 
-// ---- HTMX: push URL agar back/forward jalan ----
-document.body.addEventListener('htmx:pushedIntoHistory', function () {
-  window.dispatchEvent(new Event('resize'));
+// ---- sidebar toggle (mobile) ----
+function toggleSidebar() {
+  var sb = document.getElementById('sidebar');
+  var ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  sb.classList.toggle('open');
+  if (ov) ov.classList.toggle('show');
+}
+
+// close sidebar on nav click (mobile)
+document.addEventListener('click', function(e) {
+  var link = e.target.closest('.sidebar-link');
+  if (link && window.innerWidth < 992) {
+    var sb = document.getElementById('sidebar');
+    var ov = document.getElementById('sidebar-overlay');
+    if (sb) sb.classList.remove('open');
+    if (ov) ov.classList.remove('show');
+  }
 });
 
 // ---- barcode label sheet ----
