@@ -3,7 +3,6 @@ package views
 import (
 	"fmt"
 	"sort"
-	"github.com/a-h/templ"
 )
 
 func fmtInt(n int) string { return fmt.Sprintf("%d", n) }
@@ -36,9 +35,3 @@ func lowClass(cur, min int) string {
 	return ""
 }
 
-func itemAction(it *ItemFormValues) templ.SafeURL {
-	if it == nil {
-		return templ.URL("/items")
-	}
-	return templ.URL("/items/" + it.ID)
-}

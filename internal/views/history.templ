@@ -2,66 +2,51 @@ package views
 
 // History — riwayat mutasi dengan filter + pagination.
 templ History(d HistoryData) {
-	<div class="page-header mb-3">
-		<div class="row align-items-center">
-			<div class="col">
-				<h1 class="page-title"><i class="ti ti-history icon me-1"></i> Riwayat Mutasi</h1>
-				<div class="text-secondary mt-1">{ fmtInt(d.Pager.Total) } transaksi tercatat</div>
-			</div>
-			<div class="col-auto d-flex gap-2">
-				<a href="/export/tx.csv" class="btn"><i class="ti ti-file-download icon"></i> CSV</a>
-				<a href="/export/items.xlsx" class="btn"><i class="ti ti-table icon"></i> Excel</a>
-			</div>
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-clock-hour-4 icon" style="color:var(--accent)"></i> Riwayat Mutasi</h1>
+			<div class="page-subtitle">{ fmtInt(d.Pager.Total) } transaksi tercatat</div>
+		</div>
+		<div class="d-flex gap-2">
+			<a href="/export/tx.csv" class="btn"><i class="ti ti-file-download icon"></i> CSV</a>
+			<a href="/export/items.xlsx" class="btn"><i class="ti ti-table icon"></i> Excel</a>
 		</div>
 	</div>
 
-	<div class="card d-print-none">
-		<div class="card-body py-2">
-			<form method="get" action="/history" class="row g-2 align-items-center">
-				<div class="col-md-3">
-					<input type="search" name="sku" class="form-control form-control-sm" placeholder="SKU…" value={ d.FSKU }/>
-				</div>
-				<div class="col-md-2">
-					<select name="type" class="form-select form-select-sm">
-						<option value="">Semua Jenis</option>
-						for _, t := range d.Types {
-							if t == d.FType {
-								<option value={ t } selected>{ t }</option>
-							} else {
-								<option value={ t }>{ t }</option>
-							}
-						}
-					</select>
-				</div>
-				<div class="col-md-2"><input type="date" name="from" class="form-control form-control-sm" value={ d.FFrom }/></div>
-				<div class="col-md-2"><input type="date" name="to" class="form-control form-control-sm" value={ d.FTo }/></div>
-				<div class="col-md-3 d-flex gap-2">
-					<button type="submit" class="btn btn-sm btn-primary flex-fill"><i class="ti ti-filter icon"></i> Filter</button>
-					<a href="/history" class="btn btn-sm"><i class="ti ti-x icon"></i></a>
-				</div>
-			</form>
-		</div>
+	<div class="filter-bar">
+		<input type="search" name="sku" placeholder="SKU…" value={ d.FSKU }/>
+		<select name="type">
+			<option value="">Semua Jenis</option>
+			for _, t := range d.Types {
+				if t == d.FType {
+					<option value={ t } selected>{ t }</option>
+				} else {
+					<option value={ t }>{ t }</option>
+				}
+			}
+		</select>
+		<input type="date" name="from" value={ d.FFrom }/>
+		<input type="date" name="to" value={ d.FTo }/>
+		<button class="btn btn-primary"><i class="ti ti-filter icon"></i> Filter</button>
+		<a href="/history" class="btn"><i class="ti ti-rotate icon"></i></a>
 	</div>
 
-	<div class="card mt-2">
+	<div class="panel">
 		<div class="table-responsive">
-			<table class="table table-vcenter card-table">
+			<table class="data-table">
 				<thead>
-					<tr>
-						<th>Waktu</th><th>Jenis</th><th>Barang</th><th>Qty</th>
-						<th>Person</th><th>Kondisi</th><th>Geotag</th>
-					</tr>
+					<tr><th>Waktu</th><th>Jenis</th><th>Barang</th><th>Qty</th><th>Person</th><th>Kondisi</th><th>Geotag</th></tr>
 				</thead>
 				<tbody>
 					for _, t := range d.TX {
 						<tr>
-							<td class="text-secondary">{ t.Time }</td>
+							<td class="muted">{ t.Time }</td>
 							<td><span class={ "badge " + txBadge(t.Type) }>{ t.Type }</span></td>
-							<td><code>{ t.SKU }</code> <span class="text-secondary">{ t.Name }</span></td>
+							<td><code>{ t.SKU }</code> <span class="muted">{ t.Name }</span></td>
 							<td><strong>{ txQty(t.Type, t.Quantity, t.Unit) }</strong></td>
 							<td>{ t.ReceivedBy }</td>
-							<td class="text-secondary">{ t.Condition }</td>
-							<td class="text-secondary text-truncate-40">{ t.Geo }</td>
+							<td class="muted">{ t.Condition }</td>
+							<td class="muted text-truncate-40">{ t.Geo }</td>
 						</tr>
 					}
 				</tbody>
@@ -69,13 +54,13 @@ templ History(d HistoryData) {
 		</div>
 		if len(d.TX) == 0 {
 			<div class="empty">
-				<p class="empty-title">Tidak ada transaksi</p>
-				<p class="empty-subtitle text-secondary">Coba ubah filter atau catat mutasi baru.</p>
+				<i class="ti ti-clock-hour-4 empty-icon"></i>
+				<div class="empty-title">Tidak ada transaksi</div>
+				<div>Coba ubah filter atau catat mutasi baru.</div>
 			</div>
 		}
-		<div class="card-footer">
+		<div class="panel-foot">
 			@Pagination(d.Pager)
 		</div>
 	</div>
 }
-

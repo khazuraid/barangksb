@@ -1,84 +1,77 @@
 package views
 
-import (
-	"fmt"
-	"time"
-)
-
-// ---------- F3: Opname massal ----------
-
+// BulkAdjust — opname massal CSV.
 templ BulkAdjust(user UserInfo) {
-	<h1>Stok Opname Massal</h1>
-	<div class="card stack">
-		<p class="muted">Unggah CSV dua kolom: <code>sku,fisik</code>. Contoh:</p>
-		<pre class="sync-result">sku,fisik
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-clipboard-list icon" style="color:var(--accent)"></i> Stok Opname Massal</h1>
+			<div class="page-subtitle">Unggah CSV hasil hitung fisik</div>
+		</div>
+	</div>
+	<div class="panel" style="padding:22px">
+		<p class="muted" style="margin-bottom:12px">Format CSV dua kolom: <code>sku,fisik</code>. Contoh:</p>
+		<pre class="sync-result" style="margin-bottom:16px">sku,fisik
 ATK-2026-001,12
 ATK-2026-002,3</pre>
 		<form method="post" action="/adjust/bulk" enctype="multipart/form-data" class="stack">
 			<label>File CSV<input type="file" name="file" accept=".csv,text/csv" required/></label>
-			<button type="submit" class="btn btn-primary">Proses Opname</button>
+			<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-upload icon"></i> Proses Opname</button>
 		</form>
 	</div>
 }
 
+// BulkAdjustResult — hasil opname massal.
 templ BulkAdjustResult(user UserInfo, ok, fail int, errs []string) {
-	<h1>Hasil Opname Massal</h1>
-	<div class="cards">
-		<div class="card stat"><span class="stat-num">{ fmtInt(ok) }</span><span class="stat-label">Berhasil</span></div>
-		<div class="card stat"><span class="stat-num warn">{ fmtInt(fail) }</span><span class="stat-label">Gagal</span></div>
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-clipboard-check icon" style="color:var(--accent)"></i> Hasil Opname Massal</h1>
+		</div>
+	</div>
+	<div class="bento mb-4">
+		<div class="span-6">
+			<div class="stat-card">
+				<div class="stat-icon teal"><i class="ti ti-check"></i></div>
+				<div class="stat-value">{ fmtInt(ok) }</div>
+				<div class="stat-label">Berhasil</div>
+			</div>
+		</div>
+		<div class="span-6">
+			<div class="stat-card">
+				<div class="stat-icon red"><i class="ti ti-x"></i></div>
+				<div class="stat-value">{ fmtInt(fail) }</div>
+				<div class="stat-label">Gagal</div>
+			</div>
+		</div>
 	</div>
 	if len(errs) > 0 {
-		<div class="card">
-			<h2>Rincian Gagal</h2>
-			<ul class="error-list">
-				for _, e := range errs {
-					<li class="warn">{ e }</li>
-				}
-			</ul>
+		<div class="panel" style="margin-bottom:16px">
+			<div class="panel-head"><span class="panel-title"><i class="ti ti-alert-circle icon" style="color:#DC2626"></i> Rincian Gagal</span></div>
+			<div class="panel-body">
+				<ul class="error-list">
+					for _, e := range errs {
+						<li style="color:#DC2626; margin-bottom:6px">{ e }</li>
+					}
+				</ul>
+			</div>
 		</div>
 	}
-	<div class="actions">
-		<a href="/adjust/bulk" class="btn">Opname Lagi</a>
-		<a href="/history" class="btn">Lihat Riwayat</a>
+	<div class="d-flex gap-2">
+		<a href="/adjust/bulk" class="btn btn-primary"><i class="ti ti-arrow-left icon"></i> Opname Lagi</a>
+		<a href="/history" class="btn"><i class="ti ti-clock-hour-4 icon"></i> Lihat Riwayat</a>
 	</div>
 }
 
-// ---------- F4: Audit log UI ----------
-
-templ AuditLog(d AuditData) {
-	<h1>Audit Log</h1>
-	<p class="muted">{ fmtInt(d.Total) } perubahan terakhir (auto oleh trigger Postgres).</p>
-	<table class="data-table">
-		<thead><tr><th>Waktu</th><th>Tabel</th><th>Aksi</th><th>Row ID</th></tr></thead>
-		<tbody>
-			for _, a := range d.Rows {
-				<tr>
-					<td>{ fmtTimeA(a.At) }</td>
-					<td>{ a.Table }</td>
-					<td><span class={ "badge " + auditBadge(a.Op) }>{ a.Op }</span></td>
-					<td><code>{ a.RowID }</code></td>
-				</tr>
-			}
-		</tbody>
-	</table>
-	if len(d.Rows) == 0 {
-		<p class="muted">Belum ada aktivitas.</p>
-	}
+// PhotoZipDone — hasil arsip foto.
+templ PhotoZipDone(user UserInfo, count int) {
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-photo icon" style="color:var(--accent)"></i> Arsip Foto</h1>
+		</div>
+	</div>
+	<div class="panel" style="padding:22px">
+		<div class="stat-icon teal" style="margin-bottom:14px"><i class="ti ti-photo"></i></div>
+		<p style="font-size:1.1rem; margin-bottom:6px"><strong>{ fmtInt(count) }</strong> foto ditemukan di penyimpanan lokal.</p>
+		<p class="muted">Arsip tersedia di folder <code>backups/</code>.</p>
+		<a href="/" class="btn" style="margin-top:14px"><i class="ti ti-arrow-left icon"></i> Kembali</a>
+	</div>
 }
-
-func auditBadge(op string) string {
-	switch op {
-	case "INSERT":
-		return "badge-in"
-	case "DELETE":
-		return "badge-out"
-	default:
-		return "badge-adj"
-	}
-}
-
-func fmtTime(t time.Time) string {
-	return t.In(time.FixedZone("WIB", 7*3600)).Format("02-01-2006 15:04:05")
-}
-
-var _ = fmt.Sprintf

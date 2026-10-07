@@ -1,60 +1,61 @@
 package views
 
+// Categories — CRUD kategori.
 templ Categories(d CategoriesData) {
-	@toggleRename()
-	<div class="page-head">
-		<h1>Kategori Barang</h1>
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-category-2 icon" style="color:var(--accent)"></i> Kategori Barang</h1>
+			<div class="page-subtitle">{ fmtInt(len(d.Cats)) } kategori terdaftar</div>
+		</div>
 	</div>
 	<div class="grid-2">
-		<div class="card">
-			<h2>Tambah Kategori</h2>
+		<div class="panel" style="padding:20px">
+			<div class="panel-title" style="margin-bottom:14px"><i class="ti ti-plus icon" style="color:var(--accent)"></i> Tambah Kategori</div>
 			<form method="post" action="/categories" class="stack">
-				<label>Nama Kategori
-					<input type="text" name="name" required placeholder="cth: Alat Kebersihan"/>
-				</label>
-				<button type="submit" class="btn btn-primary">Tambah</button>
+				<label>Nama Kategori<input type="text" name="name" required placeholder="cth: Alat Kebersihan"/></label>
+				<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-plus icon"></i> Tambah</button>
 			</form>
 		</div>
-		<div class="card">
-			<h2>Daftar ({ fmtInt(len(d.Cats)) })</h2>
-			<table class="data-table">
-				<thead><tr><th>Nama</th><th>Aksi</th></tr></thead>
-				<tbody>
-					for _, c := range d.Cats {
-						<tr>
-							<td>{ c.Name }</td>
-							<td class="row-actions">
-								<button type="button" class="btn-link" onclick={ templ.JSFuncCall("toggleRename", c.ID) }>Edit</button>
-								<form method="post" action={ templ.URL("/categories/" + c.ID + "/delete") } class="inline"
-									onsubmit="return confirm('Hapus kategori ini?')">
-									<button type="submit" class="btn-link danger">Hapus</button>
-								</form>
-							</td>
-						</tr>
-						<tr id={ "rename-" + c.ID } class="hidden">
-							<td colspan="2">
-								<form method="post" action={ templ.URL("/categories/" + c.ID + "/rename") } class="inline-form">
-									<input type="text" name="name" value={ c.Name } required/>
-									<button type="submit" class="btn btn-primary btn-sm">Simpan</button>
-									<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", c.ID) }>Batal</button>
-								</form>
-							</td>
-						</tr>
-					}
-				</tbody>
-			</table>
+		<div class="panel">
+			<div class="panel-head">
+				<span class="panel-title"><i class="ti ti-list icon" style="color:var(--accent)"></i> Daftar ({ fmtInt(len(d.Cats)) })</span>
+			</div>
+			<div class="table-responsive">
+				<table class="data-table">
+					<thead><tr><th>Nama</th><th>Aksi</th></tr></thead>
+					<tbody>
+						for _, c := range d.Cats {
+							<tr>
+								<td><strong>{ c.Name }</strong></td>
+								<td>
+									<div class="row-actions">
+										<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", c.ID) }><i class="ti ti-pencil icon"></i></button>
+										<form method="post" action={ templ.URL("/categories/" + c.ID + "/delete") } class="inline"
+											onsubmit="return confirm('Hapus kategori ini?')">
+											<button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-trash icon"></i></button>
+										</form>
+									</div>
+								</td>
+							</tr>
+							<tr id={ "rename-" + c.ID } class="hidden">
+								<td colspan="2">
+									<form method="post" action={ templ.URL("/categories/" + c.ID + "/rename") } class="inline-form">
+										<input type="text" name="name" value={ c.Name } required/>
+										<button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-check icon"></i></button>
+										<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", c.ID) }><i class="ti ti-x icon"></i></button>
+									</form>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
 			if len(d.Cats) == 0 {
-				<p class="muted">Belum ada kategori.</p>
+				<div class="empty"><i class="ti ti-category-2 empty-icon"></i><div class="empty-title">Belum ada kategori</div></div>
 			}
 		</div>
 	</div>
-}
-
-templ toggleRename() {
 	<script>
-		function toggleRename(id){
-			var el = document.getElementById('rename-'+id);
-			el.classList.toggle('hidden');
-		}
+		function toggleRename(id){ document.getElementById('rename-'+id).classList.toggle('hidden'); }
 	</script>
 }

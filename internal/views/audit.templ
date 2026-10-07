@@ -1,0 +1,42 @@
+package views
+
+// AuditLog — halaman audit trail.
+templ AuditLog(d AuditData) {
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-shield-check icon" style="color:var(--accent)"></i> Audit Log</h1>
+			<div class="page-subtitle">{ fmtInt(d.Total) } perubahan terakhir (auto oleh trigger Postgres)</div>
+		</div>
+	</div>
+	<div class="panel">
+		<div class="table-responsive">
+			<table class="data-table">
+				<thead><tr><th>Waktu</th><th>Tabel</th><th>Aksi</th><th>Row ID</th></tr></thead>
+				<tbody>
+					for _, a := range d.Rows {
+						<tr>
+							<td class="muted">{ fmtTimeA(a.At) }</td>
+							<td>{ a.Table }</td>
+							<td><span class={ "badge " + auditBadge(a.Op) }>{ a.Op }</span></td>
+							<td><code>{ a.RowID }</code></td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		if len(d.Rows) == 0 {
+			<div class="empty"><i class="ti ti-shield-check empty-icon"></i><div class="empty-title">Belum ada aktivitas</div></div>
+		}
+	</div>
+}
+
+func auditBadge(op string) string {
+	switch op {
+	case "INSERT":
+		return "badge-in"
+	case "DELETE":
+		return "badge-out"
+	default:
+		return "badge-adj"
+	}
+}

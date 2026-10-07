@@ -1,23 +1,23 @@
 package views
 
-import (
-	"inventariskantor/internal/models"
-)
+import "inventariskantor/internal/models"
 
-// ---------- Kelola User (admin) ----------
-
+// Users — kelola pengguna (admin).
 type UsersData struct {
 	User  UserInfo
 	Users []models.UserRow
 }
 
 templ Users(d UsersData) {
-	<div class="page-head">
-		<h1>Kelola Pengguna</h1>
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-users-group icon" style="color:var(--accent)"></i> Kelola Pengguna</h1>
+			<div class="page-subtitle">{ fmtInt(len(d.Users)) } pengguna terdaftar</div>
+		</div>
 	</div>
 	<div class="grid-2">
-		<div class="card">
-			<h2>Tambah / Reset Pengguna</h2>
+		<div class="panel" style="padding:20px">
+			<div class="panel-title" style="margin-bottom:14px"><i class="ti ti-user-plus icon" style="color:var(--accent)"></i> Tambah / Reset</div>
 			<form method="post" action="/users" class="stack">
 				<label>Nama<input type="text" name="name" required/></label>
 				<label>Email<input type="email" name="email" required/></label>
@@ -28,112 +28,77 @@ templ Users(d UsersData) {
 						<option value="admin">Admin</option>
 					</select>
 				</label>
-				<button type="submit" class="btn btn-primary">Simpan</button>
+				<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-device-floppy icon"></i> Simpan</button>
 			</form>
 		</div>
-		<div class="card">
-			<h2>Daftar ({ fmtInt(len(d.Users)) })</h2>
-			<table class="data-table">
-				<thead><tr><th>Nama</th><th>Email</th><th>Role</th><th></th></tr></thead>
-				<tbody>
-					for _, u := range d.Users {
-						<tr>
-							<td>{ u.Name }</td>
-							<td>{ u.Email }</td>
-							<td>{ u.Role }</td>
-							<td class="row-actions">
-								if u.Role == "petugas" {
-									<form method="post" action={ templ.URL("/users/" + u.Email + "/role") } class="inline">
-										<input type="hidden" name="role" value="admin"/>
-										<button type="submit" class="btn-link">Jadikan Admin</button>
-									</form>
-								} else {
-									<form method="post" action={ templ.URL("/users/" + u.Email + "/role") } class="inline">
-										<input type="hidden" name="role" value="petugas"/>
-										<button type="submit" class="btn-link">Jadikan Petugas</button>
-									</form>
-								}
-								<form method="post" action={ templ.URL("/users/" + u.Email + "/delete") } class="inline"
-									onsubmit="return confirm('Hapus user ini?')">
-									<button type="submit" class="btn-link danger">Hapus</button>
-								</form>
-							</td>
-						</tr>
-					}
-				</tbody>
-			</table>
+		<div class="panel">
+			<div class="panel-head">
+				<span class="panel-title"><i class="ti ti-list icon" style="color:var(--accent)"></i> Daftar ({ fmtInt(len(d.Users)) })</span>
+			</div>
+			<div class="table-responsive">
+				<table class="data-table">
+					<thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Aksi</th></tr></thead>
+					<tbody>
+						for _, u := range d.Users {
+							<tr>
+								<td><strong>{ u.Name }</strong></td>
+								<td class="muted">{ u.Email }</td>
+								<td><span class={ "badge " + roleBadge(u.Role) }>{ u.Role }</span></td>
+								<td>
+									<div class="row-actions">
+										<form method="post" action={ templ.URL("/users/" + u.Email + "/role") } class="inline">
+											<input type="hidden" name="role" value={ toggleRole(u.Role) }/>
+											<button type="submit" class="btn btn-sm"><i class="ti ti-refresh icon"></i></button>
+										</form>
+										<form method="post" action={ templ.URL("/users/" + u.Email + "/delete") } class="inline"
+											onsubmit="return confirm('Hapus user ini?')">
+											<button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-trash icon"></i></button>
+										</form>
+									</div>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
 		</div>
 	</div>
 }
 
-// ---------- Ganti password sendiri ----------
+func roleBadge(r string) string {
+	if r == "admin" {
+		return "badge-role"
+	}
+	return "badge-ok"
+}
 
+func toggleRole(r string) string {
+	if r == "admin" {
+		return "petugas"
+	}
+	return "admin"
+}
+
+// Password — ganti password sendiri.
 templ Password(user UserInfo, msg string, isErr bool) {
-	<h1>Ganti Password</h1>
-	<div class="card" style="max-width:420px">
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-key icon" style="color:var(--accent)"></i> Ganti Password</h1>
+		</div>
+	</div>
+	<div class="panel" style="max-width:440px; padding:22px">
 		if msg != "" {
 			if isErr {
-				<div class="alert alert-error">{ msg }</div>
+				<div class="alert" style="background:rgba(239,68,68,.1); color:#DC2626; padding:10px 14px; border-radius:10px; margin-bottom:14px">{ msg }</div>
 			} else {
-				<div class="alert alert-info">{ msg }</div>
+				<div class="alert" style="background:var(--accent-soft); color:var(--accent-dark); padding:10px 14px; border-radius:10px; margin-bottom:14px">{ msg }</div>
 			}
 		}
 		<form method="post" action="/password" class="stack">
 			<label>Password Lama<input type="password" name="old" required/></label>
 			<label>Password Baru (min 8)<input type="password" name="new" required minlength="8"/></label>
 			<label>Ulangi Password Baru<input type="password" name="confirm" required minlength="8"/></label>
-			<button type="submit" class="btn btn-primary">Simpan</button>
+			<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-device-floppy icon"></i> Simpan</button>
 		</form>
-	</div>
-}
-
-// ---------- Master Lokasi ----------
-
-type LocationsData struct {
-	User UserInfo
-	Locs []models.Location
-}
-
-templ Locations(d LocationsData) {
-	<div class="page-head">
-		<h1>Lokasi / Ruangan</h1>
-	</div>
-	<div class="grid-2">
-		<div class="card">
-			<h2>Tambah Lokasi</h2>
-			<form method="post" action="/locations" class="stack">
-				<label>Nama Ruangan<input type="text" name="name" required placeholder="cth: Ruang Poli Lt 2"/></label>
-				<button type="submit" class="btn btn-primary">Tambah</button>
-			</form>
-		</div>
-		<div class="card">
-			<h2>Daftar ({ fmtInt(len(d.Locs)) })</h2>
-			<table class="data-table">
-				<thead><tr><th>Nama</th><th>Aksi</th></tr></thead>
-				<tbody>
-					for _, l := range d.Locs {
-						<tr>
-							<td>{ l.Name }</td>
-							<td class="row-actions">
-								<button type="button" class="btn-link" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) }>Edit</button>
-								<form method="post" action={ templ.URL("/locations/" + l.ID + "/delete") } class="inline"
-									onsubmit="return confirm('Hapus lokasi ini?')">
-									<button type="submit" class="btn-link danger">Hapus</button>
-								</form>
-							</td>
-						</tr>
-						<tr id={ "rename-loc-" + l.ID } class="hidden">
-							<td colspan="2">
-								<form method="post" action={ templ.URL("/locations/" + l.ID + "/rename") } class="inline-form">
-									<input type="text" name="name" value={ l.Name } required/>
-									<button type="submit" class="btn btn-primary btn-sm">Simpan</button>
-									<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) }>Batal</button>
-								</form>
-							</td>
-						</tr>
-					}
-				</tbody>
-			</table>
-		</div>
 	</div>
 }

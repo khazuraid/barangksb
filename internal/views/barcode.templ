@@ -1,42 +1,51 @@
 package views
 
+// BarcodePage — generator QR code + cetak label.
 templ BarcodePage(d BarcodeData) {
-	<h1>Generator QR Code</h1>
-	<div class="card">
-		<h2>Generator QR Code</h2>
-		<p class="muted">Setiap barang punya QR unik. Scan QR → buka halaman detail barang (publik, tanpa login). Centang lalu cetak label.</p>
-		<table class="data-table">
-			<thead><tr><th></th><th>SKU</th><th>Nama</th><th>Preview</th></tr></thead>
-			<tbody>
-				for _, it := range d.Items {
-					<tr>
-						<td><input type="checkbox" class="sheet-check" value={ it.ID }/></td>
-						<td><code>{ it.SKU }</code></td>
-						<td>{ it.Name }</td>
-						<td><img src={ templ.URL("/barcode/" + it.ID + ".png?fmt=qr") } alt={ "QR " + it.SKU } height="60"/></td>
-					</tr>
-				}
-			</tbody>
-		</table>
-		<div class="actions">
-			<button type="button" class="btn btn-primary" onclick="printSheet()">🖨 Cetak Label Terpilih</button>
-			<button type="button" class="btn" onclick="selectAll()">Pilih Semua</button>
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-qrcode icon" style="color:var(--accent)"></i> QR Generator</h1>
+			<div class="page-subtitle">Setiap barang punya QR unik. Scan QR → buka halaman detail (publik, tanpa login).</div>
+		</div>
+	</div>
+	<div class="panel">
+		<div class="table-responsive">
+			<table class="data-table">
+				<thead><tr><th></th><th>SKU</th><th>Nama</th><th>Preview QR</th></tr></thead>
+				<tbody>
+					for _, it := range d.Items {
+						<tr>
+							<td><input type="checkbox" class="sheet-check" value={ it.ID }/></td>
+							<td><code>{ it.SKU }</code></td>
+							<td>{ it.Name }</td>
+							<td><img src={ templ.URL("/barcode/" + it.ID + ".png?fmt=qr") } alt="" class="qr-thumb"/></td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		<div class="panel-foot d-flex gap-2">
+			<button type="button" class="btn btn-primary" onclick="printSheet()"><i class="ti ti-printer icon"></i> Cetak Terpilih</button>
+			<button type="button" class="btn" onclick="selectAll()"><i class="ti ti-checkbox icon"></i> Pilih Semua</button>
 		</div>
 	</div>
 }
 
+// BarcodeSheet — halaman cetak label.
 templ BarcodeSheet(items []ItemRow) {
 	<!DOCTYPE html>
 	<html lang="id">
 		<head>
 			<meta charset="utf-8"/>
-			<title>Label Barcode</title>
+			<title>Label QR</title>
+			<link rel="stylesheet" href="/static/vendor/icons/tabler-icons.min.css"/>
+			<link rel="stylesheet" href="/static/css/theme.css"/>
 			<style>
-				body { font-family: Arial, sans-serif; margin: 10mm; }
-				.label-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; }
-				.label { text-align: center; border: 1px dashed #ccc; padding: 4px; page-break-inside: avoid; }
-				.label .name { font-size: 11px; font-weight: bold; }
-				.label .sku { font-size: 10px; font-family: monospace; }
+				body { background: #fff; margin: 12mm; font-family: var(--font); }
+				.label-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; }
+				.label { text-align: center; border: 1px dashed #ddd; border-radius: 10px; padding: 6px; page-break-inside: avoid; }
+				.label .name { font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+				.label .sku { font-size: 10px; font-family: monospace; color: #666; }
 			</style>
 		</head>
 		<body onload="window.print()">
@@ -44,7 +53,7 @@ templ BarcodeSheet(items []ItemRow) {
 				for _, it := range items {
 					<div class="label">
 						<div class="name">{ it.Name }</div>
-						<img src={ templ.URL("/barcode/" + it.ID + ".png?fmt=qr") } height="70"/>
+						<img src={ templ.URL("/barcode/" + it.ID + ".png?fmt=qr") } height="60"/>
 						<div class="sku">{ it.SKU }</div>
 					</div>
 				}

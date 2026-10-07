@@ -1,0 +1,61 @@
+package views
+
+// Locations — master lokasi/ruangan.
+templ Locations(d LocationsData) {
+	<div class="page-header">
+		<div>
+			<h1 class="page-title"><i class="ti ti-map-pin icon" style="color:var(--accent)"></i> Lokasi / Ruangan</h1>
+			<div class="page-subtitle">{ fmtInt(len(d.Locs)) } lokasi terdaftar</div>
+		</div>
+	</div>
+	<div class="grid-2">
+		<div class="panel" style="padding:20px">
+			<div class="panel-title" style="margin-bottom:14px"><i class="ti ti-plus icon" style="color:var(--accent)"></i> Tambah Lokasi</div>
+			<form method="post" action="/locations" class="stack">
+				<label>Nama Ruangan<input type="text" name="name" required placeholder="cth: Ruang Poli Lt 2"/></label>
+				<button type="submit" class="btn btn-primary btn-block"><i class="ti ti-plus icon"></i> Tambah</button>
+			</form>
+		</div>
+		<div class="panel">
+			<div class="panel-head">
+				<span class="panel-title"><i class="ti ti-list icon" style="color:var(--accent)"></i> Daftar ({ fmtInt(len(d.Locs)) })</span>
+			</div>
+			<div class="table-responsive">
+				<table class="data-table">
+					<thead><tr><th>Nama</th><th>Aksi</th></tr></thead>
+					<tbody>
+						for _, l := range d.Locs {
+							<tr>
+								<td><strong>{ l.Name }</strong></td>
+								<td>
+									<div class="row-actions">
+										<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) }><i class="ti ti-pencil icon"></i></button>
+										<form method="post" action={ templ.URL("/locations/" + l.ID + "/delete") } class="inline"
+											onsubmit="return confirm('Hapus lokasi ini?')">
+											<button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-trash icon"></i></button>
+										</form>
+									</div>
+								</td>
+							</tr>
+							<tr id={ "rename-loc-" + l.ID } class="hidden">
+								<td colspan="2">
+									<form method="post" action={ templ.URL("/locations/" + l.ID + "/rename") } class="inline-form">
+										<input type="text" name="name" value={ l.Name } required/>
+										<button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-check icon"></i></button>
+										<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) }><i class="ti ti-x icon"></i></button>
+									</form>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+			if len(d.Locs) == 0 {
+				<div class="empty"><i class="ti ti-map-pin empty-icon"></i><div class="empty-title">Belum ada lokasi</div></div>
+			}
+		</div>
+	</div>
+	<script>
+		function toggleRename(id){ document.getElementById('rename-'+id).classList.toggle('hidden'); }
+	</script>
+}

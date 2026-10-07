@@ -10,15 +10,17 @@ type UserInfo struct {
 	Active string // path aktif untuk highlight navbar
 }
 
-type ItemsData struct {
+
+
+
+
+type MovementData struct {
 	User  UserInfo
-	Items []ItemRow
-	Query string
-	Cat   string
-	Loc   string
 	Cats  []string
 	Locs  []string
-	Pager Pager
+	SKU   string
+	Items []ItemRow
+	Tab   string
 }
 
 type ItemRow struct {
@@ -32,40 +34,15 @@ type ItemRow struct {
 	Condition    string
 }
 
-type ItemFormData struct {
-	User UserInfo
-	Item *ItemFormValues
-	Cats []string
-	Locs []string
-}
-
-type ItemFormValues struct {
-	ID              string
-	SKU, Name       string
-	Category        string
-	Location        string
-	CurrentStock    int
-	MinStock        int
-	Unit            string
-	PricePerUnit    int64
-	Description     string
-	Merk            string
-	TypeModel       string
-	SerialNumber    string
-	ProcurementYear string
-	ConditionStatus string
-	FundingSource   string
-	Distributor     string
-	AklAkd          string
-}
-
-type MovementData struct {
+type ItemsData struct {
 	User  UserInfo
+	Items []ItemRow
+	Query string
+	Cat   string
+	Loc   string
 	Cats  []string
 	Locs  []string
-	SKU   string
-	Items []ItemRow
-	Tab   string
+	Pager PaginationData
 }
 
 type CategoriesData struct {
@@ -99,4 +76,9 @@ type DriveSyncData struct {
 	Configured bool
 	LastRun    string
 	Result     string
+}
+
+type LocationsData struct {
+	User UserInfo
+	Locs []models.Location
 }
