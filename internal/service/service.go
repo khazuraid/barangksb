@@ -315,21 +315,23 @@ func (s *Service) ListTransactions(ctx context.Context, f TXFilter) ([]models.St
 
 // ---------- Categories ----------
 
-func (s *Service) ListCategories(ctx context.Context) ([]models.Category, error) {
+func (s *Service) ListCategories(ctx context.Context) ([]models.Category, int, error) {
+	var total int
+	s.Pool.QueryRow(ctx, `SELECT count(*) FROM categories`).Scan(&total)
 	rows, err := s.Pool.Query(ctx, `SELECT id, name FROM categories ORDER BY name`)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var out []models.Category
 	for rows.Next() {
 		var c models.Category
 		if err := rows.Scan(&c.ID, &c.Name); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 func (s *Service) CategoryNames(ctx context.Context) ([]string, error) {
@@ -342,21 +344,23 @@ func (s *Service) CategoryNames(ctx context.Context) ([]string, error) {
 
 // ---------- Locations ----------
 
-func (s *Service) ListLocations(ctx context.Context) ([]models.Location, error) {
+func (s *Service) ListLocations(ctx context.Context) ([]models.Location, int, error) {
+	var total int
+	s.Pool.QueryRow(ctx, `SELECT count(*) FROM locations`).Scan(&total)
 	rows, err := s.Pool.Query(ctx, `SELECT id, name FROM locations ORDER BY name`)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var out []models.Location
 	for rows.Next() {
 		var l models.Location
 		if err := rows.Scan(&l.ID, &l.Name); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, l)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 func (s *Service) LocationNames(ctx context.Context) ([]string, error) {

@@ -22,7 +22,7 @@ func (h *Handlers) APIItems(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := serviceItemFilter{
 		Query: q.Get("q"), Cat: q.Get("cat"), Loc: q.Get("loc"),
-		Page: pageParam(r), PerPage: 50,
+		Page: pageParam(r), PerPage: perPageParam(r),
 	}
 	items, total, err := h.svc.ListItems(r.Context(), f)
 	if err != nil {

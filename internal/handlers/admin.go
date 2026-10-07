@@ -92,12 +92,16 @@ func (h *Handlers) PasswordPost(w http.ResponseWriter, r *http.Request) {
 // ---------- Master Lokasi (admin only) ----------
 
 func (h *Handlers) LocationsList(w http.ResponseWriter, r *http.Request) {
-	locs, err := h.svc.ListLocations(r.Context())
+	locs, total, err := h.svc.ListLocations(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.show(w, r, "Lokasi", views.Locations(views.LocationsData{User: userInfo(r), Locs: locs}))
+	h.show(w, r, "Lokasi", views.Locations(views.LocationsData{
+		User:  userInfo(r),
+		Locs:  locs,
+		Total: total,
+	}))
 }
 
 func (h *Handlers) LocationsCreate(w http.ResponseWriter, r *http.Request) {

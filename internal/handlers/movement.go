@@ -145,7 +145,7 @@ func (h *Handlers) History(w http.ResponseWriter, r *http.Request) {
 	f := serviceTXFilter{
 		SKU: q.Get("sku"), Type: q.Get("type"),
 		From: q.Get("from"), To: q.Get("to"),
-		Page: pageParam(r), PerPage: 50,
+		Page: pageParam(r), PerPage: perPageParam(r),
 	}
 	txs, total, err := h.svc.ListTransactions(r.Context(), f)
 	if err != nil {

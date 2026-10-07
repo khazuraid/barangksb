@@ -20,7 +20,7 @@ import (
 )
 
 func (h *Handlers) BarcodePage(w http.ResponseWriter, r *http.Request) {
-	f := service.ItemFilter{Page: pageParam(r), PerPage: 24}
+	f := service.ItemFilter{Page: pageParam(r), PerPage: perPageParam(r)}
 	items, total, err := h.svc.ListItems(r.Context(), f)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

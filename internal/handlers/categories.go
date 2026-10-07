@@ -20,7 +20,11 @@ func (h *Handlers) CategoriesList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.show(w, r, "Kategori", views.Categories(views.CategoriesData{User: userInfo(r), Cats: cats}))
+	h.show(w, r, "Kategori", views.Categories(views.CategoriesData{
+		User:  userInfo(r),
+		Cats:  cats,
+		Total: len(cats),
+	}))
 }
 
 func (h *Handlers) CategoriesCreate(w http.ResponseWriter, r *http.Request) {

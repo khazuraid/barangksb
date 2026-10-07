@@ -196,64 +196,7 @@ func wibLoc() *time.Location {
 }
 
 
-// ---------- Pager ----------
-
-type Pager struct {
-	Page    int
-	PerPage int
-	Total   int
-	BaseURL string
-	MaxShow int
-}
-
-func (p Pager) Pages() int {
-	if p.PerPage < 1 {
-		return 1
-	}
-	n := p.Total / p.PerPage
-	if p.Total%p.PerPage > 0 {
-		n++
-	}
-	if n < 1 {
-		n = 1
-	}
-	return n
-}
-
-func (p Pager) HasPrev() bool { return p.Page > 1 }
-func (p Pager) HasNext() bool { return p.Page < p.Pages() }
-
-func (p Pager) Window() []int {
-	if p.MaxShow < 1 {
-		p.MaxShow = 7
-	}
-	total := p.Pages()
-	start := p.Page - p.MaxShow/2
-	if start < 1 {
-		start = 1
-	}
-	end := start + p.MaxShow - 1
-	if end > total {
-		end = total
-		start = end - p.MaxShow + 1
-		if start < 1 {
-			start = 1
-		}
-	}
-	out := make([]int, 0, end-start+1)
-	for i := start; i <= end; i++ {
-		out = append(out, i)
-	}
-	return out
-}
-
-func (p Pager) URL(page int) string {
-	sep := "?"
-	if strings.Contains(p.BaseURL, "?") {
-		sep = "&"
-	}
-	return fmt.Sprintf("%s%spage=%d", p.BaseURL, sep, page)
-}
+// Pager = alias views.PaginationData
 
 // ---------- render & mapping ----------
 
@@ -360,6 +303,17 @@ func pageParam(r *http.Request) int {
 	return p
 }
 
+// perPageParam parses ?per_page=N, default 25, options: 20/50/100.
+func perPageParam(r *http.Request) int {
+	pp, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	switch pp {
+	case 20, 50, 100:
+		return pp
+	default:
+		return 25
+	}
+}
+
 // buildPager constructs the Pager preserving other query params.
 func buildPager(r *http.Request, page, perPage, total int) views.Pager {
 	q := r.URL.Query()
@@ -368,7 +322,9 @@ func buildPager(r *http.Request, page, perPage, total int) views.Pager {
 	if enc := q.Encode(); enc != "" {
 		base += "?" + enc
 	}
-	return views.Pager{Page: page, PerPage: perPage, Total: total, BaseURL: base, MaxShow: 7}
+	p := views.Pager{Page: page, PerPage: perPage, Total: total, BaseURL: base, MaxShow: 7}
+	p.PerPageOptions = []int{20, 25, 50, 100}
+	return p
 }
 
 func isDuplicateErr(err error) bool {

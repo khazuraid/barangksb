@@ -6,8 +6,9 @@ import (
 
 // CategoriesData — halaman kategori.
 type CategoriesData struct {
-	User UserInfo
-	Cats []models.Category
+	User  UserInfo
+	Cats  []models.Category
+	Total int
 }
 
 // Categories — tabel card layout sama dengan halaman Barang.
@@ -79,8 +80,9 @@ templ Categories(d CategoriesData) {
 
 // LocationsData — halaman lokasi.
 type LocationsData struct {
-	User UserInfo
-	Locs []models.Location
+	User  UserInfo
+	Locs  []models.Location
+	Total int
 }
 
 // Locations — tabel card layout sama dengan Kategori.

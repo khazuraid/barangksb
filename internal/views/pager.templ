@@ -1,25 +1,34 @@
 package views
 
-// Pagination renders the pager bar.
+// Pagination renders the pager bar with per-page selector.
 templ Pagination(p PaginationData) {
-	if p.Pages() > 1 {
-		<div class="d-flex align-items-center flex-wrap gap-1">
+	<div class="d-flex align-items-center flex-wrap gap-1">
+		if p.Pages() > 1 {
 			if p.HasPrev() {
-				<a href={ templ.URL(p.URL(p.Page-1)) } class="btn btn-sm">‹</a>
+				<a href={ templ.URL(p.URL(p.Page-1)) } class="pager-btn">‹</a>
 			}
 			for _, pg := range p.Window() {
 				if pg == p.Page {
-					<button class="btn btn-sm btn-primary">{ fmtInt(pg) }</button>
+					<span class="pager-btn pager-current">{ fmtInt(pg) }</span>
 				} else {
-					<a href={ templ.URL(p.URL(pg)) } class="btn btn-sm">{ fmtInt(pg) }</a>
+					<a href={ templ.URL(p.URL(pg)) } class="pager-btn">{ fmtInt(pg) }</a>
 				}
 			}
 			if p.HasNext() {
-				<a href={ templ.URL(p.URL(p.Page+1)) } class="btn btn-sm">›</a>
+				<a href={ templ.URL(p.URL(p.Page+1)) } class="pager-btn">›</a>
 			}
-			<span class="text-secondary ms-auto" style="font-size:.75rem">{ fmtInt(p.Total) } data — hal. { fmtInt(p.Page) }/{ fmtInt(p.Pages()) }</span>
-		</div>
-	} else {
-		<span class="text-secondary" style="font-size:.75rem">{ fmtInt(p.Total) } data</span>
-	}
+		}
+		<span class="pager-info">{ fmtInt(p.Total) } data — hal. { fmtInt(p.Page) }/{ fmtInt(p.Pages()) }</span>
+		if len(p.PerPageOptions) > 0 {
+			<select onchange="window.location=this.value" style="margin-left:auto;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:.75rem;background:var(--surface)">
+				for _, opt := range p.PerPageOptions {
+					if opt == p.PerPage {
+						<option value={ perPageURL(p.BaseURL, opt) } selected>{ fmtInt(opt) } / hal</option>
+					} else {
+						<option value={ perPageURL(p.BaseURL, opt) }>{ fmtInt(opt) } / hal</option>
+					}
+				}
+			</select>
+		}
+	</div>
 }

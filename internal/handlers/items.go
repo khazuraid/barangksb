@@ -16,7 +16,7 @@ func (h *Handlers) ItemsList(w http.ResponseWriter, r *http.Request) {
 		Cat:     q.Get("cat"),
 		Loc:     q.Get("loc"),
 		Page:    pageParam(r),
-		PerPage: 25,
+		PerPage: perPageParam(r),
 	}
 	items, total, err := h.svc.ListItems(r.Context(), f)
 	if err != nil {

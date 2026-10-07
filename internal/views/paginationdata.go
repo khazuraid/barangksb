@@ -7,11 +7,12 @@ import (
 
 // PaginationData: view-safe pager (tanpa import cycle).
 type PaginationData struct {
-	Page    int
-	PerPage int
-	Total   int
-	BaseURL string
-	MaxShow int
+	Page           int
+	PerPage        int
+	Total          int
+	BaseURL        string
+	MaxShow        int
+	PerPageOptions []int
 }
 
 func (p PaginationData) Pages() int {
@@ -65,3 +66,11 @@ func (p PaginationData) URL(page int) string {
 
 // Pager = alias PaginationData (dipakai di data structs).
 type Pager = PaginationData
+
+func perPageURL(base string, pp int) string {
+	sep := "?"
+	if strings.Contains(base, "?") {
+		sep = "&"
+	}
+	return fmt.Sprintf("%s%sper_page=%d", base, sep, pp)
+}
