@@ -10,7 +10,7 @@ type CategoriesData struct {
 	Cats []models.Category
 }
 
-// Categories — grid card layout (bukan tabel), tambah di atas, list sebagai card grid.
+// Categories — tabel card layout sama dengan halaman Barang.
 templ Categories(d CategoriesData) {
 	<div class="page-header">
 		<div>
@@ -19,58 +19,62 @@ templ Categories(d CategoriesData) {
 		</div>
 	</div>
 
-	<div class="card" style="margin-bottom:20px">
-		<div class="card-head">
-			<span class="card-title"><i class="ti ti-plus" style="color:var(--accent)"></i> Tambah Kategori Baru</span>
-		</div>
-		<div class="card-body">
+	<!-- form tambah: card tipis di atas -->
+	<div class="card" style="margin-bottom:16px">
+		<div class="card-body" style="padding:14px 18px">
 			<form method="post" action="/categories" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
 				<div style="flex:1;min-width:200px">
 					<label>Nama Kategori</label>
-					<input type="text" name="name" required placeholder="cth: Alat Kebersihan & Sanitasi"/>
+					<input type="text" name="name" required placeholder="cth: Alat Kebersihan"/>
 				</div>
 				<button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Tambah</button>
 			</form>
 		</div>
 	</div>
 
-	if len(d.Cats) == 0 {
-		<div class="card">
-			<div class="empty">
-				<i class="ti ti-category-2 empty-icon"></i>
-				<div class="empty-title">Belum ada kategori</div>
-				<div>Tambahkan kategori pertama di atas.</div>
-			</div>
+	<!-- daftar: tabel card -->
+	<div class="card">
+		<div class="card-head">
+			<span class="card-title"><i class="ti ti-list" style="color:var(--accent)"></i> Daftar Kategori</span>
 		</div>
-	} else {
-		<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">
-			for _, c := range d.Cats {
-				<div class="card" style="padding:18px" x-data="{ editing:false }">
-					<div x-show="!editing" style="display:flex;align-items:center;justify-content:space-between">
-						<div style="display:flex;align-items:center;gap:10px">
-							<span class="stat-icon green" style="width:36px;height:36px;margin:0;font-size:1rem"><i class="ti ti-category"></i></span>
-							<div>
-								<div style="font-weight:700;font-size:.9rem">{ c.Name }</div>
-								<div class="muted" style="font-size:.72rem"><code>{ c.ID }</code></div>
-							</div>
-						</div>
-						<div class="row-actions">
-							<button type="button" class="icon-btn" @click="editing=true" title="Edit"><i class="ti ti-pencil"></i></button>
-							<form method="post" action={ templ.URL("/categories/" + c.ID + "/delete") } class="inline"
-								onsubmit="return confirm('Hapus kategori ini?')">
-								<button type="submit" class="icon-btn danger" title="Hapus"><i class="ti ti-trash"></i></button>
-							</form>
-						</div>
-					</div>
-					<form x-show="editing" style="display:none;flex-direction:row;gap:6px;align-items:center" method="post" action={ templ.URL("/categories/" + c.ID + "/rename") }>
-						<input type="text" name="name" value={ c.Name } required style="flex:1"/>
-						<button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-check"></i></button>
-						<button type="button" class="btn btn-sm" @click="editing=false"><i class="ti ti-x"></i></button>
-					</form>
-				</div>
-			}
+		<div class="table-wrap">
+			<table class="tbl">
+				<thead><tr><th>Nama</th><th>Slug</th><th>Aksi</th></tr></thead>
+				<tbody>
+					for _, c := range d.Cats {
+						<tr>
+							<td><strong>{ c.Name }</strong></td>
+							<td class="muted"><code>{ c.ID }</code></td>
+							<td>
+								<div class="row-actions">
+									<button type="button" class="icon-btn" onclick={ templ.JSFuncCall("toggleRename", c.ID) } title="Edit"><i class="ti ti-pencil"></i></button>
+									<form method="post" action={ templ.URL("/categories/" + c.ID + "/delete") } class="inline"
+										onsubmit="return confirm('Hapus kategori ini?')">
+										<button type="submit" class="icon-btn danger" title="Hapus"><i class="ti ti-trash"></i></button>
+									</form>
+								</div>
+							</td>
+						</tr>
+						<tr id={ "rename-" + c.ID } class="hidden">
+							<td colspan="3">
+								<form method="post" action={ templ.URL("/categories/" + c.ID + "/rename") } class="inline-form">
+									<input type="text" name="name" value={ c.Name } required style="flex:1"/>
+									<button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-check"></i></button>
+									<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", c.ID) }><i class="ti ti-x"></i></button>
+								</form>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
 		</div>
-	}
+		if len(d.Cats) == 0 {
+			<div class="empty"><i class="ti ti-category-2 empty-icon"></i><div class="empty-title">Belum ada kategori</div></div>
+		}
+	</div>
+	<script>
+		function toggleRename(id){ document.getElementById('rename-'+id).classList.toggle('hidden'); }
+	</script>
 }
 
 // LocationsData — halaman lokasi.
@@ -79,7 +83,7 @@ type LocationsData struct {
 	Locs []models.Location
 }
 
-// Locations — grid card layout sama dengan kategori.
+// Locations — tabel card layout sama dengan Kategori.
 templ Locations(d LocationsData) {
 	<div class="page-header">
 		<div>
@@ -88,11 +92,8 @@ templ Locations(d LocationsData) {
 		</div>
 	</div>
 
-	<div class="card" style="margin-bottom:20px">
-		<div class="card-head">
-			<span class="card-title"><i class="ti ti-plus" style="color:var(--accent)"></i> Tambah Lokasi Baru</span>
-		</div>
-		<div class="card-body">
+	<div class="card" style="margin-bottom:16px">
+		<div class="card-body" style="padding:14px 18px">
 			<form method="post" action="/locations" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
 				<div style="flex:1;min-width:200px">
 					<label>Nama Ruangan</label>
@@ -103,41 +104,46 @@ templ Locations(d LocationsData) {
 		</div>
 	</div>
 
-	if len(d.Locs) == 0 {
-		<div class="card">
-			<div class="empty">
-				<i class="ti ti-map-pin empty-icon"></i>
-				<div class="empty-title">Belum ada lokasi</div>
-				<div>Tambahkan lokasi pertama di atas.</div>
-			</div>
+	<div class="card">
+		<div class="card-head">
+			<span class="card-title"><i class="ti ti-list" style="color:var(--accent)"></i> Daftar Lokasi</span>
 		</div>
-	} else {
-		<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">
-			for _, l := range d.Locs {
-				<div class="card" style="padding:18px" x-data="{ editing:false }">
-					<div x-show="!editing" style="display:flex;align-items:center;justify-content:space-between">
-						<div style="display:flex;align-items:center;gap:10px">
-							<span class="stat-icon blue" style="width:36px;height:36px;margin:0;font-size:1rem"><i class="ti ti-building"></i></span>
-							<div>
-								<div style="font-weight:700;font-size:.9rem">{ l.Name }</div>
-								<div class="muted" style="font-size:.72rem"><code>{ l.ID }</code></div>
-							</div>
-						</div>
-						<div class="row-actions">
-							<button type="button" class="icon-btn" @click="editing=true" title="Edit"><i class="ti ti-pencil"></i></button>
-							<form method="post" action={ templ.URL("/locations/" + l.ID + "/delete") } class="inline"
-								onsubmit="return confirm('Hapus lokasi ini?')">
-								<button type="submit" class="icon-btn danger" title="Hapus"><i class="ti ti-trash"></i></button>
-							</form>
-						</div>
-					</div>
-					<form x-show="editing" style="display:none;flex-direction:row;gap:6px;align-items:center" method="post" action={ templ.URL("/locations/" + l.ID + "/rename") }>
-						<input type="text" name="name" value={ l.Name } required style="flex:1"/>
-						<button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-check"></i></button>
-						<button type="button" class="btn btn-sm" @click="editing=false"><i class="ti ti-x"></i></button>
-					</form>
-				</div>
-			}
+		<div class="table-wrap">
+			<table class="tbl">
+				<thead><tr><th>Nama</th><th>Slug</th><th>Aksi</th></tr></thead>
+				<tbody>
+					for _, l := range d.Locs {
+						<tr>
+							<td><strong>{ l.Name }</strong></td>
+							<td class="muted"><code>{ l.ID }</code></td>
+							<td>
+								<div class="row-actions">
+									<button type="button" class="icon-btn" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) } title="Edit"><i class="ti ti-pencil"></i></button>
+									<form method="post" action={ templ.URL("/locations/" + l.ID + "/delete") } class="inline"
+										onsubmit="return confirm('Hapus lokasi ini?')">
+										<button type="submit" class="icon-btn danger" title="Hapus"><i class="ti ti-trash"></i></button>
+									</form>
+								</div>
+							</td>
+						</tr>
+						<tr id={ "rename-loc-" + l.ID } class="hidden">
+							<td colspan="3">
+								<form method="post" action={ templ.URL("/locations/" + l.ID + "/rename") } class="inline-form">
+									<input type="text" name="name" value={ l.Name } required style="flex:1"/>
+									<button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-check"></i></button>
+									<button type="button" class="btn btn-sm" onclick={ templ.JSFuncCall("toggleRename", "loc-"+l.ID) }><i class="ti ti-x"></i></button>
+								</form>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
 		</div>
-	}
+		if len(d.Locs) == 0 {
+			<div class="empty"><i class="ti ti-map-pin empty-icon"></i><div class="empty-title">Belum ada lokasi</div></div>
+		}
+	</div>
+	<script>
+		function toggleRename(id){ document.getElementById('rename-'+id).classList.toggle('hidden'); }
+	</script>
 }

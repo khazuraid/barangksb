@@ -8,7 +8,7 @@ package views
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// BarcodePage — generator QR code + cetak label.
+// BarcodePage — grid card QR preview per barang, bukan tabel.
 func BarcodePage(d BarcodeData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -30,81 +30,82 @@ func BarcodePage(d BarcodeData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-qrcode\"></i> QR Generator</h1><div class=\"page-subtitle\">Centang barang lalu cetak label QR. Scan QR → buka halaman detail publik.</div></div></div><div class=\"card\"><div class=\"card-head\"><span class=\"card-title\"><i class=\"ti ti-list-check\" style=\"color:var(--accent)\"></i> Pilih Barang</span><div class=\"d-flex gap-2\"><button type=\"button\" class=\"btn btn-sm btn-primary\" onclick=\"printSheet()\"><i class=\"ti ti-printer\"></i> Cetak Terpilih</button> <button type=\"button\" class=\"btn btn-sm\" onclick=\"selectAll()\"><i class=\"ti ti-checkbox\"></i> Pilih Semua</button></div></div><div class=\"table-wrap\"><table class=\"tbl\"><thead><tr><th></th><th>SKU</th><th>Nama</th><th>QR Preview</th></tr></thead> <tbody>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		for _, it := range d.Items {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<tr><td><input type=\"checkbox\" class=\"sheet-check\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var2 string
-			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.ID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 26, Col: 67}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"></td><td><code>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 27, Col: 25}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</code></td><td><strong>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var4 string
-			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 28, Col: 28}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</strong></td><td><img src=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var5 string
-			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/barcode/" + it.ID + ".png?fmt=qr"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 29, Col: 68}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" alt=\"\" class=\"qr-thumb\"></td></tr>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</tbody></table></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-qrcode\"></i> QR Generator</h1><div class=\"page-subtitle\">Pilih barang untuk cetak label QR. Scan QR → buka halaman detail publik.</div></div><div class=\"d-flex gap-2\"><button type=\"button\" class=\"btn btn-sm btn-primary\" onclick=\"printSheet()\"><i class=\"ti ti-printer\"></i> Cetak Terpilih</button> <button type=\"button\" class=\"btn btn-sm\" onclick=\"selectAll()\"><i class=\"ti ti-checkbox\"></i> Pilih Semua</button></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(d.Items) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"empty\"><i class=\"ti ti-qrcode empty-icon\"></i><div class=\"empty-title\">Belum ada barang</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"card\"><div class=\"empty\"><i class=\"ti ti-qrcode empty-icon\"></i><div class=\"empty-title\">Belum ada barang</div><div>Tambahkan barang untuk generate QR code.</div><a href=\"/items/new\" class=\"btn btn-primary\" style=\"margin-top:12px\"><i class=\"ti ti-plus\"></i> Tambah Barang</a></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for _, it := range d.Items {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<label class=\"card\" style=\"padding:16px;text-align:center;cursor:pointer;display:block\" x-data=\"{ checked:false }\"><input type=\"checkbox\" class=\"sheet-check\" value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var2 string
+				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.ID)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 29, Col: 61}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" style=\"display:none\" @change=\"checked=$event.target.checked\"><div style=\"position:relative;margin-bottom:8px\"><img src=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var3 string
+				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/barcode/" + it.ID + ".png?fmt=qr"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 31, Col: 63}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" alt=\"\" style=\"width:100px;height:100px;border-radius:10px;border:2px solid var(--border)\"> <span x-show=\"checked\" style=\"position:absolute;top:-4px;right:-4px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:none;align-items:center;justify-content:center;font-size:14px\"><i class=\"ti ti-check\"></i></span></div><div style=\"font-weight:700;font-size:.82rem;margin-bottom:2px\" class=\"text-truncate-40\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var4 string
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 36, Col: 103}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><code>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var5 string
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 37, Col: 19}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</code></label>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
 		return nil
 	})
@@ -132,7 +133,7 @@ func BarcodeSheet(items []ItemRow) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><title>Label QR</title><link rel=\"stylesheet\" href=\"/static/vendor/icons/tabler-icons.min.css\"><link rel=\"stylesheet\" href=\"/static/css/theme.css\"><style>\n\t\t\t\tbody { background:#fff; margin:12mm; font-family:var(--font); }\n\t\t\t\t.label-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8mm; }\n\t\t\t\t.label { text-align:center; border:1px dashed #ccc; border-radius:10px; padding:6px; page-break-inside:avoid; }\n\t\t\t\t.label .name { font-size:11px; font-weight:700; margin-bottom:4px; }\n\t\t\t\t.label .sku { font-size:10px; font-family:monospace; color:#666; }\n\t\t\t</style></head><body onload=\"window.print()\"><div class=\"label-grid\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><title>Label QR</title><style>\n\t\t\t\tbody { background:#fff; margin:12mm; font-family:\"Inter\",sans-serif; }\n\t\t\t\t.label-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8mm; }\n\t\t\t\t.label { text-align:center; border:1px dashed #ccc; border-radius:10px; padding:8px; page-break-inside:avoid; }\n\t\t\t\t.label .name { font-size:11px; font-weight:700; margin-bottom:4px; }\n\t\t\t\t.label .sku { font-size:10px; font-family:monospace; color:#666; }\n\t\t\t</style></head><body onload=\"window.print()\"><div class=\"label-grid\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -144,7 +145,7 @@ func BarcodeSheet(items []ItemRow) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 62, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 63, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -157,7 +158,7 @@ func BarcodeSheet(items []ItemRow) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/barcode/" + it.ID + ".png?fmt=qr"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 63, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 64, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -170,7 +171,7 @@ func BarcodeSheet(items []ItemRow) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 64, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `barcode.templ`, Line: 65, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {

@@ -8,7 +8,7 @@ package views
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// Movement — 3 tab: masuk / keluar / opname.
+// Movement — single column, form first, scanner collapsible.
 func Movement(d MovementData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -30,7 +30,7 @@ func Movement(d MovementData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-arrows-exchange\"></i> Mutasi Barang</h1><div class=\"page-subtitle\">Catat pergerakan stok — masuk, keluar, atau penyesuaian</div></div></div><div class=\"tabs\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header\"><div><h1 class=\"page-title\"><i class=\"ti ti-arrows-exchange\"></i> Mutasi Barang</h1><div class=\"page-subtitle\">Catat pergerakan stok</div></div></div><div class=\"tabs\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -52,7 +52,7 @@ func Movement(d MovementData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"><i class=\"ti ti-arrow-down\"></i> Masuk</a> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"><i class=\"ti ti-arrow-down\"></i> Barang Masuk</a> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -74,7 +74,7 @@ func Movement(d MovementData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"><i class=\"ti ti-arrow-up\"></i> Keluar</a> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"><i class=\"ti ti-arrow-up\"></i> Barang Keluar</a> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -96,252 +96,256 @@ func Movement(d MovementData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\"><i class=\"ti ti-adjustments\"></i> Opname</a></div><div style=\"display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start\" class=\"mv-grid\"><!-- panel kiri: scanner --><div class=\"card\"><div class=\"card-head\"><span class=\"card-title\"><i class=\"ti ti-qrcode\" style=\"color:var(--accent)\"></i> Scan / Cari</span></div><div class=\"card-body\"><label>SKU</label> <input type=\"text\" id=\"movement-sku\" value=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.SKU)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 24, Col: 54}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" placeholder=\"Scan QR / ketik SKU…\" autofocus><div style=\"margin-top:10px\"><button type=\"button\" class=\"btn btn-block\" id=\"btn-scan\"><i class=\"ti ti-camera\"></i> Buka Kamera</button></div><div id=\"scanner-box\" class=\"hidden\" style=\"margin-top:10px\"></div><div id=\"item-lookup\" class=\"muted\" style=\"font-size:.78rem;margin-top:10px\">Ketik SKU untuk mencari…</div></div></div><!-- panel kanan: form --><div class=\"card\"><div class=\"card-head\"><span class=\"card-title\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\"><i class=\"ti ti-adjustments\"></i> Stok Opname</a></div><!-- form: full width, primary focus --><div class=\"card\" style=\"margin-bottom:16px\"><div class=\"card-head\"><span class=\"card-title\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.Tab == "out" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<i class=\"ti ti-arrow-up\" style=\"color:var(--danger)\"></i> Form Barang Keluar")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<i class=\"ti ti-arrow-up\" style=\"color:var(--danger)\"></i> Catat Barang Keluar")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if d.Tab == "adjust" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<i class=\"ti ti-adjustments\" style=\"color:var(--warn)\"></i> Form Stok Opname")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<i class=\"ti ti-adjustments\" style=\"color:var(--warn)\"></i> Stok Opname / Penyesuaian")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<i class=\"ti ti-arrow-down\" style=\"color:var(--accent)\"></i> Form Barang Masuk")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<i class=\"ti ti-arrow-down\" style=\"color:var(--accent)\"></i> Catat Barang Masuk")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></div><div class=\"card-body\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</span></div><div class=\"card-body\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.Tab == "out" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<form method=\"post\" action=\"/movement/out\" class=\"stack\"><label>Item *</label> <select name=\"item_id\" id=\"item-select\" required><option value=\"\">— pilih barang —</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<form method=\"post\" action=\"/movement/out\" class=\"stack\"><div class=\"grid-2-form\"><label>Item * <select name=\"item_id\" id=\"item-select\" required><option value=\"\">— pilih barang —</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, it := range d.Items {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<option value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var8 string
+				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.SKU)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 39, Col: 31}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
-				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.SKU)
+				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 53, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 39, Col: 43}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, " (")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var10 string
-				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
+				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 53, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 39, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " (")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, ") — stok ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var11 string
-				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
+				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(fmtInt(it.CurrentStock))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 53, Col: 54}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 39, Col: 93}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, ") — stok ")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var12 string
-				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(fmtInt(it.CurrentStock))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 53, Col: 92}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</option>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</option>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</select> <label>Jumlah Keluar *</label> <input type=\"number\" name=\"quantity\" min=\"1\" required placeholder=\"0\"> <label>Diberikan Kepada</label> <input type=\"text\" name=\"received_by\" placeholder=\"nama penerima\"> <label>Keterangan</label> <textarea name=\"notes\" rows=\"2\" placeholder=\"alasan keluar\"></textarea> <button type=\"submit\" class=\"btn btn-danger btn-block\"><i class=\"ti ti-arrow-up\"></i> Catat Keluar</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</select></label> <label>Jumlah Keluar * <input type=\"number\" name=\"quantity\" min=\"1\" required placeholder=\"0\"></label> <label>Diberikan Kepada <input type=\"text\" name=\"received_by\" placeholder=\"nama penerima\"></label> <label>No PO / Referensi <input type=\"text\" name=\"invoice_or_po_number\" placeholder=\"opsional\"></label></div><label>Keterangan <textarea name=\"notes\" rows=\"2\" placeholder=\"alasan keluar\"></textarea></label> <button type=\"submit\" class=\"btn btn-danger btn-block\"><i class=\"ti ti-arrow-up\"></i> Catat Barang Keluar</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if d.Tab == "adjust" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<form method=\"post\" action=\"/movement/adjust\" class=\"stack\"><label>Item *</label> <select name=\"item_id\" id=\"item-select\" required><option value=\"\">— pilih barang —</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<form method=\"post\" action=\"/movement/adjust\" class=\"stack\"><div class=\"grid-2-form\"><label>Item * <select name=\"item_id\" id=\"item-select\" required><option value=\"\">— pilih barang —</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, it := range d.Items {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<option value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var12 string
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.SKU)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 65, Col: 31}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var13 string
-				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.SKU)
+				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 70, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 65, Col: 43}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, " (")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var14 string
-				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
+				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 70, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 65, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, " (")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ") — stok sistem ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var15 string
-				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
+				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmtInt(it.CurrentStock))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 70, Col: 54}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 65, Col: 100}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, ") — stok sistem ")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var16 string
-				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmtInt(it.CurrentStock))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 70, Col: 99}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</option>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</option>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</select> <label>Stok Fisik Aktual *</label> <input type=\"number\" name=\"quantity\" min=\"0\" required placeholder=\"0\"> <label>Catatan Opname</label> <textarea name=\"notes\" rows=\"2\" placeholder=\"alasan penyesuaian\"></textarea> <button type=\"submit\" class=\"btn btn-primary btn-block\"><i class=\"ti ti-check\"></i> Simpan Penyesuaian</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</select></label> <label>Stok Fisik Aktual * <input type=\"number\" name=\"quantity\" min=\"0\" required placeholder=\"0\"></label></div><label>Catatan Opname <textarea name=\"notes\" rows=\"2\" placeholder=\"alasan penyesuaian\"></textarea></label> <button type=\"submit\" class=\"btn btn-primary btn-block\"><i class=\"ti ti-check\"></i> Simpan Penyesuaian</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<form method=\"post\" action=\"/movement\" class=\"stack\" enctype=\"multipart/form-data\"><input type=\"hidden\" name=\"geo_lat\" id=\"geo_lat\"> <input type=\"hidden\" name=\"geo_lng\" id=\"geo_lng\"> <input type=\"hidden\" name=\"geo_acc\" id=\"geo_acc\"> <input type=\"hidden\" name=\"geo_name\" id=\"geo_name\"> <label>Item *</label> <select name=\"item_id\" id=\"item-select\" required><option value=\"\">— pilih barang —</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<form method=\"post\" action=\"/movement\" class=\"stack\" enctype=\"multipart/form-data\"><input type=\"hidden\" name=\"geo_lat\" id=\"geo_lat\"> <input type=\"hidden\" name=\"geo_lng\" id=\"geo_lng\"> <input type=\"hidden\" name=\"geo_acc\" id=\"geo_acc\"> <input type=\"hidden\" name=\"geo_name\" id=\"geo_name\"><div class=\"grid-2-form\"><label>Item * <select name=\"item_id\" id=\"item-select\" required><option value=\"\">— pilih barang —</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, it := range d.Items {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<option value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var16 string
+				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.ID)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 89, Col: 30}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var17 string
-				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(it.ID)
+				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 89, Col: 29}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 89, Col: 42}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, " (")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var18 string
-				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
+				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 89, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 89, Col: 54}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, " (")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var19 string
-				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(it.SKU)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 89, Col: 53}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, ")</option>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, ")</option>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</select> <label>Jumlah Masuk *</label> <input type=\"number\" name=\"quantity\" min=\"1\" required placeholder=\"0\"> <label>Petugas Penerima</label> <input type=\"text\" name=\"received_by\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</select></label> <label>Jumlah Masuk * <input type=\"number\" name=\"quantity\" min=\"1\" required placeholder=\"0\"></label> <label>Petugas Penerima <input type=\"text\" name=\"received_by\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.User.Name)
+			var templ_7745c5c3_Var19 string
+			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.User.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 95, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 97, Col: 64}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\"> <label>Distributor / Vendor</label> <input type=\"text\" name=\"supplier_or_source\" placeholder=\"nama distributor\"> <label>No PO / Surat Jalan</label> <input type=\"text\" name=\"invoice_or_po_number\" placeholder=\"nomor PO\"> <label>Foto Bukti (dikompres + geotag card)</label> <input type=\"file\" name=\"photo\" accept=\"image/*\" capture=\"environment\"> <label>Keterangan</label> <textarea name=\"notes\" rows=\"2\"></textarea> <button type=\"submit\" class=\"btn btn-primary btn-block\"><i class=\"ti ti-arrow-down\"></i> Catat Masuk</button></form>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"></label> <label>Distributor / Vendor <input type=\"text\" name=\"supplier_or_source\" placeholder=\"nama distributor\"></label> <label>No PO / Surat Jalan <input type=\"text\" name=\"invoice_or_po_number\" placeholder=\"nomor PO\"></label> <label>Kondisi <select name=\"condition_status\"><option>Berfungsi</option> <option>Rusak Ringan</option> <option>Rusak Berat</option> <option>Perlu Kalibrasi</option></select></label></div><label>Foto Bukti Fisik (opsional — dikompres + geotag card otomatis) <input type=\"file\" name=\"photo\" accept=\"image/*\" capture=\"environment\"></label> <label>Keterangan <textarea name=\"notes\" rows=\"2\"></textarea></label> <button type=\"submit\" class=\"btn btn-primary btn-block\"><i class=\"ti ti-arrow-down\"></i> Catat Barang Masuk</button></form>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</div></div><!-- scanner + geotag: secondary, below form --><div class=\"card\"><div class=\"card-head\"><span class=\"card-title\"><i class=\"ti ti-qrcode\" style=\"color:var(--accent)\"></i> Scan / Geotag</span></div><div class=\"card-body\"><div class=\"grid-2-form\"><label>Scan SKU <input type=\"text\" id=\"movement-sku\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var20 string
+		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.SKU)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `movement.templ`, Line: 132, Col: 55}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" placeholder=\"Scan QR atau ketik SKU…\"></label> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
 		}
 		if d.Tab != "adjust" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<button type=\"button\" class=\"btn btn-block\" id=\"btn-geotag\" style=\"margin-top:10px\"><i class=\"ti ti-map-pin\"></i> Ambil Geotag</button> <span id=\"geotag-status\" class=\"muted\" style=\"font-size:.76rem\"></span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<label>Geotag <button type=\"button\" class=\"btn btn-block\" id=\"btn-geotag\"><i class=\"ti ti-map-pin\"></i> Ambil Lokasi GPS</button></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</div></div></div><script src=\"/static/js/vendor/html5-qrcode.min.js\" defer></script><script src=\"/static/js/scanner.js\" defer></script><script src=\"/static/js/geotag.js\" defer></script><style>\n\t\t@media (max-width: 768px) { .mv-grid { grid-template-columns: 1fr !important; } }\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</div><div style=\"margin-top:10px\"><button type=\"button\" class=\"btn btn-block\" id=\"btn-scan\"><i class=\"ti ti-camera\"></i> Buka Kamera Scanner</button></div><div id=\"scanner-box\" class=\"hidden\" style=\"margin-top:10px\"></div><div id=\"item-lookup\" class=\"muted\" style=\"font-size:.78rem;margin-top:8px\"></div><span id=\"geotag-status\" class=\"muted\" style=\"font-size:.76rem\"></span></div></div><script src=\"/static/js/vendor/html5-qrcode.min.js\" defer></script><script src=\"/static/js/scanner.js\" defer></script><script src=\"/static/js/geotag.js\" defer></script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
