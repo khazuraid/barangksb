@@ -27,6 +27,9 @@ templ AuditLog(d AuditData) {
 		if len(d.Rows) == 0 {
 			<div class="empty"><i class="ti ti-shield-check empty-icon"></i><div class="empty-title">Belum ada aktivitas</div></div>
 		}
+		<div class="card-foot">
+			@Pagination(d.Pager)
+		</div>
 	</div>
 }
 
