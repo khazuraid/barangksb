@@ -20,12 +20,17 @@ import (
 )
 
 func (h *Handlers) BarcodePage(w http.ResponseWriter, r *http.Request) {
-	items, _, err := h.svc.ListItems(r.Context(), service.ItemFilter{PerPage: 200})
+	f := service.ItemFilter{Page: pageParam(r), PerPage: 24}
+	items, total, err := h.svc.ListItems(r.Context(), f)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.show(w, r, "QR Code", views.BarcodePage(views.BarcodeData{User: userInfo(r), Items: itemRows(items)}))
+	h.show(w, r, "QR Code", views.BarcodePage(views.BarcodeData{
+		User:  userInfo(r),
+		Items: itemRows(items),
+		Pager: buildPager(r, f.Page, f.PerPage, total),
+	}))
 }
 
 // BarcodeSheet renders a printable label sheet: GET /barcode/sheet?ids=a,b,c

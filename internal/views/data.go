@@ -42,6 +42,7 @@ type TXRow struct {
 type BarcodeData struct {
 	User  UserInfo
 	Items []ItemRow
+	Pager PaginationData
 }
 
 type DriveSyncData struct {

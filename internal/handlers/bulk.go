@@ -39,17 +39,31 @@ func (h *Handlers) BulkAdjustRun(w http.ResponseWriter, r *http.Request) {
 // ---------- F4: audit log UI ----------
 
 func (h *Handlers) AuditLogPage(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.svc.ListAuditLog(r.Context(), 200)
+	pg := pageParam(r)
+	perPage := 50
+	rows, err := h.svc.ListAuditLog(r.Context(), perPage*10) // fetch enough; pager handles slice
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	vrows := make([]views.AuditRow, 0, len(rows))
-	for _, a := range rows {
+	// manual slice pagination (ListAuditLog returns by limit)
+	total := len(rows)
+	start := (pg - 1) * perPage
+	if start > total {
+		start = total
+	}
+	end := start + perPage
+	if end > total {
+		end = total
+	}
+	paged := rows[start:end]
+	vrows := make([]views.AuditRow, 0, len(paged))
+	for _, a := range paged {
 		vrows = append(vrows, views.AuditRow{Table: a.Table, Op: a.Op, RowID: a.RowID, At: a.At})
 	}
 	h.show(w, r, "Audit Log", views.AuditLog(views.AuditData{
-		User: userInfo(r), Rows: vrows, Total: len(vrows),
+		User: userInfo(r), Rows: vrows, Total: total,
+		Pager: buildPager(r, pg, perPage, total),
 	}))
 }
 
