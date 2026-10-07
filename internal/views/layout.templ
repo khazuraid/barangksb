@@ -1,6 +1,6 @@
 package views
 
-// SidebarItem satu entri menu.
+// TopnavItem untuk sidebar.
 type SidebarItem struct {
 	Href  string
 	Icon  string
@@ -15,8 +15,8 @@ type sidebarGroup struct {
 }
 
 var sidebarGroups = []sidebarGroup{
-	{"Menu Utama", []SidebarItem{
-		{"/", "ti-dashboard", "Dashboard", false},
+	{"Menu", []SidebarItem{
+		{"/", "ti-layout-dashboard", "Dashboard", false},
 		{"/items", "ti-box-seam", "Barang", false},
 		{"/categories", "ti-category-2", "Kategori", false},
 		{"/locations", "ti-map-pin", "Lokasi", false},
@@ -36,9 +36,7 @@ var sidebarGroups = []sidebarGroup{
 	}, true},
 }
 
-var _ = templ.URL
-
-// Layout shell utama: sidebar gelap + topbar glass + konten.
+// Layout: sidebar collapsible + topbar glass + bento content.
 templ Layout(title string, user UserInfo, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="id">
@@ -55,8 +53,8 @@ templ Layout(title string, user UserInfo, content templ.Component) {
 			if user.Name != "" {
 				<aside class="app-sidebar" id="sidebar">
 					<a href="/" class="sidebar-brand">
-						<span class="brand-logo">IK</span>
-						Inventaris
+						<span class="brand-mark">IK</span>
+						<span>Inventaris</span>
 					</a>
 					<nav class="sidebar-nav">
 						for _, g := range sidebarGroups {
@@ -69,7 +67,8 @@ templ Layout(title string, user UserInfo, content templ.Component) {
 									continue
 								}
 								<a href={ templ.URL(it.Href) } class={ "sidebar-link", activeClass(it.Href, user.Active) }>
-									<i class={ "ti " + it.Icon }></i> { it.Label }
+									<i class={ "ti " + it.Icon }></i>
+									<span>{ it.Label }</span>
 								</a>
 							}
 						}
@@ -89,10 +88,13 @@ templ Layout(title string, user UserInfo, content templ.Component) {
 				</aside>
 				<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
-				<div class="app-main">
+				<div class="app-main" id="app-main">
 					<header class="topbar">
 						<button type="button" class="hamburger d-lg-none" onclick="toggleSidebar()" aria-label="Menu">
 							<i class="ti ti-menu-2"></i>
+						</button>
+						<button type="button" class="hamburger" style="display:flex" onclick="toggleCollapse()" aria-label="Collapse">
+							<i class="ti ti-layout-sidebar-left-collapse"></i>
 						</button>
 						<span class="topbar-title">{ user.ActiveTitle() }</span>
 						<div class="topbar-actions">

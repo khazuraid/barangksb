@@ -44,6 +44,15 @@ function toggleSidebar() {
   if (ov) ov.classList.toggle('show');
 }
 
+// ---- sidebar collapse (desktop) ----
+function toggleCollapse() {
+  var sb = document.getElementById('sidebar');
+  var main = document.getElementById('app-main');
+  if (!sb) return;
+  sb.classList.toggle('collapsed');
+  if (main) main.classList.toggle('expanded');
+}
+
 // close sidebar on nav click (mobile)
 document.addEventListener('click', function(e) {
   var link = e.target.closest('.sidebar-link');
