@@ -31,6 +31,10 @@ const location = ref('')
 const onlyLow = ref(false)
 const loading = ref(true)
 
+const categories = ref<any[]>([])
+const locations = ref<any[]>([])
+const perPageOptions = [25, 50, 100]
+
 // --- Import Excel / CSV state ---
 const importVisible = ref(false)
 const importing = ref(false)
