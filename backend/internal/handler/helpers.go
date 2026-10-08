@@ -15,7 +15,7 @@ func fmtSprintf(format string, args ...any) string {
 func configPerPage(c *gin.Context) int {
 	pp, _ := strconv.Atoi(c.DefaultQuery("per_page", "25"))
 	switch pp {
-	case 20, 50, 100:
+	case 25, 50, 100:
 		return pp
 	default:
 		return 25

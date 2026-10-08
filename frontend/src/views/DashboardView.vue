@@ -1,147 +1,132 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import api from '@/api'
-import Card from 'primevue/card'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import PageHeader from '@/components/PageHeader.vue'
+import StatCard from '@/components/StatCard.vue'
+import Panel from '@/components/Panel.vue'
+import StatusChip from '@/components/StatusChip.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import { Bar } from 'vue-chartjs'
-import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
+import { Chart as ChartJS, Tooltip, BarElement, CategoryScale, LinearScale } from 'chart.js'
 
-ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
+ChartJS.register(Tooltip, BarElement, CategoryScale, LinearScale)
 
-const stats = ref({ total_items: 0, total_stock: 0, low_stock: [] as any[], recent_tx: [] as any[], stock_by_cat: {} as Record<string, number> })
+const router = useRouter()
+const stats = ref<any>({ total_items: 0, total_stock: 0, low_stock: [], recent_tx: [], stock_by_cat: {} })
 const loading = ref(true)
 
 onMounted(async () => {
-  try {
-    const res = await api.get('/dashboard')
-    stats.value = res.data
-  } finally {
-    loading.value = false
-  }
+  try { stats.value = (await api.get('/dashboard')).data } finally { loading.value = false }
 })
 
-const chartData = computed(() => {
-  const entries = Object.entries(stats.value.stock_by_cat || {})
-  return {
-    labels: entries.map(e => e[0]),
-    datasets: [{ label: 'Stok', data: entries.map(e => e[1]), backgroundColor: '#10B981', borderRadius: 8 }],
-  }
-})
-const chartOptions = { responsive: true, plugins: { legend: { display: false } } }
+const catEntries = computed(() => Object.entries(stats.value.stock_by_cat || {}) as [string, number][])
+const catMax = computed(() => Math.max(1, ...catEntries.value.map(e => e[1])))
+
+const chartData = computed(() => ({
+  labels: catEntries.value.map(e => e[0]),
+  datasets: [{ data: catEntries.value.map(e => e[1]), backgroundColor: '#f5a524', hoverBackgroundColor: '#d98806', borderRadius: 3, barThickness: 26 }],
+}))
+const chartOptions = {
+  indexAxis: 'y' as const,
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { grid: { color: '#ecf0f5' }, ticks: { font: { size: 10 }, color: '#8791a3' } },
+    y: { grid: { display: false }, ticks: { font: { size: 10.5 }, color: '#3d4759' } },
+  },
+}
 </script>
 
 <template>
-  <div v-if="loading" class="flex justify-center py-12">
-    <i class="pi pi-spin pi-spinner text-4xl text-emerald-500"></i>
-  </div>
-  <div v-else class="flex flex-col gap-4">
-    <!-- Stat cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card class="shadow-sm">
-        <template #content>
-          <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-              <i class="pi pi-box text-2xl text-emerald-600 dark:text-emerald-400"></i>
-            </div>
-            <div>
-              <div class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ stats.total_items }}</div>
-              <div class="text-xs text-gray-500 uppercase font-semibold tracking-wide">Jenis Barang</div>
-            </div>
-          </div>
-        </template>
-      </Card>
-      <Card class="shadow-sm">
-        <template #content>
-          <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-              <i class="pi pi-folder-open text-2xl text-violet-600 dark:text-violet-400"></i>
-            </div>
-            <div>
-              <div class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ stats.total_stock }}</div>
-              <div class="text-xs text-gray-500 uppercase font-semibold tracking-wide">Total Unit</div>
-            </div>
-          </div>
-        </template>
-      </Card>
-      <Card class="shadow-sm">
-        <template #content>
-          <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <i class="pi pi-exclamation-triangle text-2xl text-red-600 dark:text-red-400"></i>
-            </div>
-            <div>
-              <div class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ stats.low_stock?.length || 0 }}</div>
-              <div class="text-xs text-gray-500 uppercase font-semibold tracking-wide">Stok Menipis</div>
-            </div>
-          </div>
-        </template>
-      </Card>
-      <Card class="shadow-sm">
-        <template #content>
-          <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <i class="pi pi-tags text-2xl text-amber-600 dark:text-amber-400"></i>
-            </div>
-            <div>
-              <div class="text-2xl font-bold text-gray-800 dark:text-gray-100">{{ Object.keys(stats.stock_by_cat || {}).length }}</div>
-              <div class="text-xs text-gray-500 uppercase font-semibold tracking-wide">Kategori</div>
-            </div>
-          </div>
-        </template>
-      </Card>
-    </div>
-
-    <!-- Chart + Low stock -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <Card class="shadow-sm">
-        <template #title><i class="pi pi-chart-bar text-emerald-500 mr-2"></i>Stok per Kategori</template>
-        <template #content>
-          <Bar :data="chartData" :options="chartOptions" />
-        </template>
-      </Card>
-      <Card class="shadow-sm">
-        <template #title><i class="pi pi-exclamation-triangle text-red-500 mr-2"></i>Perlu Restock</template>
-        <template #content>
-          <div v-if="!stats.low_stock?.length" class="text-center py-8 text-gray-400">
-            <i class="pi pi-check-circle text-4xl text-emerald-400 mb-2"></i>
-            <div>Semua stok aman</div>
-          </div>
-          <div v-else class="flex flex-col gap-2">
-            <div v-for="item in stats.low_stock" :key="item.sku" class="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-800">
-              <div>
-                <div class="font-medium text-sm">{{ item.name }}</div>
-                <code class="text-xs text-gray-400">{{ item.sku }}</code>
-              </div>
-              <Tag severity="danger" :value="`${item.current}/${item.min} ${item.unit}`" />
-            </div>
-          </div>
-        </template>
-      </Card>
-    </div>
-
-    <!-- Recent transactions -->
-    <Card class="shadow-sm">
-      <template #title><i class="pi pi-clock text-emerald-500 mr-2"></i>Mutasi Terbaru</template>
-      <template #content>
-        <DataTable :value="stats.recent_tx" :rows="8" responsiveLayout="scroll" class="p-datatable-sm">
-          <Column field="item_name" header="Barang">
-            <template #body="{ data }">
-              <strong>{{ data.item_name }}</strong> <code class="text-xs text-gray-400">{{ data.item_sku }}</code>
-            </template>
-          </Column>
-          <Column field="type" header="Jenis" style="width: 100px">
-            <template #body="{ data }">
-              <Tag :severity="data.type === 'IN' ? 'success' : data.type === 'OUT' ? 'danger' : 'warn'" :value="data.type" />
-            </template>
-          </Column>
-          <Column field="quantity" header="Qty" style="width: 100px">
-            <template #body="{ data }">{{ data.quantity }} {{ data.unit }}</template>
-          </Column>
-        </DataTable>
+  <div>
+    <PageHeader crumb="Ringkasan" title="Dashboard"
+      sub="Kondisi stok dan pergerakan barang terkini">
+      <template #actions>
+        <Button label="Mutasi" icon="pi pi-plus" size="small" @click="router.push('/movement')" />
+        <Button label="Barang" icon="pi pi-box" size="small" severity="secondary" outlined
+                @click="router.push('/items')" />
       </template>
-    </Card>
+    </PageHeader>
+
+    <div v-if="loading" class="grid place-items-center py-20">
+      <i class="pi pi-spin pi-spinner text-xl" style="color: var(--txt-dim)" />
+    </div>
+
+    <template v-else>
+      <!-- KPI row -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Jenis Barang" :value="stats.total_items" icon="pi pi-box" hint="SKU terdaftar" />
+        <StatCard label="Total Unit" :value="stats.total_stock" icon="pi pi-database" tone="accent" hint="Akumulasi seluruh stok" />
+        <StatCard label="Stok Menipis" :value="stats.low_stock?.length || 0" icon="pi pi-exclamation-triangle"
+                  :tone="(stats.low_stock?.length || 0) > 0 ? 'bad' : 'ok'" hint="Stok ≤ batas minimum" />
+        <StatCard label="Transaksi Terakhir" :value="stats.recent_tx?.length || 0" icon="pi pi-history"
+                  hint="8 pergerakan terbaru" />
+      </div>
+
+      <div class="grid lg:grid-cols-[1.35fr_1fr] gap-4 mb-4">
+        <!-- chart -->
+        <Panel title="Sebaran Stok per Kategori" icon="pi pi-chart-bar">
+          <EmptyState v-if="!catEntries.length" icon="pi pi-chart-bar" title="Belum ada data stok"
+                      sub="Tambahkan barang untuk melihat sebaran per kategori." />
+          <div v-else style="height: 300px"><Bar :data="chartData" :options="chartOptions" /></div>
+        </Panel>
+
+        <!-- low stock -->
+        <Panel title="Perlu Perhatian" icon="pi pi-exclamation-triangle" dense>
+          <EmptyState v-if="!stats.low_stock?.length" icon="pi pi-check-circle" tone="ok"
+                      title="Semua stok aman" sub="Tidak ada barang di bawah batas minimum." />
+          <ul v-else class="divide-y" style="border-color: var(--line)">
+            <li v-for="l in stats.low_stock" :key="l.sku"
+                class="flex items-center gap-3 px-4 py-2.5 hover:bg-paper-2 transition-colors cursor-pointer"
+                @click="router.push('/items')">
+              <div class="flex-1 min-w-0">
+                <div class="text-[12.5px] font-semibold truncate">{{ l.name }}</div>
+                <div class="t-mono" style="color: var(--txt-dim)">{{ l.sku }} · {{ l.location }}</div>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="t-num text-[13px] font-bold text-sig-bad">{{ l.current }}</div>
+                <div class="t-label !text-[9.5px]">min {{ l.min }}</div>
+              </div>
+            </li>
+          </ul>
+        </Panel>
+      </div>
+
+      <!-- recent tx -->
+      <Panel title="Pergerakan Terbaru" icon="pi pi-history" dense>
+        <template #actions>
+          <Button label="Lihat semua" icon="pi pi-arrow-right" iconPos="right" text size="small"
+                  @click="router.push('/history')" />
+        </template>
+        <EmptyState v-if="!stats.recent_tx?.length" icon="pi pi-history" title="Belum ada pergerakan"
+                    sub="Catat barang masuk atau keluar untuk memulai jejak transaksi." />
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-[12.5px]">
+            <thead>
+              <tr class="text-left" style="background: var(--paper-2)">
+                <th class="t-label px-4 py-2.5">Waktu</th>
+                <th class="t-label px-4 py-2.5">Barang</th>
+                <th class="t-label px-4 py-2.5">Jenis</th>
+                <th class="t-label px-4 py-2.5 text-right">Jumlah</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y" style="border-color: var(--line-soft)">
+              <tr v-for="(t, i) in stats.recent_tx" :key="i" class="hover:bg-paper-2 transition-colors">
+                <td class="px-4 py-2.5 whitespace-nowrap" style="color: var(--txt-dim)">{{ t.time }}</td>
+                <td class="px-4 py-2.5">
+                  <span class="font-semibold">{{ t.item_name }}</span>
+                  <span class="t-mono ml-1.5" style="color: var(--txt-dim)">{{ t.item_sku }}</span>
+                </td>
+                <td class="px-4 py-2.5"><StatusChip :kind="t.type" /></td>
+                <td class="px-4 py-2.5 text-right t-num font-semibold">{{ t.quantity }} {{ t.unit }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+    </template>
   </div>
 </template>

@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,7 +36,7 @@ func (h *UserHandler) List(c *gin.Context) {
 	users := []user{}
 	for rows.Next() {
 		var u user
-		var ts interface{}
+		var ts time.Time
 		rows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &ts)
 		users = append(users, u)
 	}
@@ -131,26 +134,47 @@ func (h *UserHandler) DeleteLocation(c *gin.Context) {
 
 // Audit
 func (h *UserHandler) AuditLog(c *gin.Context) {
-	rows, err := h.pool.Query(c, `SELECT table_name, op, row_id, at FROM audit_log ORDER BY at DESC LIMIT 200`)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	perPage := configPerPage(c)
+	offset := (page - 1) * perPage
+
+	var total int
+	h.pool.QueryRow(c, `SELECT count(*) FROM audit_log`).Scan(&total)
+
+	rows, err := h.pool.Query(c, `SELECT table_name, op, row_id, old_data, new_data, at FROM audit_log ORDER BY at DESC LIMIT $1 OFFSET $2`, perPage, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	defer rows.Close()
 	type log struct {
-		Table  string `json:"table_name"`
-		Op     string `json:"op"`
-		RowID  string `json:"row_id"`
-		At     string `json:"at"`
+		Table   string          `json:"table_name"`
+		Op      string          `json:"op"`
+		RowID   string          `json:"row_id"`
+		OldData json.RawMessage `json:"old_data"`
+		NewData json.RawMessage `json:"new_data"`
+		At      string          `json:"at"`
 	}
 	logs := []log{}
 	for rows.Next() {
 		var l log
-		var ts interface{}
-		rows.Scan(&l.Table, &l.Op, &l.RowID, &ts)
+		var ts time.Time
+		var rowID *string
+		rows.Scan(&l.Table, &l.Op, &rowID, &l.OldData, &l.NewData, &ts)
+		if rowID != nil {
+			l.RowID = *rowID
+		}
+		l.At = ts.In(time.FixedZone("WIB", 7*3600)).Format("02-01-2006 15:04:05")
 		logs = append(logs, l)
 	}
-	c.JSON(http.StatusOK, logs)
+	pages := total / perPage
+	if total%perPage > 0 {
+		pages++
+	}
+	c.JSON(http.StatusOK, paginatedResp{Data: logs, Total: total, Page: page, PerPage: perPage, Pages: pages})
 }
 
 func slugify(s string) string {

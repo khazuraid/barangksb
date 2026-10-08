@@ -40,25 +40,22 @@ func TestNullableS(t *testing.T) {
 }
 
 func TestConfigPerPage(t *testing.T) {
-	// Test logic without gin.Context
-	assert.Equal(t, 20, perPageLogic("20"))
+	assert.Equal(t, 25, perPageLogic("25"))
 	assert.Equal(t, 50, perPageLogic("50"))
 	assert.Equal(t, 100, perPageLogic("100"))
-	assert.Equal(t, 25, perPageLogic("25"))
 	assert.Equal(t, 25, perPageLogic(""))
 	assert.Equal(t, 25, perPageLogic("999"))
+	assert.Equal(t, 25, perPageLogic("20"))
 }
 
 func perPageLogic(s string) int {
 	switch s {
-	case "20":
-		return 20
+	case "25":
+		return 25
 	case "50":
 		return 50
 	case "100":
 		return 100
-	case "":
-		return 25
 	default:
 		return 25
 	}

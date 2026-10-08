@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -155,6 +155,17 @@ func (h *ItemHandler) Delete(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
+
+	// Check if item has transactions — refuse to cascade-delete history
+	var txCount int
+	h.pool.QueryRow(c, `SELECT count(*) FROM stock_transactions WHERE item_id::text=$1`, id).Scan(&txCount)
+	if txCount > 0 {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "barang memiliki " + strconv.Itoa(txCount) + " transaksi terkait. Hapus/Arsipkan transaksi terlebih dahulu, atau set is_available=false untuk menonaktifkan.",
+		})
+		return
+	}
+
 	h.pool.Exec(c, `DELETE FROM inventory_items WHERE id=$1`, id)
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
@@ -193,8 +204,9 @@ func (h *ItemHandler) Dashboard(c *gin.Context) {
 	recent := []txRow{}
 	for txRows.Next() {
 		var t txRow
-		var ts interface{}
+		var ts time.Time
 		txRows.Scan(&ts, &t.Name, &t.SKU, &t.Qty, &t.Unit, &t.Type)
+		t.Time = ts.In(time.FixedZone("WIB", 7*3600)).Format("02-01-2006 15:04")
 		recent = append(recent, t)
 	}
 
@@ -241,7 +253,5 @@ func generateSKU(h *ItemHandler, c *gin.Context, category string) string {
 }
 
 func getCurrentYear() int {
-	return 2026 // simplified
+	return time.Now().Year()
 }
-
-var _ = uuid.New

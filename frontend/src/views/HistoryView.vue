@@ -1,44 +1,196 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import api from '@/api'
-import Card from 'primevue/card'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
-import Paginator from 'primevue/paginator'
+import PageHeader from '@/components/PageHeader.vue'
+import Panel from '@/components/Panel.vue'
+import StatusChip from '@/components/StatusChip.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
-const txs = ref([]); const total = ref(0); const page = ref(0); const perPage = ref(25)
-const sku = ref(''); const type = ref('')
-const typeOptions = [{label:'IN',value:'IN'},{label:'OUT',value:'OUT'},{label:'ADJUST+',value:'ADJUST+'},{label:'ADJUST-',value:'ADJUST-'}]
+const txs = ref<any[]>([])
+const total = ref(0)
+const page = ref(0)
+const perPage = ref(25)
+const sku = ref('')
+const type = ref('')
+const loading = ref(false)
+const expanded = ref<string | null>(null)
 
-async function fetch() {
-  const res = await api.get('/transactions', { params: { sku: sku.value, type: type.value, page: page.value+1, per_page: perPage.value } })
-  txs.value = res.data.data; total.value = res.data.total
+const typeOptions = [
+  { label: 'Semua jenis', value: '' },
+  { label: 'Barang Masuk', value: 'IN' },
+  { label: 'Barang Keluar', value: 'OUT' },
+  { label: 'Opname (+)', value: 'ADJUST+' },
+  { label: 'Opname (−)', value: 'ADJUST-' },
+]
+const perPageOptions = [25, 50, 100]
+
+async function fetch_(reset = false) {
+  if (reset) page.value = 0
+  loading.value = true
+  try {
+    const res = await api.get('/transactions', {
+      params: { sku: sku.value, type: type.value, page: page.value + 1, per_page: perPage.value },
+    })
+    txs.value = res.data.data
+    total.value = res.data.total
+  } finally { loading.value = false }
 }
-onMounted(fetch); watch([page, perPage], fetch)
+onMounted(() => fetch_())
+watch([page, perPage], () => fetch_())
+
+const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
+const range = computed(() => {
+  if (!total.value) return '0'
+  const from = page.value * perPage.value + 1
+  const to = Math.min(total.value, (page.value + 1) * perPage.value)
+  return `${from}–${to} dari ${total.value}`
+})
+
+const summary = computed(() => ({
+  in: txs.value.filter(t => t.type === 'IN').reduce((a, t) => a + t.quantity, 0),
+  out: txs.value.filter(t => t.type === 'OUT').reduce((a, t) => a + t.quantity, 0),
+  adj: txs.value.filter(t => t.type.startsWith('ADJUST')).length,
+}))
+
+function exportAs(kind: 'csv' | 'xlsx' | 'pdf') {
+  const url = kind === 'csv' ? '/api/export/tx.csv' : kind === 'xlsx' ? '/api/export/items.xlsx' : '/api/report.pdf'
+  window.open(url, '_blank')
+}
+function exportFiltered() {
+  const header = ['Waktu', 'Jenis', 'SKU', 'Nama', 'Qty', 'Satuan', 'Sebelum', 'Sesudah', 'Petugas', 'Catatan']
+  const rows = txs.value.map(t => [t.timestamp, t.type, t.item_sku, t.item_name, t.quantity, t.unit,
+                                   t.previous_stock, t.new_stock, t.received_by || '', (t.notes || '').replace(/\n/g, ' ')])
+  const csv = [header, ...rows]
+    .map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `riwayat_mutasi_halaman_${page.value + 1}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
 </script>
+
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="flex justify-between items-center"><h2 class="text-xl font-bold">Riwayat Mutasi ({{ total }})</h2></div>
-    <Card class="shadow-sm"><template #content>
-      <div class="flex gap-3 flex-wrap items-end">
-        <div><label class="block text-xs font-medium mb-1">SKU</label><InputText v-model="sku" @keyup.enter="fetch" class="w-full" /></div>
-        <div><label class="block text-xs font-medium mb-1">Jenis</label><Select v-model="type" :options="typeOptions" optionLabel="label" optionValue="value" showClear placeholder="Semua" class="w-full" @change="fetch" /></div>
-        <Button label="Filter" icon="pi pi-filter" @click="fetch" />
+  <div>
+    <PageHeader crumb="Operasional" title="Riwayat Mutasi"
+      sub="Jejak lengkap setiap perubahan stok, terbaru di atas">
+      <template #actions>
+        <Button label="Halaman ini (CSV)" icon="pi pi-file" size="small" severity="secondary" outlined
+                :disabled="!txs.length" @click="exportFiltered" />
+        <Button label="Ekspor" icon="pi pi-download" size="small"
+                :disabled="!txs.length" @click="exportAs('csv')" />
+      </template>
+    </PageHeader>
+
+    <!-- quick strip -->
+    <div class="grid grid-cols-3 gap-px mb-4 rounded-lg overflow-hidden border max-w-xl"
+         style="border-color: var(--line); background: var(--line)">
+      <div class="px-4 py-3" style="background: var(--panel)">
+        <div class="t-label">Unit Masuk (hal. ini)</div>
+        <div class="t-num text-[20px] font-bold mt-1 text-sig-ok">+{{ summary.in }}</div>
       </div>
-    </template></Card>
-    <Card class="shadow-sm"><template #content>
-      <DataTable :value="txs" responsiveLayout="scroll" class="p-datatable-sm" stripedRows>
-        <Column field="timestamp" header="Waktu" style="width:180px"><template #body="{data}"><span class="text-sm text-gray-500">{{ data.timestamp }}</span></template></Column>
-        <Column field="type" header="Jenis" style="width:100px"><template #body="{data}"><Tag :severity="data.type==='IN'?'success':data.type==='OUT'?'danger':'warn'" :value="data.type" /></template></Column>
-        <Column field="item_name" header="Barang"><template #body="{data}"><strong>{{data.item_name}}</strong> <code class="text-xs">{{data.item_sku}}</code></template></Column>
-        <Column field="quantity" header="Qty" style="width:100px"><template #body="{data}">{{data.quantity}} {{data.unit}}</template></Column>
-        <Column field="received_by" header="Person" style="width:120px"><template #body="{data}"><span class="text-gray-500 text-sm">{{data.received_by}}</span></template></Column>
-      </DataTable>
-      <Paginator :rows="perPage" :totalRecords="total" v-model:first="page" :rowsPerPageOptions="[20,25,50,100]" @page="(e:any)=>{perPage=e.rows;page=e.page}" />
-    </template></Card>
+      <div class="px-4 py-3" style="background: var(--panel)">
+        <div class="t-label">Unit Keluar (hal. ini)</div>
+        <div class="t-num text-[20px] font-bold mt-1 text-sig-bad">−{{ summary.out }}</div>
+      </div>
+      <div class="px-4 py-3" style="background: var(--panel)">
+        <div class="t-label">Baris Opname</div>
+        <div class="t-num text-[20px] font-bold mt-1 text-acc-600">{{ summary.adj }}</div>
+      </div>
+    </div>
+
+    <Panel title="Transaksi" icon="pi pi-history" dense>
+      <template #actions>
+        <InputText v-model="sku" placeholder="Cari SKU…" class="!text-[12px] !py-1.5 w-[150px]"
+                   @keyup.enter="fetch_(true)" />
+        <Select v-model="type" :options="typeOptions" optionLabel="label" optionValue="value"
+                class="!text-[12px] w-[155px]" @change="fetch_(true)" />
+        <Button icon="pi pi-search" size="small" severity="secondary" outlined @click="fetch_(true)" />
+      </template>
+
+      <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat riwayat…" />
+      <EmptyState v-else-if="!txs.length" icon="pi pi-history" title="Belum ada transaksi"
+                  sub="Catat mutasi barang masuk atau keluar untuk mengisi riwayat ini.">
+        <Button label="Catat mutasi" icon="pi pi-plus" size="small" @click="$router.push('/movement')" />
+      </EmptyState>
+
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-[12.5px]">
+          <thead>
+            <tr class="text-left" style="background: var(--paper-2)">
+              <th class="t-label px-4 py-2.5 w-[170px]">Waktu</th>
+              <th class="t-label px-4 py-2.5 w-[120px]">Jenis</th>
+              <th class="t-label px-4 py-2.5">Barang</th>
+              <th class="t-label px-4 py-2.5 w-[120px] text-right">Perubahan</th>
+              <th class="t-label px-4 py-2.5 w-[130px] text-right">Stok</th>
+              <th class="t-label px-4 py-2.5 w-[60px]"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y" style="border-color: var(--line-soft)">
+            <template v-for="t in txs" :key="t.id">
+              <tr class="hover:bg-paper-2 transition-colors cursor-pointer"
+                  @click="expanded = expanded === t.id ? null : t.id">
+                <td class="px-4 py-2.5 whitespace-nowrap" style="color: var(--txt-dim)">{{ t.timestamp }}</td>
+                <td class="px-4 py-2.5"><StatusChip :kind="t.type" /></td>
+                <td class="px-4 py-2.5">
+                  <div class="font-semibold">{{ t.item_name }}</div>
+                  <div class="t-mono" style="color: var(--txt-dim)">{{ t.item_sku }}</div>
+                </td>
+                <td class="px-4 py-2.5 text-right">
+                  <span class="t-num font-bold"
+                        :class="t.type === 'IN' || t.type === 'ADJUST+' ? 'text-sig-ok' : 'text-sig-bad'">
+                    {{ t.type === 'IN' || t.type === 'ADJUST+' ? '+' : '−' }}{{ t.quantity }} {{ t.unit }}
+                  </span>
+                </td>
+                <td class="px-4 py-2.5 text-right t-num whitespace-nowrap" style="color: var(--txt-dim)">
+                  {{ t.previous_stock }} <i class="pi pi-arrow-right text-[9px] mx-0.5" /> <span class="font-semibold" style="color: var(--txt)">{{ t.new_stock }}</span>
+                </td>
+                <td class="px-4 py-2.5 text-right">
+                  <i class="pi text-[10px]" :class="expanded === t.id ? 'pi-chevron-up' : 'pi-chevron-down'"
+                     style="color: var(--txt-dim)" />
+                </td>
+              </tr>
+              <tr v-if="expanded === t.id">
+                <td colspan="6" class="px-4 pb-3.5 pt-0" style="background: var(--paper-1)">
+                  <div class="grid sm:grid-cols-3 gap-3 text-[12.5px]">
+                    <div>
+                      <div class="t-label mb-1">Petugas / Penerima</div>
+                      <div>{{ t.received_by || '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="t-label mb-1">Catatan</div>
+                      <div>{{ t.notes || '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="t-label mb-1">ID Transaksi</div>
+                      <div class="t-mono">{{ t.id }}</div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <template #footer>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+          <div class="flex items-center gap-2">
+            <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
+            <Button icon="pi pi-angle-left" size="small" text severity="secondary"
+                    :disabled="page === 0" @click="page--" />
+            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <Button icon="pi pi-angle-right" size="small" text severity="secondary"
+                    :disabled="page >= lastPage" @click="page++" />
+          </div>
+        </div>
+      </template>
+    </Panel>
   </div>
 </template>

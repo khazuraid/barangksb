@@ -9,3 +9,5 @@ coverage/
 bin/
 *.db
 backups/*.sql.gz
+backend/server
+/server

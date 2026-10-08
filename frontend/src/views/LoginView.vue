@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import Card from 'primevue/card'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -14,15 +13,15 @@ const toast = useToast()
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
+const showHint = ref(false)
 
 async function login() {
   loading.value = true
   try {
     await auth.login(email.value, password.value)
-    toast.add({ severity: 'success', summary: 'Berhasil', detail: 'Login berhasil', life: 2000 })
     router.push('/')
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Gagal', detail: e.response?.data?.error || 'Login gagal', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Login gagal', detail: e.response?.data?.error || 'Periksa email dan password', life: 3500 })
   } finally {
     loading.value = false
   }
@@ -30,36 +29,91 @@ async function login() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-gray-950 dark:via-gray-900 dark:to-emerald-950 p-4">
-    <div class="w-full max-w-sm">
-      <!-- Logo -->
-      <div class="text-center mb-8">
-        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 mx-auto flex items-center justify-center text-white font-bold text-2xl shadow-xl shadow-emerald-500/40 mb-4">
-          IK
+  <div class="min-h-screen shell grid lg:grid-cols-[1.1fr_1fr]">
+    <!-- ============ LEFT: identity panel ============ -->
+    <section class="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden">
+      <div class="grid-bg absolute inset-0 opacity-[0.35]" style="--line-soft: #1b2130" />
+
+      <div class="relative flex items-center gap-3">
+        <div class="w-9 h-9 grid place-items-center rounded-md bg-acc-500 text-ink-950 font-extrabold text-[13px]">IK</div>
+        <div class="leading-tight">
+          <div class="text-[13px] font-bold tracking-wide">INVENTARIS KANTOR</div>
+          <div class="t-label !text-[9.5px]">Sistem Barcode &amp; Stok Real-Time</div>
         </div>
-        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Inventaris Kantor</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Sistem Barcode & Stok Real-Time</p>
       </div>
 
-      <Card class="shadow-xl border-0">
-        <template #content>
-          <form @submit.prevent="login" class="flex flex-col gap-4">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-              <InputText v-model="email" type="email" required placeholder="email@kantor.id" class="w-full" />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-              <Password v-model="password" required :feedback="false" toggleMask placeholder="••••••••" class="w-full" inputClass="w-full" />
-            </div>
-            <Button type="submit" label="Masuk" icon="pi pi-sign-in" :loading="loading" class="w-full" />
-          </form>
-        </template>
-      </Card>
+      <div class="relative max-w-lg">
+        <div class="t-label mb-3">Kendali Inventaris</div>
+        <h1 class="text-[42px] leading-[1.06] font-extrabold tracking-[-0.03em]">
+          Setiap unit<br />
+          <span class="text-acc-500">tercatat</span>, setiap<br />
+          gerakan terlacak.
+        </h1>
+        <p class="mt-5 text-[13.5px] leading-relaxed text-ink-400 max-w-md">
+          Barcode, mutasi stok, opname massal, dan jejak audit dalam satu panel.
+          Data tersimpan di basis data kantor Anda sendiri.
+        </p>
 
-      <p class="text-center text-xs text-gray-400 mt-6">
-        <i class="pi pi-shield-lock"></i> Akses terbatas untuk petugas & admin kantor
-      </p>
-    </div>
+        <div class="grid grid-cols-3 gap-px mt-9 rounded-lg overflow-hidden border" style="border-color: var(--line); background: var(--line)">
+          <div v-for="f in [
+            { i: 'pi pi-qrcode', t: 'QR Label' },
+            { i: 'pi pi-chart-bar', t: 'Stok Live' },
+            { i: 'pi pi-shield', t: 'Audit Trail' },
+          ]" :key="f.t" class="px-4 py-4" style="background: var(--panel)">
+            <i :class="f.i" class="text-acc-500 text-sm" />
+            <div class="text-[11.5px] font-semibold mt-2">{{ f.t }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative t-label">
+        © 2026 · Inventaris Kantor · Internal
+      </div>
+    </section>
+
+    <!-- ============ RIGHT: form ============ -->
+    <section class="flex items-center justify-center p-6 lg:p-12" style="background: var(--panel)">
+      <div class="w-full max-w-[360px]">
+        <div class="lg:hidden flex items-center gap-3 mb-8">
+          <div class="w-9 h-9 grid place-items-center rounded-md bg-acc-500 text-ink-950 font-extrabold text-[13px]">IK</div>
+          <div class="leading-tight">
+            <div class="text-[13px] font-bold">INVENTARIS KANTOR</div>
+            <div class="t-label !text-[9.5px]">Barcode &amp; Stok</div>
+          </div>
+        </div>
+
+        <div class="t-label mb-1.5">Autentikasi</div>
+        <h2 class="text-[24px] font-bold tracking-tight">Masuk ke panel</h2>
+        <p class="text-[12.5px] mt-1.5 text-ink-400">Gunakan akun kantor yang terdaftar.</p>
+
+        <form @submit.prevent="login" class="flex flex-col gap-4 mt-8">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-[11.5px] font-semibold text-ink-300">Email</span>
+            <InputText v-model="email" type="email" required placeholder="nama@kantor.id" class="w-full" />
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-[11.5px] font-semibold text-ink-300">Password</span>
+            <Password v-model="password" required :feedback="false" toggleMask
+                      placeholder="••••••••" class="w-full" inputClass="w-full" />
+          </label>
+
+          <Button type="submit" label="Masuk" icon="pi pi-arrow-right" iconPos="right"
+                  severity="warn" :loading="loading" class="w-full mt-1" />
+
+          <Button type="button" label="Akun default sistem" icon="pi pi-info-circle"
+                  text severity="secondary" class="text-left"
+                  @click="showHint = !showHint" />
+          <div v-if="showHint" class="panel shell-panel-2 px-3 py-2.5 t-mono text-ink-300">
+            email: admin@kantor.id<br />
+            password: lihat ADMIN_PASSWORD di .env
+          </div>
+        </form>
+
+        <p class="text-[11px] mt-8 text-ink-600 leading-relaxed">
+          Dengan masuk, aktivitas Anda tercatat pada audit log sistem.
+        </p>
+      </div>
+    </section>
   </div>
 </template>

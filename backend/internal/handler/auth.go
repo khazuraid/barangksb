@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
-	"github.com/google/uuid"
 
 	"inventariskantor/internal/auth"
 	"inventariskantor/internal/config"
@@ -98,6 +97,5 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 func (h *AuthHandler) CreateUserCLI(c *gin.Context) {
 	// not via API — CLI subcommand in main.go
-	_ = uuid.New()
 	c.JSON(http.StatusOK, gin.H{"message": "use CLI: go run ./cmd/server -create-user"})
 }

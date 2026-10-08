@@ -4,7 +4,9 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -53,6 +55,10 @@ func main() {
 	flag.Parse()
 
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("config validation failed", "err", err)
+		os.Exit(1)
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -95,7 +101,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	_ = enforcer // RBAC ready — wire to middleware later
+	// RBAC middleware applied after AuthMiddleware for all authenticated routes.
+	// Public routes (login, scan, barcode) skip auth entirely so never reach RBAC.
 
 	authH := handler.NewAuthHandler(pool, cfg)
 	itemH := handler.NewItemHandler(pool)
@@ -103,21 +110,25 @@ func main() {
 	userH := handler.NewUserHandler(pool)
 	bcH := handler.NewBarcodeHandler(pool)
 	expH := handler.NewExportHandler(pool)
-	upH := handler.NewUploadHandler(pool)
+	upH := handler.NewUploadHandler(pool, cfg.MinIOEndp, cfg.MinIOUser, cfg.MinIOPass, cfg.MinIOBucket)
 	rptH := handler.NewReportHandler(pool)
 	bulkH := handler.NewBulkHandler(pool)
+	setH := handler.NewSettingHandler(pool)
 
 	r := gin.New()
+	allowedOrigins := strings.Split(cfg.CORSOrigins, ",")
 	r.Use(gin.Recovery())
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
 		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
 	}))
 
 	api := r.Group("/api")
 	api.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	api.Use(middleware.RBACMiddleware(enforcer))
 
 	api.POST("/auth/login", authH.Login)
 	api.GET("/auth/me", authH.Me)
@@ -151,8 +162,11 @@ func main() {
 
 	api.GET("/audit", userH.AuditLog)
 
-	api.GET("/barcode/:id.png", bcH.PNG)
+	api.GET("/barcode/:id", bcH.PNG)
 	api.GET("/barcode/sheet", bcH.Sheet)
+
+	// Public scan endpoint — returns item detail for QR scan landing page
+	api.GET("/scan/:id", bcH.ScanItem)
 
 	api.GET("/export/items.csv", expH.ItemsCSV)
 	api.GET("/export/tx.csv", expH.TxCSV)
@@ -162,8 +176,35 @@ func main() {
 	api.POST("/upload", upH.Upload)
 	api.POST("/adjust/bulk", bulkH.BulkAdjust)
 
-	// Static files for uploads
+	// Telegram settings (admin only)
+	api.GET("/settings/telegram", setH.GetTelegram)
+	api.PUT("/settings/telegram", setH.UpdateTelegram)
+	api.GET("/settings/telegram/bot", setH.GetBotInfo)
+	api.GET("/settings/telegram/subscribers", setH.ListSubscribers)
+	api.POST("/settings/telegram/subscribers", setH.AddSubscriber)
+	api.PUT("/settings/telegram/subscribers/:chatId", setH.UpdateSubscriber)
+	api.DELETE("/settings/telegram/subscribers/:chatId", setH.DeleteSubscriber)
+	api.POST("/settings/telegram/test", setH.TestTelegram)
+	api.GET("/settings/telegram/logs", setH.TelegramLogs)
+	api.GET("/settings/telegram/commands", setH.ListCommands)
+	api.POST("/settings/telegram/commands", setH.CreateCommand)
+	api.PUT("/settings/telegram/commands/:id", setH.UpdateCommand)
+	api.DELETE("/settings/telegram/commands/:id", setH.DeleteCommand)
+
+	// Static files for local uploads (disk fallback)
 	r.Static("/uploads", "./uploads")
+
+	// Serve MinIO uploads via API (when MinIO is active)
+	api.GET("/uploads/:name", func(c *gin.Context) {
+		name := c.Param("name")
+		obj, err := upH.GetObject(c.Request.Context(), name)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		defer obj.Close()
+		c.DataFromReader(http.StatusOK, -1, "image/jpeg", obj, nil)
+	})
 
 	// Telegram bot
 	if cfg.TgToken != "" {

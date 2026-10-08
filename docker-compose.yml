@@ -27,13 +27,16 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/inventaris?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-prod}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       MINIO_ENDPOINT: minio:9000
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
       MINIO_BUCKET: inventaris
       PORT: "8080"
-      APP_ENV: dev
+      APP_ENV: ${APP_ENV:-dev}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@kantor.id}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
     depends_on:
       postgres:
         condition: service_healthy

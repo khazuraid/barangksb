@@ -12,10 +12,11 @@ import (
 
 func AuthMiddleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// skip public routes
+		// public routes: login, scan landing, barcode images, barcode sheet
 		path := c.Request.URL.Path
-		if path == "/api/auth/login" || strings.HasPrefix(path, "/api/scan/") ||
-			strings.HasSuffix(path, ".png") || path == "/api/barcode/sheet" {
+		if path == "/api/auth/login" ||
+			strings.HasPrefix(path, "/api/scan/") ||
+			strings.HasPrefix(path, "/api/barcode/") {
 			c.Next()
 			return
 		}
@@ -43,12 +44,20 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 
 func RBACMiddleware(enforcer *casbin.Enforcer) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// skip public routes (same set as AuthMiddleware)
+		path := c.Request.URL.Path
+		if path == "/api/auth/login" ||
+			strings.HasPrefix(path, "/api/scan/") ||
+			strings.HasPrefix(path, "/api/barcode/") {
+			c.Next()
+			return
+		}
+
 		role, _ := c.Get("role")
 		roleStr, _ := role.(string)
 		if roleStr == "" {
 			roleStr = "anonymous"
 		}
-		path := c.Request.URL.Path
 		method := c.Request.Method
 
 		allowed, err := enforcer.Enforce(roleStr, path, method)

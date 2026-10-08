@@ -19,12 +19,15 @@ const router = createRouter({
         { path: 'movement', name: 'movement', component: () => import('@/views/MovementView.vue') },
         { path: 'history', name: 'history', component: () => import('@/views/HistoryView.vue') },
         { path: 'barcode', name: 'barcode', component: () => import('@/views/BarcodeView.vue') },
+        { path: 'adjust/bulk', name: 'adjust-bulk', component: () => import('@/views/AdjustBulkView.vue') },
         { path: 'users', name: 'users', component: () => import('@/views/UsersView.vue'), meta: { admin: true } },
         { path: 'audit', name: 'audit', component: () => import('@/views/AuditView.vue'), meta: { admin: true } },
+        { path: 'telegram', name: 'telegram', component: () => import('@/views/TelegramView.vue'), meta: { admin: true } },
         { path: 'password', name: 'password', component: () => import('@/views/PasswordView.vue') },
       ],
     },
     { path: '/scan/:id', name: 'scan', component: () => import('@/views/ScanView.vue') },
+    { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
 

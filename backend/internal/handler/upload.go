@@ -2,9 +2,11 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/color"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,17 +17,40 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 )
 
 type UploadHandler struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	minio   *minio.Client
+	bucket  string
+	useDisk bool // fallback when MinIO not configured
 }
 
-func NewUploadHandler(pool *pgxpool.Pool) *UploadHandler {
-	return &UploadHandler{pool: pool}
+func NewUploadHandler(pool *pgxpool.Pool, endpoint, accessKey, secretKey, bucket string) *UploadHandler {
+	h := &UploadHandler{pool: pool, bucket: bucket, useDisk: true}
+	if endpoint != "" && accessKey != "" && secretKey != "" {
+		mc, err := minio.New(endpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+			Secure: false, // internal docker network
+		})
+		if err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			// Ensure bucket exists
+			exists, _ := mc.BucketExists(ctx, bucket)
+			if !exists {
+				mc.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
+			}
+			h.minio = mc
+			h.useDisk = false
+		}
+	}
+	return h
 }
 
 type GeoTag struct {
@@ -68,12 +93,45 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	}
 
 	name := uuid.NewString() + ".jpg"
+
+	if !h.useDisk && h.minio != nil {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+		_, err := h.minio.PutObject(ctx, h.bucket, name, bytes.NewReader(processed), int64(len(processed)), minio.PutObjectOptions{
+			ContentType: "image/jpeg",
+		})
+		if err != nil {
+			// fallback to disk
+			h.saveDisk(name, processed)
+		}
+		c.JSON(http.StatusOK, gin.H{"url": fmt.Sprintf("/api/uploads/%s", name)})
+		return
+	}
+
+	// disk fallback
+	url := h.saveDisk(name, processed)
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
+func (h *UploadHandler) saveDisk(name string, data []byte) string {
 	dir := "uploads"
 	os.MkdirAll(dir, 0o755)
 	path := filepath.Join(dir, name)
-	os.WriteFile(path, processed, 0o644)
+	os.WriteFile(path, data, 0o644)
+	return "/uploads/" + name
+}
 
-	c.JSON(http.StatusOK, gin.H{"url": "/uploads/" + name})
+// GetObject retrieves a file from MinIO (or nil if using disk)
+func (h *UploadHandler) GetObject(ctx context.Context, name string) (io.ReadCloser, error) {
+	if h.minio != nil && !h.useDisk {
+		obj, err := h.minio.GetObject(ctx, h.bucket, name, minio.GetObjectOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return obj, nil
+	}
+	// disk fallback
+	return os.Open(filepath.Join("uploads", name))
 }
 
 func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string) ([]byte, error) {
@@ -129,7 +187,6 @@ func stampGeoCard(base *image.NRGBA, geo GeoTag, petugas string) *image.NRGBA {
 	if x0+cardW > b.Max.X {
 		x0 = b.Min.X
 	}
-	// card bg
 	overlay := color.RGBA{0, 0, 0, 150}
 	for y := y0; y < y0+cardH; y++ {
 		for x := x0; x < x0+cardW; x++ {
@@ -145,7 +202,6 @@ func stampGeoCard(base *image.NRGBA, geo GeoTag, petugas string) *image.NRGBA {
 			}
 		}
 	}
-	// text
 	d := &font.Drawer{Dst: base, Src: image.NewUniform(color.RGBA{255, 255, 255, 255}), Face: face}
 	tx := x0 + padX + 22
 	ty := y0 + padY + face.Ascent
