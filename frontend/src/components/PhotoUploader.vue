@@ -135,13 +135,116 @@ function triggerSelect(useCamera = false) {
   fileInput.value.click()
 }
 
+async function stampPhotoOnCanvas(
+  file: File,
+  geoCoords: { lat: number; lng: number; acc: number } | null,
+  locName: string
+): Promise<{ blob: Blob; previewUrl: string }> {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        const maxDim = 1920
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width)
+            width = maxDim
+          } else {
+            width = Math.round((width * maxDim) / height)
+            height = maxDim
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve({ blob: file, previewUrl: reader.result as string })
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+
+        const now = new Date()
+        const day = String(now.getDate()).padStart(2, '0')
+        const month = String(now.getMonth() + 1).padStart(2, '0')
+        const year = now.getFullYear()
+        const hour = String(now.getHours()).padStart(2, '0')
+        const minute = String(now.getMinutes()).padStart(2, '0')
+        const timeStr = `${day}-${month}-${year} ${hour}:${minute} WIB`
+
+        const lines: string[] = []
+        if (geoCoords) {
+          lines.push(`GPS: ${geoCoords.lat.toFixed(6)}, ${geoCoords.lng.toFixed(6)} (±${geoCoords.acc}m)`)
+        }
+        lines.push(`Waktu: ${timeStr}`)
+        if (locName) {
+          lines.push(`Lokasi: ${locName}`)
+        }
+
+        const baseFontSize = Math.max(14, Math.round(width / 45))
+        ctx.font = `bold ${baseFontSize}px ui-monospace, SFMono-Regular, monospace`
+
+        const lineHeight = baseFontSize * 1.45
+        const padX = baseFontSize * 0.9
+        const padY = baseFontSize * 0.7
+
+        let maxTextW = 0
+        for (const line of lines) {
+          const w = ctx.measureText(line).width
+          if (w > maxTextW) maxTextW = w
+        }
+
+        const boxW = maxTextW + padX * 2 + 10
+        const boxH = lines.length * lineHeight + padY * 2
+        const boxX = baseFontSize * 0.8
+        const boxY = height - boxH - baseFontSize * 0.8
+
+        // Card background
+        ctx.fillStyle = 'rgba(10, 10, 10, 0.82)'
+        ctx.fillRect(boxX, boxY, boxW, boxH)
+
+        // Amber accent bar
+        ctx.fillStyle = '#f59e0b'
+        ctx.fillRect(boxX, boxY, 5, boxH)
+
+        // Card text
+        ctx.fillStyle = '#ffffff'
+        ctx.textBaseline = 'top'
+        lines.forEach((line, idx) => {
+          ctx.fillText(line, boxX + padX + 5, boxY + padY + idx * lineHeight)
+        })
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const previewUrl = URL.createObjectURL(blob)
+              resolve({ blob, previewUrl })
+            } else {
+              resolve({ blob: file, previewUrl: reader.result as string })
+            }
+          },
+          'image/jpeg',
+          0.85
+        )
+      }
+      img.onerror = () => resolve({ blob: file, previewUrl: reader.result as string })
+      img.src = reader.result as string
+    }
+    reader.onerror = () => resolve({ blob: file, previewUrl: '' })
+    reader.readAsDataURL(file)
+  })
+}
+
 async function onFileSelected(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
-
-  if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
-  localPreviewUrl.value = URL.createObjectURL(file)
 
   uploading.value = true
   try {
@@ -166,22 +269,28 @@ async function onFileSelected(e: Event) {
       })
     }
 
+    const locName = geoLabel.value || props.locationName
+    if (locName) {
+      emit('update:geoName', locName)
+    }
+
+    // Cap watermark langsung ke dalam pixel gambar
+    const stamped = await stampPhotoOnCanvas(file, coords.value, locName)
+    if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
+    localPreviewUrl.value = stamped.previewUrl
+
     const fd = new FormData()
-    fd.append('photo', file)
+    fd.append('photo', stamped.blob, 'photo.jpg')
     if (coords.value) {
       fd.append('geo_lat', coords.value.lat.toString())
       fd.append('geo_lng', coords.value.lng.toString())
       fd.append('geo_acc', coords.value.acc.toString())
     }
-    const locName = geoLabel.value || props.locationName
     if (locName) {
       fd.append('geo_name', locName)
-      emit('update:geoName', locName)
     }
 
-    const res = await api.post('/upload', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    const res = await api.post('/upload', fd)
     const url = res.data.url
     emit('update:modelValue', url)
     if (res.data.geo_lat && res.data.geo_lng) {
@@ -201,8 +310,8 @@ async function onFileSelected(e: Event) {
       severity: 'success',
       summary: 'Foto & Cap Geotag Berhasil',
       detail: coords.value
-        ? `Watermark GPS (${coords.value.lat.toFixed(4)}, ${coords.value.lng.toFixed(4)}) tercetak pada foto`
-        : 'Foto tersimpan (tanpa koordinat GPS)',
+        ? `Watermark GPS (${coords.value.lat.toFixed(4)}, ${coords.value.lng.toFixed(4)}) tercetak di dalam foto`
+        : 'Foto tersimpan',
       life: 3500,
     })
   } catch (err: any) {

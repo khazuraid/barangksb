@@ -185,7 +185,7 @@ func (h *UploadHandler) Serve(c *gin.Context) {
 func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string) ([]byte, error) {
 	img, err := imaging.Decode(bytes.NewReader(src))
 	if err != nil {
-		return nil, fmt.Errorf("decode: %w", err)
+		return src, nil
 	}
 	if b := img.Bounds(); b.Dx() > 1600 || b.Dy() > 1600 {
 		img = imaging.Resize(img, 1600, 0, imaging.Lanczos)
@@ -195,7 +195,7 @@ func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string) ([]byte, error) {
 	}
 	var out bytes.Buffer
 	if err := imaging.Encode(&out, img, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
-		return nil, err
+		return src, nil
 	}
 	return out.Bytes(), nil
 }
