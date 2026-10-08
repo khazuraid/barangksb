@@ -33,7 +33,7 @@ type UploadHandler struct {
 
 func NewUploadHandler(pool *pgxpool.Pool, endpoint, accessKey, secretKey, bucket string) *UploadHandler {
 	h := &UploadHandler{pool: pool, bucket: bucket, useDisk: true}
-	if endpoint != "" && accessKey != "" && secretKey != "" {
+	if endpoint != "" && accessKey != "" && secretKey != "" && endpoint != "minio:9000" {
 		mc, err := minio.New(endpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 			Secure: false, // internal docker network
