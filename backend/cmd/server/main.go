@@ -198,9 +198,6 @@ func main() {
 	r.GET("/api/uploads/:name", upH.Serve)
 	r.GET("/uploads/:name", upH.Serve)
 
-	// Static files for local uploads (disk fallback)
-	r.Static("/uploads", "./uploads")
-
 	// Serve embedded frontend (SPA) — for Zeabur single-container deploy
 	frontendFS, _ := fs.Sub(frontendDist, "dist")
 	r.NoRoute(func(c *gin.Context) {
@@ -219,18 +216,6 @@ func main() {
 		}
 		indexData, _ := fs.ReadFile(frontendFS, "index.html")
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
-	})
-
-	// Serve MinIO uploads via API (when MinIO is active)
-	api.GET("/uploads/:name", func(c *gin.Context) {
-		name := c.Param("name")
-		obj, err := upH.GetObject(c.Request.Context(), name)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-			return
-		}
-		defer obj.Close()
-		c.DataFromReader(http.StatusOK, -1, "image/jpeg", obj, nil)
 	})
 
 	// Telegram bot
