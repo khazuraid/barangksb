@@ -1,26 +1,39 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import api from '@/api'
-const users = ref([]); const form = ref({ name: '', email: '', password: '', role: 'petugas' })
+import { useToast } from 'primevue/usetoast'
+import Card from 'primevue/card'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
+import Select from 'primevue/select'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Tag from 'primevue/tag'
+const toast = useToast()
+const users = ref([]); const form = ref({ name:'', email:'', password:'', role:'petugas' })
+const roleOptions = [{label:'Petugas',value:'petugas'},{label:'Admin',value:'admin'}]
 async function fetch() { users.value = (await api.get('/users')).data }
-async function create() { await api.post('/users', form.value); form.value = { name: '', email: '', password: '', role: 'petugas' }; fetch() }
-fetch()
+async function create() { try { await api.post('/users', form.value); form.value={name:'',email:'',password:'',role:'petugas'}; fetch(); toast.add({severity:'success',summary:'Dibuat',life:2000}) } catch(e:any){toast.add({severity:'error',summary:'Gagal',detail:e.response?.data?.error,life:3000})} }
+onMounted(fetch)
 </script>
 <template>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="card bg-base-100 border border-base-200 shadow-sm"><div class="card-body">
-      <h3 class="font-bold">Tambah Pengguna</h3>
-      <form @submit.prevent="create" class="space-y-2">
-        <input v-model="form.name" placeholder="Nama" class="input input-bordered input-sm w-full" />
-        <input v-model="form.email" placeholder="Email" class="input input-bordered input-sm w-full" />
-        <input v-model="form.password" type="password" placeholder="Password (min 8)" class="input input-bordered input-sm w-full" />
-        <select v-model="form.role" class="select select-bordered select-sm w-full"><option value="petugas">Petugas</option><option value="admin">Admin</option></select>
-        <button class="btn btn-primary btn-sm w-full">Simpan</button>
+    <Card class="shadow-sm"><template #title><i class="pi pi-user-plus text-emerald-500 mr-2"></i>Tambah Pengguna</template><template #content>
+      <form @submit.prevent="create" class="flex flex-col gap-3">
+        <div><label class="block text-sm font-medium mb-1">Nama</label><InputText v-model="form.name" class="w-full" /></div>
+        <div><label class="block text-sm font-medium mb-1">Email</label><InputText v-model="form.email" class="w-full" /></div>
+        <div><label class="block text-sm font-medium mb-1">Password</label><Password v-model="form.password" :feedback="false" toggleMask class="w-full" inputClass="w-full" /></div>
+        <div><label class="block text-sm font-medium mb-1">Role</label><Select v-model="form.role" :options="roleOptions" optionLabel="label" optionValue="value" class="w-full" /></div>
+        <Button type="submit" label="Simpan" icon="pi pi-save" />
       </form>
-    </div></div>
-    <div class="card bg-base-100 border border-base-200 shadow-sm"><div class="overflow-x-auto"><table class="table table-sm">
-      <thead><tr><th>Nama</th><th>Email</th><th>Role</th></tr></thead>
-      <tbody><tr v-for="u in users" :key="u.id"><td>{{ u.name }}</td><td class="text-base-content/50">{{ u.email }}</td><td><span class="badge badge-sm" :class="u.role === 'admin' ? 'badge-secondary' : 'badge-ghost'">{{ u.role }}</span></td></tr></tbody>
-    </table></div></div>
+    </template></Card>
+    <Card class="shadow-sm"><template #title><i class="pi pi-list text-emerald-500 mr-2"></i>Daftar</template><template #content>
+      <DataTable :value="users" class="p-datatable-sm" stripedRows>
+        <Column field="name" header="Nama"><template #body="{data}"><strong>{{data.name}}</strong></template></Column>
+        <Column field="email" header="Email"><template #body="{data}"><span class="text-gray-500 text-sm">{{data.email}}</span></template></Column>
+        <Column field="role" header="Role" style="width:100px"><template #body="{data}"><Tag :severity="data.role==='admin'?'info':'success'" :value="data.role" /></template></Column>
+      </DataTable>
+    </template></Card>
   </div>
 </template>

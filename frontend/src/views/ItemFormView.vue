@@ -2,17 +2,30 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
+import { useToast } from 'primevue/usetoast'
+import Card from 'primevue/card'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
+import Select from 'primevue/select'
+import Textarea from 'primevue/textarea'
 
 const route = useRoute()
 const router = useRouter()
+const toast = useToast()
 const isEdit = !!route.params.id
+const loading = ref(false)
 const form = ref({ sku: '', name: '', category: '', location: '', unit: 'Unit', current_stock: 0, min_stock: 0, price_per_unit: 0, merk: '', condition_status: 'Berfungsi' })
 const categories = ref([])
 const locations = ref([])
 
+const unitOptions = ['Unit', 'Pcs', 'Set', 'Box', 'Rim', 'Pack', 'Dus', 'Botol', 'Roll']
+const conditionOptions = ['Berfungsi', 'Rusak Ringan', 'Rusak Berat', 'Perlu Kalibrasi']
+
 onMounted(async () => {
   const [cats, locs] = await Promise.all([api.get('/categories'), api.get('/locations')])
-  categories.value = cats.data; locations.value = locs.data
+  categories.value = cats.data.map((c: any) => ({ label: c.name, value: c.name }))
+  locations.value = locs.data.map((l: any) => ({ label: l.name, value: l.name }))
   if (isEdit) {
     const res = await api.get(`/items/${route.params.id}`)
     Object.assign(form.value, res.data)
@@ -20,32 +33,50 @@ onMounted(async () => {
 })
 
 async function submit() {
-  if (isEdit) {
-    await api.put(`/items/${route.params.id}`, form.value)
-  } else {
-    await api.post('/items', form.value)
+  loading.value = true
+  try {
+    if (isEdit) {
+      await api.put(`/items/${route.params.id}`, form.value)
+    } else {
+      await api.post('/items', form.value)
+    }
+    toast.add({ severity: 'success', summary: 'Berhasil', detail: 'Barang disimpan', life: 2000 })
+    router.push('/items')
+  } catch (e: any) {
+    toast.add({ severity: 'error', summary: 'Gagal', detail: e.response?.data?.error, life: 3000 })
+  } finally {
+    loading.value = false
   }
-  router.push('/items')
 }
 </script>
 
 <template>
-  <div class="card bg-base-100 shadow-sm border border-base-200 max-w-2xl">
-    <div class="card-body">
-      <h2 class="card-title">{{ isEdit ? 'Edit' : 'Tambah' }} Barang</h2>
-      <form @submit.prevent="submit" class="grid grid-cols-2 gap-3">
-        <label class="form-control"><span class="label-text">SKU</span><input v-model="form.sku" class="input input-bordered input-sm" placeholder="otomatis" /></label>
-        <label class="form-control"><span class="label-text">Nama *</span><input v-model="form.name" required class="input input-bordered input-sm" /></label>
-        <label class="form-control"><span class="label-text">Kategori *</span><select v-model="form.category" required class="select select-bordered select-sm"><option value="">—</option><option v-for="c in categories" :key="c.id" :value="c.name">{{ c.name }}</option></select></label>
-        <label class="form-control"><span class="label-text">Lokasi *</span><select v-model="form.location" required class="select select-bordered select-sm"><option value="">—</option><option v-for="l in locations" :key="l.id" :value="l.name">{{ l.name }}</option></select></label>
-        <label class="form-control"><span class="label-text">Stok</span><input v-model.number="form.current_stock" type="number" class="input input-bordered input-sm" /></label>
-        <label class="form-control"><span class="label-text">Min Stok</span><input v-model.number="form.min_stock" type="number" class="input input-bordered input-sm" /></label>
-        <label class="form-control"><span class="label-text">Satuan</span><select v-model="form.unit" class="select select-bordered select-sm"><option>Unit</option><option>Pcs</option><option>Set</option><option>Box</option></select></label>
-        <label class="form-control"><span class="label-text">Harga (Rp)</span><input v-model.number="form.price_per_unit" type="number" class="input input-bordered input-sm" /></label>
-        <label class="form-control"><span class="label-text">Merk</span><input v-model="form.merk" class="input input-bordered input-sm" /></label>
-        <label class="form-control"><span class="label-text">Kondisi</span><select v-model="form.condition_status" class="select select-bordered select-sm"><option>Berfungsi</option><option>Rusak Ringan</option><option>Rusak Berat</option></select></label>
-        <div class="col-span-2 flex gap-2 mt-2"><button type="submit" class="btn btn-primary btn-sm">Simpan</button><button class="btn btn-ghost btn-sm" @click="router.push('/items')">Batal</button></div>
-      </form>
+  <div class="max-w-2xl">
+    <div class="flex items-center gap-3 mb-4">
+      <Button icon="pi pi-arrow-left" text rounded @click="router.push('/items')" />
+      <h2 class="text-xl font-bold">{{ isEdit ? 'Edit' : 'Tambah' }} Barang</h2>
     </div>
+    <Card class="shadow-sm">
+      <template #content>
+        <form @submit.prevent="submit" class="flex flex-col gap-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium mb-1">SKU</label><InputText v-model="form.sku" class="w-full" placeholder="otomatis" /></div>
+            <div><label class="block text-sm font-medium mb-1">Nama *</label><InputText v-model="form.name" required class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Kategori *</label><Select v-model="form.category" :options="categories" optionLabel="label" optionValue="value" required class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Lokasi *</label><Select v-model="form.location" :options="locations" optionLabel="label" optionValue="value" required class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Stok</label><InputNumber v-model="form.current_stock" :min="0" class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Min Stok</label><InputNumber v-model="form.min_stock" :min="0" class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Satuan</label><Select v-model="form.unit" :options="unitOptions" class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Harga (Rp)</label><InputNumber v-model="form.price_per_unit" :min="0" class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Merk</label><InputText v-model="form.merk" class="w-full" /></div>
+            <div><label class="block text-sm font-medium mb-1">Kondisi</label><Select v-model="form.condition_status" :options="conditionOptions" class="w-full" /></div>
+          </div>
+          <div class="flex gap-3 mt-2">
+            <Button type="submit" label="Simpan" icon="pi pi-save" :loading="loading" />
+            <Button label="Batal" icon="pi pi-times" text @click="router.push('/items')" />
+          </div>
+        </form>
+      </template>
+    </Card>
   </div>
 </template>

@@ -1,5 +1,7 @@
 @import "tailwindcss";
-@plugin "daisyui";
+@plugin "tailwindcss-primeui";
 
-:root { font-family: "Inter", -apple-system, "Segoe UI", sans-serif; }
+:root {
+  font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+}
 body { margin: 0; }

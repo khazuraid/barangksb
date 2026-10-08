@@ -1,19 +1,30 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import api from '@/api'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
+import Card from 'primevue/card'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+const confirm = useConfirm(); const toast = useToast()
 const locs = ref([]); const newName = ref('')
 onMounted(async () => { const res = await api.get('/locations'); locs.value = res.data })
-async function add() { if (!newName.value) return; await api.post('/locations', { name: newName.value }); newName.value = ''; const res = await api.get('/locations'); locs.value = res.data }
-async function del(id: string) { if (!confirm('Hapus?')) return; await api.delete(`/locations/${id}`); const res = await api.get('/locations'); locs.value = res.data }
+async function add() { if (!newName.value) return; await api.post('/locations', { name: newName.value }); newName.value=''; const res = await api.get('/locations'); locs.value = res.data; toast.add({severity:'success',summary:'Ditambah',life:2000}) }
+function del(id:string, name:string) { confirm.require({ message:`Hapus "${name}"?`, header:'Konfirmasi', accept: async () => { await api.delete(`/locations/${id}`); const res = await api.get('/locations'); locs.value = res.data } }) }
 </script>
 <template>
-  <div class="space-y-4">
+  <div class="flex flex-col gap-4">
     <h2 class="text-xl font-bold">Lokasi ({{ locs.length }})</h2>
-    <div class="card bg-base-100 border border-base-200 shadow-sm"><div class="card-body">
-      <div class="flex gap-2"><input v-model="newName" placeholder="Nama ruangan" class="input input-bordered input-sm flex-1" @keyup.enter="add" /><button class="btn btn-primary btn-sm" @click="add">Tambah</button></div>
-    </div></div>
-    <div class="card bg-base-100 border border-base-200 shadow-sm"><div class="table"><table class="table table-sm"><thead><tr><th>Nama</th><th></th></tr></thead><tbody>
-      <tr v-for="l in locs" :key="l.id"><td class="font-medium">{{ l.name }}</td><td><button class="btn btn-xs btn-ghost text-error" @click="del(l.id)">Hapus</button></td></tr>
-    </tbody></table></div></div>
+    <Card class="shadow-sm"><template #content>
+      <div class="flex gap-2"><InputText v-model="newName" placeholder="Nama ruangan" class="flex-1" @keyup.enter="add" /><Button label="Tambah" icon="pi pi-plus" @click="add" /></div>
+    </template></Card>
+    <Card class="shadow-sm"><template #content>
+      <DataTable :value="locs" class="p-datatable-sm" stripedRows>
+        <Column field="name" header="Nama"><template #body="{data}"><strong>{{data.name}}</strong></template></Column>
+        <Column header="" style="width:80px"><template #body="{data}"><Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="del(data.id, data.name)" /></template></Column>
+      </DataTable>
+    </template></Card>
   </div>
 </template>
