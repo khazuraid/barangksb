@@ -85,8 +85,9 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	}
 	geo.Valid = geo.Lat != 0 && geo.Lng != 0
 	petugas := c.GetString("name")
+	clientStamped := c.PostForm("client_stamped") == "true"
 
-	processed, err := ProcessPhotoBytes(buf.Bytes(), geo, petugas)
+	processed, err := ProcessPhotoBytes(buf.Bytes(), geo, petugas, clientStamped)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -182,19 +183,19 @@ func (h *UploadHandler) Serve(c *gin.Context) {
 	io.Copy(c.Writer, reader)
 }
 
-func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string) ([]byte, error) {
+func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string, clientStamped bool) ([]byte, error) {
 	img, err := imaging.Decode(bytes.NewReader(src))
 	if err != nil {
 		return src, nil
 	}
-	if b := img.Bounds(); b.Dx() > 1600 || b.Dy() > 1600 {
-		img = imaging.Resize(img, 1600, 0, imaging.Lanczos)
+	if b := img.Bounds(); b.Dx() > 1920 || b.Dy() > 1920 {
+		img = imaging.Resize(img, 1920, 0, imaging.Lanczos)
 	}
-	if geo.Valid {
+	if geo.Valid && !clientStamped {
 		img = stampGeoCard(imaging.Clone(img), geo, petugas)
 	}
 	var out bytes.Buffer
-	if err := imaging.Encode(&out, img, imaging.JPEG, imaging.JPEGQuality(85)); err != nil {
+	if err := imaging.Encode(&out, img, imaging.JPEG, imaging.JPEGQuality(88)); err != nil {
 		return src, nil
 	}
 	return out.Bytes(), nil
