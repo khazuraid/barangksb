@@ -112,9 +112,11 @@ func (h *ImportHandler) DownloadTemplate(c *gin.Context) {
 
 // POST /api/items/import
 func (h *ImportHandler) Import(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20) // Maks 10 MB
+
 	fileHdr, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file Excel / CSV wajib diunggah"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file Excel / CSV wajib diunggah (maksimal 10 MB)"})
 		return
 	}
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"image/png"
 	"log/slog"
 	"net/http"
@@ -145,17 +146,17 @@ func (h *BarcodeHandler) Sheet(c *gin.Context) {
 }
 
 func (h *BarcodeHandler) generateLabels(c *gin.Context, ids string) string {
-	html := ""
+	htmlOut := ""
 	for _, id := range splitComma(ids) {
 		var name, sku string
 		h.pool.QueryRow(c, `SELECT name, sku FROM inventory_items WHERE id::text=$1`, id).Scan(&name, &sku)
-		html += fmt.Sprintf(`<div style="text-align:center;border:1px dashed #ccc;padding:6px">
+		htmlOut += fmt.Sprintf(`<div style="text-align:center;border:1px dashed #ccc;padding:6px">
 			<div style="font-size:11px;font-weight:700">%s</div>
 			<img src="/api/barcode/%s.png?fmt=qr" height="60"/>
 			<div style="font-size:10px;font-family:monospace">%s</div>
-		</div>`, name, id, sku)
+		</div>`, html.EscapeString(name), html.EscapeString(id), html.EscapeString(sku))
 	}
-	return html
+	return htmlOut
 }
 
 func splitComma(s string) []string {

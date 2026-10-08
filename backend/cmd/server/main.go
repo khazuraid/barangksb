@@ -123,6 +123,9 @@ func main() {
 	r := gin.New()
 	allowedOrigins := strings.Split(cfg.CORSOrigins, ",")
 	r.Use(gin.Recovery())
+	r.Use(middleware.SecurityHeadersMiddleware())
+	r.Use(middleware.GzipMiddleware())
+	r.Use(middleware.LoginRateLimiter(5, time.Minute))
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},

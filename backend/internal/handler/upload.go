@@ -75,9 +75,12 @@ func parseFloat(s string) float64 {
 }
 
 func (h *UploadHandler) Upload(c *gin.Context) {
+	// Restrict max upload size to 12 MB to prevent memory exhaustion DoS
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 12<<20)
+
 	file, hdr, err := c.Request.FormFile("photo")
 	if err != nil || file == nil || hdr.Size == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file photo wajib"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file photo wajib (maksimal 12 MB)"})
 		return
 	}
 	defer file.Close()
