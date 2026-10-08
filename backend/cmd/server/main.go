@@ -219,15 +219,28 @@ func main() {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		if p == "/" {
-			p = "/index.html"
+		if p == "/" || p == "/index.html" {
+			indexData, _ := fs.ReadFile(frontendFS, "index.html")
+			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.Header("Pragma", "no-cache")
+			c.Header("Expires", "0")
+			c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
+			return
 		}
+
 		cleanPath := path.Clean(strings.TrimPrefix(p, "/"))
 		if data, err := fs.ReadFile(frontendFS, cleanPath); err == nil {
+			if strings.HasPrefix(cleanPath, "assets/") {
+				c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			}
 			c.Data(http.StatusOK, guessContentType(cleanPath), data)
 			return
 		}
+
 		indexData, _ := fs.ReadFile(frontendFS, "index.html")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
 	})
 
