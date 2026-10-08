@@ -89,7 +89,6 @@ function resetFilters() {
   q.value = ''; category.value = ''; location.value = ''; onlyLow.value = false
   page.value = 0; fetchItems()
 }
-}
 
 function remove(item: any) {
   confirm.require({
@@ -100,7 +99,6 @@ function remove(item: any) {
     accept: async () => {
       await api.delete(`/items/${item.id}`)
       toast.add({ severity: 'success', summary: 'Barang dihapus', detail: item.name, life: 2500 })
-      if (drawerItem.value?.id === item.id) closeDrawer()
       fetchItems()
     },
   })

@@ -147,7 +147,7 @@ async function deleteMaintRecord(mId: string) {
           icon="pi pi-pencil"
           size="small"
           severity="secondary"
-          @click="router.push(`/items/${route.params.id}/edit`)"
+          @click="router.push('/items/' + route.params.id + '/edit')"
         />
         <Button
           label="Label QR"
@@ -428,7 +428,7 @@ async function deleteMaintRecord(mId: string) {
           icon="pi pi-pencil"
           size="small"
           severity="secondary"
-          @click="router.push(`/items/${route.params.id}/edit`)"
+          @click="router.push('/items/' + route.params.id + '/edit')"
         />
         <Button
           label="Cetak QR"

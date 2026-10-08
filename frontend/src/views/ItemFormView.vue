@@ -95,7 +95,7 @@ async function submit() {
       :title="isEdit ? 'Edit Data Barang' : 'Tambah Barang Baru'"
       :sub="isEdit ? 'Perbarui identitas, stok, atau spesifikasi aset' : 'Lengkapi data pokok barang — foto otomatis dicap geotag GPS'">
       <template #actions>
-        <Button label="Batal" icon="pi pi-times" size="small" text severity="secondary" @click="router.push(isEdit ? `/items/${route.params.id}` : '/items')" />
+        <Button label="Batal" icon="pi pi-times" size="small" text severity="secondary" @click="router.push(isEdit ? '/items/' + route.params.id : '/items')" />
         <Button :label="isEdit ? 'Simpan Perubahan' : 'Simpan Barang'" icon="pi pi-save" size="small"
                 :loading="loading" :disabled="!dirty || loadingData" @click="submit" />
       </template>
@@ -249,7 +249,7 @@ async function submit() {
           size="small"
           severity="secondary"
           text
-          @click="router.push(isEdit ? `/items/${route.params.id}` : '/items')"
+          @click="router.push(isEdit ? '/items/' + route.params.id : '/items')"
         />
 
         <div class="flex items-center gap-2">
