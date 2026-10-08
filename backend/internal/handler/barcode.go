@@ -87,8 +87,8 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 
 	err := h.pool.QueryRow(c,
 		`SELECT sku, name, category, location, current_stock, min_stock, unit,
-		        condition_status, is_available, merk, type_model, serial_number,
-		        procurement_year, funding_source, akl_akd, COALESCE(photo_url, ''),
+		        COALESCE(condition_status, 'Berfungsi'), is_available, COALESCE(merk, ''), COALESCE(type_model, ''), COALESCE(serial_number, ''),
+		        COALESCE(procurement_year, ''), COALESCE(funding_source, ''), COALESCE(akl_akd, ''), COALESCE(photo_url, ''),
 		        geo_lat, geo_lng
 		 FROM inventory_items WHERE id::text=$1`, id).
 		Scan(&resp.Sku, &resp.Name, &resp.Category, &resp.Location,

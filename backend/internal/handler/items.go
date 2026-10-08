@@ -106,7 +106,7 @@ func (h *ItemHandler) List(c *gin.Context) {
 func (h *ItemHandler) Get(c *gin.Context) {
 	id := c.Param("id")
 	var it itemReq
-	err := h.pool.QueryRow(c, `SELECT sku, name, category, location, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, is_available, geo_lat, geo_lng, geo_acc, COALESCE(geo_name, '') FROM inventory_items WHERE id=$1`, id).
+	err := h.pool.QueryRow(c, `SELECT sku, name, category, location, current_stock, min_stock, unit, COALESCE(price_per_unit, 0), COALESCE(description, ''), COALESCE(photo_url, ''), COALESCE(merk, ''), COALESCE(type_model, ''), COALESCE(serial_number, ''), COALESCE(procurement_year, ''), COALESCE(condition_status, 'Berfungsi'), COALESCE(funding_source, ''), COALESCE(distributor, ''), COALESCE(akl_akd, ''), is_available, geo_lat, geo_lng, geo_acc, COALESCE(geo_name, '') FROM inventory_items WHERE id::text=$1`, id).
 		Scan(&it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Description, &it.PhotoURL, &it.Merk, &it.TypeModel, &it.SerialNumber, &it.ProcurementYear, &it.ConditionStatus, &it.FundingSource, &it.Distributor, &it.AklAkd, &it.IsAvailable, &it.GeoLat, &it.GeoLng, &it.GeoAcc, &it.GeoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
