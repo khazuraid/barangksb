@@ -138,7 +138,13 @@ function exportFiltered() {
                 <td class="px-4 py-2.5 whitespace-nowrap" style="color: var(--txt-dim)">{{ t.timestamp }}</td>
                 <td class="px-4 py-2.5"><StatusChip :kind="t.type" /></td>
                 <td class="px-4 py-2.5">
-                  <div class="font-semibold">{{ t.item_name }}</div>
+                  <div class="flex items-center gap-1.5 font-semibold">
+                    <span>{{ t.item_name }}</span>
+                    <a v-if="t.photo_url" :href="t.photo_url" target="_blank" @click.stop
+                       title="Foto bukti berstempel geotag" class="inline-flex text-acc-500 hover:text-acc-400">
+                      <i class="pi pi-camera text-[11px]" />
+                    </a>
+                  </div>
                   <div class="t-mono" style="color: var(--txt-dim)">{{ t.item_sku }}</div>
                 </td>
                 <td class="px-4 py-2.5 text-right">
@@ -157,18 +163,29 @@ function exportFiltered() {
               </tr>
               <tr v-if="expanded === t.id">
                 <td colspan="6" class="px-4 pb-3.5 pt-0" style="background: var(--paper-1)">
-                  <div class="grid sm:grid-cols-3 gap-3 text-[12.5px]">
-                    <div>
-                      <div class="t-label mb-1">Petugas / Penerima</div>
-                      <div>{{ t.received_by || '—' }}</div>
+                  <div class="flex flex-wrap sm:flex-nowrap gap-4 items-center pt-2">
+                    <div v-if="t.photo_url" class="relative group w-24 h-20 shrink-0 rounded overflow-hidden border bg-black/10"
+                         style="border-color: var(--line)">
+                      <img :src="t.photo_url" alt="Bukti Transaksi" class="w-full h-full object-cover" />
+                      <a :href="t.photo_url" target="_blank"
+                         class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
+                         title="Lihat foto bukti geotag asli">
+                        <i class="pi pi-external-link text-xs" />
+                      </a>
                     </div>
-                    <div>
-                      <div class="t-label mb-1">Catatan</div>
-                      <div>{{ t.notes || '—' }}</div>
-                    </div>
-                    <div>
-                      <div class="t-label mb-1">ID Transaksi</div>
-                      <div class="t-mono">{{ t.id }}</div>
+                    <div class="grid sm:grid-cols-3 gap-3 text-[12.5px] flex-1">
+                      <div>
+                        <div class="t-label mb-1">Petugas / Penerima</div>
+                        <div>{{ t.received_by || '—' }}</div>
+                      </div>
+                      <div>
+                        <div class="t-label mb-1">Catatan</div>
+                        <div>{{ t.notes || '—' }}</div>
+                      </div>
+                      <div>
+                        <div class="t-label mb-1">ID Transaksi</div>
+                        <div class="t-mono">{{ t.id }}</div>
+                      </div>
                     </div>
                   </div>
                 </td>

@@ -12,6 +12,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
 import Field from '@/components/Field.vue'
 import Tag from 'primevue/tag'
+import PhotoUploader from '@/components/PhotoUploader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,7 +26,8 @@ const form = ref<any>({
   unit: 'buah', current_stock: 0, min_stock: 0, price_per_unit: 0,
   description: '', merk: '', type_model: '', serial_number: '',
   procurement_year: '', condition_status: 'Berfungsi', funding_source: '',
-  distributor: '', akl_akd: '',
+  distributor: '', akl_akd: '', photo_url: '',
+  geo_lat: null, geo_lng: null, geo_acc: null, geo_name: '',
 })
 
 const categories = ref<any[]>([])
@@ -167,6 +169,19 @@ async function submit() {
       </div>
 
       <div class="flex flex-col gap-4 xl:sticky xl:top-4">
+        <Panel title="Foto &amp; Geotag" icon="pi pi-camera">
+          <PhotoUploader
+            v-model="form.photo_url"
+            v-model:geo-lat="form.geo_lat"
+            v-model:geo-lng="form.geo_lng"
+            v-model:geo-acc="form.geo_acc"
+            v-model:geo-name="form.geo_name"
+            :location-name="form.location"
+            label="Foto Fisik Barang"
+            hint="Cap GPS &amp; waktu otomatis"
+          />
+        </Panel>
+
         <Panel title="Ringkasan" icon="pi pi-eye">
           <div class="flex flex-col gap-3">
             <div>

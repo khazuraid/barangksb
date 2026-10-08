@@ -13,6 +13,7 @@ import Panel from '@/components/Panel.vue'
 import Field from '@/components/Field.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Tag from 'primevue/tag'
+import PhotoUploader from '@/components/PhotoUploader.vue'
 
 type Mode = 'in' | 'out' | 'adjust'
 
@@ -31,7 +32,7 @@ const loadingItems = ref(true)
 const submitting = ref(false)
 const search = ref('')
 
-const form = ref({ item_id: '', quantity: 1, received_by: '', notes: '' })
+const form = ref({ item_id: '', quantity: 1, received_by: '', notes: '', photo_url: '' })
 const selectedItem = computed(() => items.value.find(i => i.id === form.value.item_id))
 
 async function loadItems() {
@@ -138,6 +139,15 @@ async function submit() {
               <Textarea v-model="form.notes" rows="2" autoResize class="w-full"
                         :placeholder="mode === 'adjust' ? 'Alasan koreksi (mis. selisih opname)' : 'Catatan tambahan'" />
             </Field>
+
+            <div class="sm:col-span-2">
+              <PhotoUploader
+                v-model="form.photo_url"
+                :location-name="selectedItem?.location || ''"
+                label="Foto Bukti &amp; Cap Geotag"
+                hint="Cap GPS lokasi, waktu, dan nama petugas otomatis tertempel pada foto"
+              />
+            </div>
 
             <div class="sm:col-span-2 flex gap-2.5 pt-1">
               <Button type="submit" :label="mode === 'in' ? 'Catat Masuk' : mode === 'out' ? 'Catat Keluar' : 'Simpan Opname'"

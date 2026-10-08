@@ -104,13 +104,27 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 			// fallback to disk
 			h.saveDisk(name, processed)
 		}
-		c.JSON(http.StatusOK, gin.H{"url": fmt.Sprintf("/api/uploads/%s", name)})
+		resp := gin.H{"url": fmt.Sprintf("/api/uploads/%s", name)}
+		if geo.Valid {
+			resp["geo_lat"] = geo.Lat
+			resp["geo_lng"] = geo.Lng
+			resp["geo_acc"] = geo.Acc
+			resp["geo_name"] = geo.Name
+		}
+		c.JSON(http.StatusOK, resp)
 		return
 	}
 
 	// disk fallback
 	url := h.saveDisk(name, processed)
-	c.JSON(http.StatusOK, gin.H{"url": url})
+	resp := gin.H{"url": url}
+	if geo.Valid {
+		resp["geo_lat"] = geo.Lat
+		resp["geo_lng"] = geo.Lng
+		resp["geo_acc"] = geo.Acc
+		resp["geo_name"] = geo.Name
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *UploadHandler) saveDisk(name string, data []byte) string {
@@ -132,6 +146,25 @@ func (h *UploadHandler) GetObject(ctx context.Context, name string) (io.ReadClos
 	}
 	// disk fallback
 	return os.Open(filepath.Join("uploads", name))
+}
+
+// Serve streams uploaded image from MinIO or disk
+func (h *UploadHandler) Serve(c *gin.Context) {
+	name := filepath.Base(c.Param("name"))
+	if name == "" || name == "." {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	reader, err := h.GetObject(c.Request.Context(), name)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	defer reader.Close()
+
+	c.Header("Content-Type", "image/jpeg")
+	c.Header("Cache-Control", "public, max-age=86400")
+	io.Copy(c.Writer, reader)
 }
 
 func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string) ([]byte, error) {
@@ -166,49 +199,71 @@ func stampGeoCard(base *image.NRGBA, geo GeoTag, petugas string) *image.NRGBA {
 		line3 = geo.Name + " — " + petugas
 	} else if geo.Name != "" {
 		line3 = geo.Name
+	} else if petugas != "" {
+		line3 = "Petugas: " + petugas
 	}
 	lines := []string{line1, line2}
 	if line3 != "" {
 		lines = append(lines, line3)
 	}
 	face := basicfont.Face7x13
-	lh := face.Height + 6
-	padX, padY := 12, 10
+	lh := face.Height + 5
+	padX, padY := 14, 10
 	cardW := 0
 	for _, l := range lines {
 		if w := len(l) * face.Width; w > cardW {
 			cardW = w
 		}
 	}
-	cardW += padX*2 + 22
-	cardH := len(lines)*lh - 6 + padY*2
-	x0 := b.Min.X + 12
-	y0 := b.Max.Y - cardH - 12
-	if x0+cardW > b.Max.X {
-		x0 = b.Min.X
-	}
-	overlay := color.RGBA{0, 0, 0, 150}
-	for y := y0; y < y0+cardH; y++ {
-		for x := x0; x < x0+cardW; x++ {
-			if x >= 0 && x < b.Max.X && y >= 0 && y < b.Max.Y {
-				o := base.At(x, y)
-				r, g, bb, a := o.RGBA()
-				blend := func(c uint32, oc uint8) uint8 {
-					return uint8((c*65535 + uint32(oc)*uint32(overlay.A)*255) / (65535 + uint32(overlay.A)*255) >> 8)
-				}
-				base.Set(x, y, color.RGBA{
-					blend(r, overlay.R), blend(g, overlay.G), blend(bb, overlay.B), uint8(a >> 8),
-				})
+	cardW += padX*2 + 16
+	cardH := len(lines)*lh - 5 + padY*2
+
+	// Render card to separate image with alpha
+	card := image.NewNRGBA(image.Rect(0, 0, cardW, cardH))
+	bg := color.NRGBA{0, 0, 0, 185}
+	accent := color.NRGBA{245, 165, 36, 255} // Amber accent stripe
+
+	for y := 0; y < cardH; y++ {
+		for x := 0; x < cardW; x++ {
+			if x < 4 {
+				card.Set(x, y, accent)
+			} else {
+				card.Set(x, y, bg)
 			}
 		}
 	}
-	d := &font.Drawer{Dst: base, Src: image.NewUniform(color.RGBA{255, 255, 255, 255}), Face: face}
-	tx := x0 + padX + 22
-	ty := y0 + padY + face.Ascent
+
+	d := &font.Drawer{Dst: card, Src: image.NewUniform(color.RGBA{255, 255, 255, 255}), Face: face}
+	tx := padX + 6
+	ty := padY + face.Ascent
 	for _, l := range lines {
 		d.Dot = fixed.P(tx, ty)
 		d.DrawString(l)
 		ty += lh
 	}
-	return base
+
+	scale := b.Dx() / 450
+	if scale < 1 {
+		scale = 1
+	} else if scale > 3 {
+		scale = 3
+	}
+
+	scaledCard := card
+	if scale > 1 {
+		scaledCard = imaging.Resize(card, cardW*scale, cardH*scale, imaging.NearestNeighbor)
+	}
+
+	sw := scaledCard.Bounds().Dx()
+	sh := scaledCard.Bounds().Dy()
+	x0 := b.Min.X + 16*scale
+	y0 := b.Max.Y - sh - 16*scale
+	if x0+sw > b.Max.X {
+		x0 = b.Min.X
+	}
+	if y0 < b.Min.Y {
+		y0 = b.Min.Y
+	}
+
+	return imaging.Overlay(base, scaledCard, image.Pt(x0, y0), 1.0)
 }

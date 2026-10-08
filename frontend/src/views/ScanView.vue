@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import Button from 'primevue/button'
@@ -11,6 +11,8 @@ const router = useRouter()
 const item = ref<any>(null)
 const error = ref('')
 const loading = ref(true)
+const showMap = ref(false)
+const photoModal = ref(false)
 
 onMounted(async () => {
   try {
@@ -18,6 +20,28 @@ onMounted(async () => {
   } catch {
     error.value = 'Barang tidak ditemukan atau kode QR tidak valid.'
   } finally { loading.value = false }
+})
+
+const hasCoords = computed(() => {
+  return item.value && item.value.geo_lat != null && item.value.geo_lng != null
+})
+
+const osmEmbedUrl = computed(() => {
+  if (!hasCoords.value) return ''
+  const lat = item.value.geo_lat
+  const lng = item.value.geo_lng
+  const delta = 0.0035
+  const minLng = lng - delta
+  const minLat = lat - delta
+  const maxLng = lng + delta
+  const maxLat = lat + delta
+  const bbox = `${minLng}%2C${minLat}%2C${maxLng}%2C${maxLat}`
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
+})
+
+const googleMapsUrl = computed(() => {
+  if (!hasCoords.value) return ''
+  return `https://www.google.com/maps?q=${item.value.geo_lat},${item.value.geo_lng}`
 })
 
 function rows() {
@@ -62,6 +86,55 @@ function rows() {
 
       <template v-else>
         <div class="panel shell-panel-2 overflow-hidden">
+          <!-- Photo with Geotag if available -->
+          <div v-if="item.photo_url" class="relative bg-black/40 border-b overflow-hidden cursor-pointer group"
+               style="border-color: var(--line)"
+               @click="photoModal = true">
+            <img :src="item.photo_url" alt="Foto Barang Berstempel Geotag" class="w-full max-h-60 object-contain group-hover:scale-[1.02] transition-transform" />
+            <div class="absolute bottom-2 left-2 bg-black/80 px-2 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
+              <i class="pi pi-map-marker text-sig-ok text-[9px]" /> Cap Geotag Tervalidasi
+            </div>
+            <div class="absolute top-2 right-2 bg-black/75 px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <i class="pi pi-search-plus text-[10px]" /> Perbesar
+            </div>
+          </div>
+
+          <!-- Interactive Map Strip if coordinates exist -->
+          <div v-if="hasCoords" class="p-3 border-b text-[11.5px] flex flex-col gap-2"
+               style="border-color: var(--line); background: var(--paper-1)">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 t-mono">
+                <i class="pi pi-map-marker text-sig-ok" />
+                <span class="font-semibold text-sig-ok">Lokasi GPS:</span>
+                <span>{{ item.geo_lat.toFixed(5) }}, {{ item.geo_lng.toFixed(5) }}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <Button
+                  :label="showMap ? 'Tutup Peta' : 'Peta'"
+                  :icon="showMap ? 'pi pi-times' : 'pi pi-map'"
+                  size="small"
+                  text
+                  :severity="showMap ? 'warn' : 'secondary'"
+                  class="!text-[11px] !py-0.5"
+                  @click="showMap = !showMap"
+                />
+                <a :href="googleMapsUrl" target="_blank" rel="noopener noreferrer" class="inline-flex">
+                  <Button icon="pi pi-external-link" size="small" text v-tooltip.top="'Buka di Google Maps'" class="!p-1" />
+                </a>
+              </div>
+            </div>
+
+            <!-- OpenStreetMap Embed Frame -->
+            <div v-if="showMap" class="w-full h-44 rounded border overflow-hidden mt-1" style="border-color: var(--line)">
+              <iframe
+                :src="osmEmbedUrl"
+                class="w-full h-full border-0"
+                loading="lazy"
+                title="Peta Lokasi OpenStreetMap"
+              />
+            </div>
+          </div>
+
           <!-- identity strip -->
           <div class="relative p-5 border-b" style="border-color: var(--line)">
             <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-acc-500" />
@@ -120,6 +193,39 @@ function rows() {
           Halaman ini hanya menampilkan data. Perubahan stok memerlukan login petugas.
         </p>
       </template>
+
+      <!-- Lightbox Modal Foto Geotag -->
+      <div
+        v-if="photoModal && item.photo_url"
+        class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
+        @click.self="photoModal = false"
+      >
+        <div class="relative max-w-xl w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col"
+             style="border-color: var(--line)">
+          <div class="flex items-center justify-between px-3 py-2 border-b" style="border-color: var(--line)">
+            <span class="text-[12px] font-bold flex items-center gap-1.5">
+              <i class="pi pi-image text-acc-500" /> Foto Barang Berstempel Geotag
+            </span>
+            <Button icon="pi pi-times" text rounded size="small" severity="secondary" @click="photoModal = false" />
+          </div>
+          <div class="bg-black p-2 flex items-center justify-center max-h-[70vh] overflow-hidden">
+            <img :src="item.photo_url" alt="Foto Geotag Asli" class="max-h-[65vh] object-contain rounded" />
+          </div>
+          <div class="flex items-center justify-between px-3 py-2 border-t text-[11px]" style="border-color: var(--line)">
+            <span v-if="hasCoords" class="t-mono text-sig-ok">
+              GPS: {{ item.geo_lat.toFixed(5) }}, {{ item.geo_lng.toFixed(5) }}
+            </span>
+            <div class="flex gap-1.5 ml-auto">
+              <a v-if="hasCoords" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer">
+                <Button label="Google Maps" icon="pi pi-map-marker" size="small" text />
+              </a>
+              <a :href="item.photo_url" target="_blank" download>
+                <Button label="Unduh" icon="pi pi-download" size="small" text severity="secondary" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>

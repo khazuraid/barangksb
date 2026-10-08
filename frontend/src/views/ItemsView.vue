@@ -158,7 +158,11 @@ function printReport() { window.open('/api/report.pdf', '_blank') }
                 <td class="px-4 py-2.5"><span class="t-mono font-semibold">{{ it.sku }}</span></td>
                 <td class="px-4 py-2.5">
                   <div class="flex items-center gap-2.5">
-                    <span class="w-6 h-6 shrink-0 grid place-items-center rounded border"
+                    <span v-if="it.photo_url" class="w-7 h-7 shrink-0 rounded overflow-hidden border"
+                          style="border-color: var(--line)">
+                      <img :src="it.photo_url" :alt="it.name" class="w-full h-full object-cover" />
+                    </span>
+                    <span v-else class="w-7 h-7 shrink-0 grid place-items-center rounded border"
                           style="border-color: var(--line); background: var(--paper-2)">
                       <i class="pi pi-box text-[10px]" style="color: var(--txt-dim)" />
                     </span>
@@ -184,24 +188,44 @@ function printReport() { window.open('/api/report.pdf', '_blank') }
               </tr>
               <tr v-if="expanded === it.id">
                 <td colspan="7" class="px-4 pb-3.5 pt-0" style="background: var(--paper-1)">
-                  <div class="grid sm:grid-cols-4 gap-3 text-[12px]">
-                    <div>
-                      <div class="t-label mb-1">Harga Satuan</div>
-                      <div class="t-num">{{ it.price_per_unit ? 'Rp ' + Number(it.price_per_unit).toLocaleString('id-ID') : '—' }}</div>
+                  <div class="flex flex-wrap sm:flex-nowrap gap-4 text-[12px] items-center pt-2">
+                    <div v-if="it.photo_url" class="relative group w-24 h-20 shrink-0 rounded overflow-hidden border bg-black/10"
+                         style="border-color: var(--line)">
+                      <img :src="it.photo_url" :alt="it.name" class="w-full h-full object-cover" />
+                      <a :href="it.photo_url" target="_blank"
+                         class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
+                         title="Lihat foto geotag asli">
+                        <i class="pi pi-external-link text-xs" />
+                      </a>
                     </div>
-                    <div>
-                      <div class="t-label mb-1">Ketersediaan</div>
-                      <div>{{ it.is_available ? 'Tersedia' : 'Tidak tersedia' }}</div>
-                    </div>
-                    <div>
-                      <div class="t-label mb-1">ID Barang</div>
-                      <div class="t-mono">{{ it.id }}</div>
-                    </div>
-                    <div class="flex items-end gap-2">
-                      <Button label="Edit" icon="pi pi-pencil" size="small" text
-                              @click="router.push(`/items/${it.id}/edit`)" />
-                      <Button label="QR" icon="pi pi-qrcode" size="small" text
-                              @click="router.push('/barcode')" />
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
+                      <div>
+                        <div class="t-label mb-1">Harga Satuan</div>
+                        <div class="t-num">{{ it.price_per_unit ? 'Rp ' + Number(it.price_per_unit).toLocaleString('id-ID') : '—' }}</div>
+                      </div>
+                      <div>
+                        <div class="t-label mb-1">Ketersediaan</div>
+                        <div>{{ it.is_available ? 'Tersedia' : 'Tidak tersedia' }}</div>
+                      </div>
+                      <div>
+                        <div class="t-label mb-1">Foto &amp; Geotag</div>
+                        <div class="flex items-center gap-1.5">
+                          <span>{{ it.photo_url ? 'Tersedia' : 'Belum ada' }}</span>
+                          <a v-if="it.geo_lat && it.geo_lng"
+                             :href="`https://www.google.com/maps?q=${it.geo_lat},${it.geo_lng}`"
+                             target="_blank"
+                             class="text-acc-500 hover:underline flex items-center gap-0.5 text-[11px]"
+                             title="Buka peta lokasi di Google Maps">
+                            <i class="pi pi-map-marker text-[10px]" /> Peta
+                          </a>
+                        </div>
+                      </div>
+                      <div class="flex items-end gap-2">
+                        <Button label="Edit" icon="pi pi-pencil" size="small" text
+                                @click="router.push(`/items/${it.id}/edit`)" />
+                        <Button label="QR" icon="pi pi-qrcode" size="small" text
+                                @click="router.push('/barcode')" />
+                      </div>
                     </div>
                   </div>
                 </td>

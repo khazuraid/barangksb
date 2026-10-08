@@ -36,8 +36,13 @@ type itemReq struct {
 	ProcurementYear string `json:"procurement_year"`
 	ConditionStatus string `json:"condition_status"`
 	FundingSource   string `json:"funding_source"`
-	Distributor     string `json:"distributor"`
-	AklAkd          string `json:"akl_akd"`
+	Distributor     string   `json:"distributor"`
+	AklAkd          string   `json:"akl_akd"`
+	GeoLat          *float64 `json:"geo_lat"`
+	GeoLng          *float64 `json:"geo_lng"`
+	GeoAcc          *float64 `json:"geo_acc"`
+	GeoName         string   `json:"geo_name"`
+	IsAvailable     bool     `json:"is_available"`
 }
 
 func (h *ItemHandler) List(c *gin.Context) {
@@ -62,7 +67,7 @@ func (h *ItemHandler) List(c *gin.Context) {
 	h.pool.QueryRow(c, `SELECT count(*) FROM inventory_items`+where, args...).Scan(&total)
 
 	args = append(args, perPage, offset)
-	rows, err := h.pool.Query(c, fmt.Sprintf(`SELECT id, sku, name, category, location, current_stock, min_stock, unit, price_per_unit, condition_status, is_available, photo_url FROM inventory_items%s ORDER BY name LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
+	rows, err := h.pool.Query(c, fmt.Sprintf(`SELECT id, sku, name, category, location, current_stock, min_stock, unit, price_per_unit, condition_status, is_available, photo_url, geo_lat, geo_lng, COALESCE(geo_name, '') FROM inventory_items%s ORDER BY name LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -70,23 +75,26 @@ func (h *ItemHandler) List(c *gin.Context) {
 	defer rows.Close()
 
 	type itemRow struct {
-		ID           string `json:"id"`
-		SKU          string `json:"sku"`
-		Name         string `json:"name"`
-		Category     string `json:"category"`
-		Location     string `json:"location"`
-		CurrentStock int32  `json:"current_stock"`
-		MinStock     int32  `json:"min_stock"`
-		Unit         string `json:"unit"`
-		PricePerUnit int64  `json:"price_per_unit"`
-		Condition    string `json:"condition_status"`
-		IsAvailable  bool   `json:"is_available"`
-		PhotoURL     string `json:"photo_url"`
+		ID           string   `json:"id"`
+		SKU          string   `json:"sku"`
+		Name         string   `json:"name"`
+		Category     string   `json:"category"`
+		Location     string   `json:"location"`
+		CurrentStock int32    `json:"current_stock"`
+		MinStock     int32    `json:"min_stock"`
+		Unit         string   `json:"unit"`
+		PricePerUnit int64    `json:"price_per_unit"`
+		Condition    string   `json:"condition_status"`
+		IsAvailable  bool     `json:"is_available"`
+		PhotoURL     string   `json:"photo_url"`
+		GeoLat       *float64 `json:"geo_lat"`
+		GeoLng       *float64 `json:"geo_lng"`
+		GeoName      string   `json:"geo_name"`
 	}
 	items := []itemRow{}
 	for rows.Next() {
 		var it itemRow
-		rows.Scan(&it.ID, &it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Condition, &it.IsAvailable, &it.PhotoURL)
+		rows.Scan(&it.ID, &it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Condition, &it.IsAvailable, &it.PhotoURL, &it.GeoLat, &it.GeoLng, &it.GeoName)
 		items = append(items, it)
 	}
 
@@ -98,8 +106,8 @@ func (h *ItemHandler) List(c *gin.Context) {
 func (h *ItemHandler) Get(c *gin.Context) {
 	id := c.Param("id")
 	var it itemReq
-	err := h.pool.QueryRow(c, `SELECT sku, name, category, location, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, is_available FROM inventory_items WHERE id=$1`, id).
-		Scan(&it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Description, &it.PhotoURL, &it.Merk, &it.TypeModel, &it.SerialNumber, &it.ProcurementYear, &it.ConditionStatus, &it.FundingSource, &it.Distributor, &it.AklAkd)
+	err := h.pool.QueryRow(c, `SELECT sku, name, category, location, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, is_available, geo_lat, geo_lng, geo_acc, COALESCE(geo_name, '') FROM inventory_items WHERE id=$1`, id).
+		Scan(&it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Description, &it.PhotoURL, &it.Merk, &it.TypeModel, &it.SerialNumber, &it.ProcurementYear, &it.ConditionStatus, &it.FundingSource, &it.Distributor, &it.AklAkd, &it.IsAvailable, &it.GeoLat, &it.GeoLng, &it.GeoAcc, &it.GeoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
 		return
@@ -118,10 +126,11 @@ func (h *ItemHandler) Create(c *gin.Context) {
 		sku = generateSKU(h, c, req.Category)
 	}
 	var id string
-	err := h.pool.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id::text`,
+	err := h.pool.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, geo_lat, geo_lng, geo_acc, geo_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id::text`,
 		sku, req.Name, req.Category, req.Location, req.CurrentStock, req.MinStock, req.Unit, req.PricePerUnit,
 		nullable(req.Description), nullable(req.PhotoURL), nullable(req.Merk), nullable(req.TypeModel), nullable(req.SerialNumber),
-		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd)).
+		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd),
+		req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName)).
 		Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -137,10 +146,11 @@ func (h *ItemHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	_, err := h.pool.Exec(c, `UPDATE inventory_items SET sku=$2, name=$3, category=$4, location=$5, current_stock=$6, min_stock=$7, unit=$8, price_per_unit=$9, description=$10, photo_url=$11, merk=$12, type_model=$13, serial_number=$14, procurement_year=$15, condition_status=$16, funding_source=$17, distributor=$18, akl_akd=$19, updated_at=now() WHERE id=$1`,
+	_, err := h.pool.Exec(c, `UPDATE inventory_items SET sku=$2, name=$3, category=$4, location=$5, current_stock=$6, min_stock=$7, unit=$8, price_per_unit=$9, description=$10, photo_url=$11, merk=$12, type_model=$13, serial_number=$14, procurement_year=$15, condition_status=$16, funding_source=$17, distributor=$18, akl_akd=$19, geo_lat=$20, geo_lng=$21, geo_acc=$22, geo_name=$23, updated_at=now() WHERE id=$1`,
 		id, req.SKU, req.Name, req.Category, req.Location, req.CurrentStock, req.MinStock, req.Unit, req.PricePerUnit,
 		nullable(req.Description), nullable(req.PhotoURL), nullable(req.Merk), nullable(req.TypeModel), nullable(req.SerialNumber),
-		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd))
+		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd),
+		req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

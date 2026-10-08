@@ -194,6 +194,10 @@ func main() {
 	api.PUT("/settings/telegram/commands/:id", setH.UpdateCommand)
 	api.DELETE("/settings/telegram/commands/:id", setH.DeleteCommand)
 
+	// Serve uploaded files (MinIO or disk fallback)
+	r.GET("/api/uploads/:name", upH.Serve)
+	r.GET("/uploads/:name", upH.Serve)
+
 	// Static files for local uploads (disk fallback)
 	r.Static("/uploads", "./uploads")
 

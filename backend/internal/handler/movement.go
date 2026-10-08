@@ -92,6 +92,7 @@ func (h *MovementHandler) Adjust(c *gin.Context) {
 		Quantity int32  `json:"quantity"`
 		Person   string `json:"received_by"`
 		Notes    string `json:"notes"`
+		PhotoURL string `json:"photo_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -119,10 +120,10 @@ func (h *MovementHandler) Adjust(c *gin.Context) {
 	if absDiff < 0 { absDiff = -absDiff }
 
 	h.pool.Exec(c, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, req.ItemID, req.Quantity)
-	h.pool.Exec(c, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+	h.pool.Exec(c, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, photo_url)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		txType, req.ItemID, sku, name, absDiff, unit, current, req.Quantity,
-		nullableS(req.Person), nullableS("Opname: "+req.Notes))
+		nullableS(req.Person), nullableS("Opname: "+req.Notes), nullableS(req.PhotoURL))
 
 	c.JSON(http.StatusOK, gin.H{"sku": sku, "name": name, "previous": current, "new": req.Quantity})
 }
@@ -144,7 +145,7 @@ func (h *MovementHandler) ListTransactions(c *gin.Context) {
 	h.pool.QueryRow(c, `SELECT count(*) FROM stock_transactions`+where, args...).Scan(&total)
 
 	args = append(args, perPage, offset)
-	rows, err := h.pool.Query(c, fmtSprintf(`SELECT id::text, timestamp, type, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes FROM stock_transactions%s ORDER BY timestamp DESC LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
+	rows, err := h.pool.Query(c, fmtSprintf(`SELECT id::text, timestamp, type, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, COALESCE(photo_url, '') FROM stock_transactions%s ORDER BY timestamp DESC LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -163,11 +164,12 @@ func (h *MovementHandler) ListTransactions(c *gin.Context) {
 		New      int32  `json:"new_stock"`
 		By       string `json:"received_by"`
 		Notes    string `json:"notes"`
+		PhotoURL string `json:"photo_url"`
 	}
 	txs := []txRow{}
 	for rows.Next() {
 		var t txRow
-		rows.Scan(&t.ID, &t.Time, &t.Type, &t.SKU, &t.Name, &t.Quantity, &t.Unit, &t.Prev, &t.New, &t.By, &t.Notes)
+		rows.Scan(&t.ID, &t.Time, &t.Type, &t.SKU, &t.Name, &t.Quantity, &t.Unit, &t.Prev, &t.New, &t.By, &t.Notes, &t.PhotoURL)
 		txs = append(txs, t)
 	}
 

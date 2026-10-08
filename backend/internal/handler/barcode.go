@@ -80,18 +80,23 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 		ProcurementYear string `json:"procurement_year"`
 		FundingSource   string `json:"funding_source"`
 		AklAkd          string `json:"akl_akd"`
+		PhotoURL        string   `json:"photo_url"`
+		GeoLat          *float64 `json:"geo_lat"`
+		GeoLng          *float64 `json:"geo_lng"`
 	}
 
 	err := h.pool.QueryRow(c,
 		`SELECT sku, name, category, location, current_stock, min_stock, unit,
 		        condition_status, is_available, merk, type_model, serial_number,
-		        procurement_year, funding_source, akl_akd
+		        procurement_year, funding_source, akl_akd, COALESCE(photo_url, ''),
+		        geo_lat, geo_lng
 		 FROM inventory_items WHERE id::text=$1`, id).
 		Scan(&resp.Sku, &resp.Name, &resp.Category, &resp.Location,
 			&resp.CurrentStock, &resp.MinStock, &resp.Unit,
 			&resp.ConditionStatus, &resp.IsAvailable, &resp.Merk,
 			&resp.TypeModel, &resp.SerialNumber, &resp.ProcurementYear,
-			&resp.FundingSource, &resp.AklAkd)
+			&resp.FundingSource, &resp.AklAkd, &resp.PhotoURL,
+			&resp.GeoLat, &resp.GeoLng)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
 		return
