@@ -215,10 +215,6 @@ func main() {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
-		if strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/uploads/") {
-			c.Status(http.StatusNotFound)
-			return
-		}
 		if p == "/" || p == "/index.html" {
 			indexData, _ := fs.ReadFile(frontendFS, "index.html")
 			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -234,6 +230,11 @@ func main() {
 				c.Header("Cache-Control", "public, max-age=31536000, immutable")
 			}
 			c.Data(http.StatusOK, guessContentType(cleanPath), data)
+			return
+		}
+
+		if strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/uploads/") {
+			c.Status(http.StatusNotFound)
 			return
 		}
 

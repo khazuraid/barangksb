@@ -149,17 +149,3 @@ window.addEventListener('vite:preloadError', (event) => {
   event.preventDefault()
   window.location.reload()
 })
-
-window.addEventListener(
-  'error',
-  (event) => {
-    const target = event.target as HTMLElement
-    if (target && target.tagName === 'LINK' && (target as HTMLLinkElement).rel === 'stylesheet') {
-      if (!sessionStorage.getItem('css_reloaded')) {
-        sessionStorage.setItem('css_reloaded', 'true')
-        window.location.reload()
-      }
-    }
-  },
-  true
-)
