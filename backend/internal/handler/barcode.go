@@ -83,6 +83,7 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 		PhotoURL        string   `json:"photo_url"`
 		GeoLat          *float64 `json:"geo_lat"`
 		GeoLng          *float64 `json:"geo_lng"`
+		Maintenances    []gin.H  `json:"maintenances"`
 	}
 
 	err := h.pool.QueryRow(c,
@@ -101,6 +102,35 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
 		return
 	}
+
+	// Fetch maintenance history for public view
+	mRows, err := h.pool.Query(c, `
+		SELECT service_type, service_date::text,
+		       COALESCE(vendor_or_technician, ''), COALESCE(description, ''),
+		       next_service_date::text, COALESCE(photo_url, '')
+		FROM item_maintenances
+		WHERE item_id::text = $1
+		ORDER BY service_date DESC, created_at DESC
+	`, id)
+	resp.Maintenances = []gin.H{}
+	if err == nil {
+		defer mRows.Close()
+		for mRows.Next() {
+			var sType, sDate, vendor, desc, photo string
+			var nextDate *string
+			mRows.Scan(&sType, &sDate, &vendor, &desc, &nextDate, &photo)
+			mItem := gin.H{
+				"service_type":          sType,
+				"service_date":          sDate,
+				"vendor_or_technician": vendor,
+				"description":           desc,
+				"next_service_date":     nextDate,
+				"photo_url":             photo,
+			}
+			resp.Maintenances = append(resp.Maintenances, mItem)
+		}
+	}
+
 	c.JSON(http.StatusOK, resp)
 }
 

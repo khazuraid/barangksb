@@ -127,7 +127,7 @@ async function submit() {
 
         <Panel title="Stok &amp; Nilai" icon="pi pi-database">
           <div class="grid sm:grid-cols-3 gap-4">
-            <Field label="Stok Saat Ini" :hint="isEdit ? 'Perubahan stok sebaiknya lewat menu Mutasi agar terekam.' : undefined">
+            <Field label="Stok Saat Ini">
               <InputNumber v-model="form.current_stock" :min="0" showButtons class="w-full" />
             </Field>
             <Field label="Stok Minimum" hint="Baris ditandai merah bila stok ≤ nilai ini.">

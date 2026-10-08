@@ -42,4 +42,22 @@ router.beforeEach((to, _from, next) => {
   }
 })
 
+router.onError((error, to) => {
+  const msg = error?.message || ''
+  if (
+    msg.includes('Failed to fetch dynamically imported module') ||
+    msg.includes('Importing a module script failed') ||
+    msg.includes('Expected a JavaScript-or-Wasm module script')
+  ) {
+    if (!sessionStorage.getItem('chunk_reloaded')) {
+      sessionStorage.setItem('chunk_reloaded', 'true')
+      window.location.href = to.fullPath
+    }
+  }
+})
+
+router.afterEach(() => {
+  sessionStorage.removeItem('chunk_reloaded')
+})
+
 export default router

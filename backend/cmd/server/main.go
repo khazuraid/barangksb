@@ -117,6 +117,8 @@ func main() {
 	rptH := handler.NewReportHandler(pool)
 	bulkH := handler.NewBulkHandler(pool)
 	setH := handler.NewSettingHandler(pool)
+	importH := handler.NewImportHandler(pool, itemH)
+	maintH := handler.NewMaintenanceHandler(pool)
 
 	r := gin.New()
 	allowedOrigins := strings.Split(cfg.CORSOrigins, ",")
@@ -141,9 +143,16 @@ func main() {
 
 	api.GET("/items", itemH.List)
 	api.POST("/items", itemH.Create)
+	api.GET("/items/template", importH.DownloadTemplate)
+	api.POST("/items/import", importH.Import)
 	api.GET("/items/:id", itemH.Get)
 	api.PUT("/items/:id", itemH.Update)
 	api.DELETE("/items/:id", itemH.Delete)
+
+	api.GET("/items/:id/maintenance", maintH.ListByItem)
+	api.POST("/items/:id/maintenance", maintH.Create)
+	api.DELETE("/items/:id/maintenance/:mId", maintH.Delete)
+	api.GET("/maintenance/upcoming", maintH.Upcoming)
 
 	api.POST("/movement/in", mvH.StockIn)
 	api.POST("/movement/out", mvH.StockOut)
@@ -204,6 +213,10 @@ func main() {
 		p := c.Request.URL.Path
 		if strings.HasPrefix(p, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		if strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/uploads/") {
+			c.Status(http.StatusNotFound)
 			return
 		}
 		if p == "/" {

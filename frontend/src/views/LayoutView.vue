@@ -16,7 +16,6 @@ const NAV: { section: string; items: Nav[] }[] = [
   { section: 'Operasional', items: [
     { label: 'Dashboard', icon: 'pi pi-th-large', to: '/' },
     { label: 'Barang', icon: 'pi pi-box', to: '/items' },
-    { label: 'Mutasi', icon: 'pi pi-arrows-h', to: '/movement' },
     { label: 'Riwayat', icon: 'pi pi-history', to: '/history' },
   ]},
   { section: 'Master Data', items: [

@@ -115,8 +115,8 @@ function exportFiltered() {
 
       <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat riwayat…" />
       <EmptyState v-else-if="!txs.length" icon="pi pi-history" title="Belum ada transaksi"
-                  sub="Catat mutasi barang masuk atau keluar untuk mengisi riwayat ini.">
-        <Button label="Catat mutasi" icon="pi pi-plus" size="small" @click="$router.push('/movement')" />
+                  sub="Riwayat transaksi akan tampil di sini saat terjadi perubahan stok.">
+        <Button label="Daftar Barang" icon="pi pi-box" size="small" @click="$router.push('/items')" />
       </EmptyState>
 
       <div v-else class="overflow-x-auto">

@@ -143,3 +143,9 @@ app.use(ConfirmationService)
 app.use(ToastService)
 app.directive('tooltip', Tooltip)
 app.mount('#app')
+
+// Automatically reload when a new deployment creates new chunk hashes
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault()
+  window.location.reload()
+})

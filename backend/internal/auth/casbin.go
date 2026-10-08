@@ -33,7 +33,11 @@ p, petugas, /api/dashboard, GET
 p, petugas, /api/items, GET
 p, petugas, /api/items/:id, GET
 p, petugas, /api/items, POST
+p, petugas, /api/items/template*, GET
+p, petugas, /api/items/import, POST
 p, petugas, /api/items/:id, PUT
+p, petugas, /api/items/:id/maintenance*, *
+p, petugas, /api/maintenance/*, GET
 p, petugas, /api/categories, GET
 p, petugas, /api/locations, GET
 p, petugas, /api/movement/*, POST

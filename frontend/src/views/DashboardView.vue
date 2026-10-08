@@ -45,8 +45,8 @@ const chartOptions = {
     <PageHeader crumb="Ringkasan" title="Dashboard"
       sub="Kondisi stok dan pergerakan barang terkini">
       <template #actions>
-        <Button label="Mutasi" icon="pi pi-plus" size="small" @click="router.push('/movement')" />
-        <Button label="Barang" icon="pi pi-box" size="small" severity="secondary" outlined
+        <Button label="Tambah Barang" icon="pi pi-plus" size="small" @click="router.push('/items/new')" />
+        <Button label="Daftar Barang" icon="pi pi-box" size="small" severity="secondary" outlined
                 @click="router.push('/items')" />
       </template>
     </PageHeader>
