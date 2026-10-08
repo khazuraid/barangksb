@@ -410,43 +410,43 @@ async function stampGpsMapCamera(
         addLog('Mengunduh thumbnail peta OSM...', 'info')
         const tileImg = await loadTileBlobImage(geoCoords.lat, geoCoords.lng)
 
-        // Sizing with large, highly legible fonts
+        // Large, bold, highly legible GPS Map Camera fonts
         currentStepText.value = 'Mengecap watermark GPS Map Camera...'
-        addLog('Merender watermark GPS Map Camera (tulisan diperbesar & tajam)...', 'info')
+        addLog('Merender watermark GPS Map Camera (tulisan tebal & terbaca jelas)...', 'info')
 
         const margin = Math.round(width * 0.02)
-        const cardW = Math.min(width - margin * 2, Math.round(width * 0.90))
-        const cardX = margin
+        const cardW = Math.min(width - margin * 2, Math.round(width * 0.94))
+        const cardX = Math.round((width - cardW) / 2)
 
-        const padX = Math.round(18 * (width / 1440))
-        const padY = Math.round(14 * (width / 1440))
+        const padX = Math.round(22 * (width / 1440))
+        const padY = Math.round(18 * (width / 1440))
 
-        // Large legible fonts
-        const titleSize = Math.max(18, Math.round(width * 0.016))
-        const bodySize = Math.max(13, Math.round(width * 0.0112))
-        const metaSize = Math.max(13, Math.round(width * 0.0108))
-        const badgeSize = Math.max(11, Math.round(width * 0.0095))
+        // Large legible fonts matching real GPS Map Camera banner
+        const titleSize = Math.max(26, Math.round(width * 0.026))
+        const bodySize = Math.max(17, Math.round(width * 0.0165))
+        const metaSize = Math.max(17, Math.round(width * 0.0165))
+        const badgeSize = Math.max(15, Math.round(width * 0.014))
 
         const titleLineH = Math.round(titleSize * 1.3)
-        const bodyLineH = Math.round(bodySize * 1.35)
-        const metaLineH = Math.round(metaSize * 1.35)
+        const bodyLineH = Math.round(bodySize * 1.38)
+        const metaLineH = Math.round(metaSize * 1.38)
 
         // Measure text content
         ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-        const approxMapSize = Math.max(130, Math.round(width * 0.13))
+        const approxMapSize = Math.max(160, Math.round(width * 0.17))
         const textAreaW = cardW - approxMapSize - padX * 3
 
         const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
-        const textContentH = titleLineH + addressLines.length * bodyLineH + metaLineH * 2 + 10
+        const textContentH = titleLineH + addressLines.length * bodyLineH + metaLineH * 2 + 14
 
-        const mapSize = Math.max(approxMapSize, Math.round(textContentH * 0.95))
+        const mapSize = Math.max(approxMapSize, Math.round(textContentH * 0.94))
         const cardH = Math.max(mapSize, textContentH) + padY * 2
         const cardY = height - cardH - margin
 
         // Draw Card Background
         ctx.save()
-        ctx.fillStyle = 'rgba(22, 22, 24, 0.88)'
-        const radius = Math.round(12 * (width / 1440))
+        ctx.fillStyle = 'rgba(22, 22, 24, 0.90)'
+        const radius = Math.round(14 * (width / 1440))
         ctx.beginPath()
         ctx.moveTo(cardX + radius, cardY)
         ctx.lineTo(cardX + cardW - radius, cardY)
@@ -708,6 +708,28 @@ function removePhoto() {
     localPreviewUrl.value = ''
   }
   emit('update:modelValue', '')
+}
+
+async function downloadPhoto() {
+  if (!currentPhotoSrc.value) return
+  try {
+    const res = await fetch(currentPhotoSrc.value)
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = 'foto_geotag.jpg'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(blobUrl)
+  } catch {
+    const a = document.createElement('a')
+    a.href = currentPhotoSrc.value
+    a.download = 'foto_geotag.jpg'
+    a.target = '_blank'
+    a.click()
+  }
 }
 </script>
 
@@ -1143,9 +1165,14 @@ function removePhoto() {
             >
               <Button label="Google Maps" icon="pi pi-map-marker" size="small" text />
             </a>
-            <a :href="currentPhotoSrc" target="_blank" download="foto_geotag.jpg" class="inline-flex">
-              <Button label="Unduh Foto" icon="pi pi-download" size="small" text severity="secondary" />
-            </a>
+            <Button
+              label="Unduh Foto (JPG)"
+              icon="pi pi-download"
+              size="small"
+              severity="success"
+              text
+              @click="downloadPhoto"
+            />
             <Button label="Tutup" size="small" severity="secondary" @click="previewOpen = false" />
           </div>
         </div>

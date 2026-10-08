@@ -186,17 +186,14 @@ func (h *ItemHandler) Delete(c *gin.Context) {
 	}
 	id := c.Param("id")
 
-	// Check if item has transactions — refuse to cascade-delete history
-	var txCount int
-	h.pool.QueryRow(c, `SELECT count(*) FROM stock_transactions WHERE item_id::text=$1`, id).Scan(&txCount)
-	if txCount > 0 {
-		c.JSON(http.StatusConflict, gin.H{
-			"error": "barang memiliki " + strconv.Itoa(txCount) + " transaksi terkait. Hapus/Arsipkan transaksi terlebih dahulu, atau set is_available=false untuk menonaktifkan.",
-		})
+	// Delete related transactions, maintenance records, and the item
+	_, _ = h.pool.Exec(c, `DELETE FROM stock_transactions WHERE item_id::text=$1`, id)
+	_, _ = h.pool.Exec(c, `DELETE FROM item_maintenances WHERE item_id::text=$1`, id)
+	_, err := h.pool.Exec(c, `DELETE FROM inventory_items WHERE id::text=$1`, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	h.pool.Exec(c, `DELETE FROM inventory_items WHERE id=$1`, id)
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 

@@ -23,6 +23,7 @@ const item = ref<any>(null)
 const loading = ref(true)
 const photoLightbox = ref(false)
 const lightboxUrl = ref('')
+const deleting = ref(false)
 
 // Stock Movement State (Stok Masuk & Stok Keluar dengan bukti foto geotag)
 const stockModalType = ref<'IN' | 'OUT' | null>(null)
@@ -96,9 +97,10 @@ async function fetchStockHistory() {
   loadingStockHistory.value = true
   try {
     const res = await api.get('/transactions', { params: { sku: item.value.sku, per_page: 50 } })
-    stockTransactions.value = res.data.data
+    const list = res.data?.data || (Array.isArray(res.data) ? res.data : [])
+    stockTransactions.value = Array.isArray(list) ? list : []
   } catch {
-    // silent
+    stockTransactions.value = []
   } finally {
     loadingStockHistory.value = false
   }
@@ -122,6 +124,28 @@ const googleMapsUrl = computed(() => {
   if (!hasCoords.value) return ''
   return `https://www.google.com/maps?q=${item.value.geo_lat},${item.value.geo_lng}`
 })
+
+async function downloadImage(url: string, filename = 'foto_geotag.jpg') {
+  if (!url) return
+  try {
+    const res = await fetch(url)
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(blobUrl)
+  } catch {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.target = '_blank'
+    a.click()
+  }
+}
 
 function openStockModal(type: 'IN' | 'OUT') {
   stockModalType.value = type
@@ -176,17 +200,20 @@ async function submitStockMovement() {
 
 function remove() {
   confirm.require({
-    message: `Hapus barang "${item.value.name}" (${item.value.sku})? Seluruh data barang ini akan dihapus.`,
+    message: `Hapus barang "${item.value.name}" (${item.value.sku}) beserta seluruh riwayatnya? Tindakan ini tidak dapat dibatalkan.`,
     header: 'Konfirmasi Hapus Barang',
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
     accept: async () => {
+      deleting.value = true
       try {
         await api.delete(`/items/${item.value.id}`)
-        toast.add({ severity: 'success', summary: 'Barang dihapus', detail: item.value.name, life: 2500 })
+        toast.add({ severity: 'success', summary: 'Barang berhasil dihapus', detail: item.value.name, life: 2500 })
         router.push('/items')
       } catch (e: any) {
-        toast.add({ severity: 'error', summary: 'Gagal menghapus', detail: e.response?.data?.error, life: 3000 })
+        toast.add({ severity: 'error', summary: 'Gagal menghapus barang', detail: e.response?.data?.error || e.message, life: 4000 })
+      } finally {
+        deleting.value = false
       }
     },
   })
@@ -219,20 +246,21 @@ async function deleteMaintRecord(mId: string) {
 </script>
 
 <template>
-  <div class="pb-24 max-w-4xl mx-auto">
-    <!-- Top Nav Back Button -->
-    <div class="flex items-center justify-between mb-4">
+  <div class="py-2 pb-16 max-w-5xl mx-auto flex flex-col gap-4">
+    <!-- Top Action Navigation Bar -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <button
-        class="text-[12px] font-semibold text-ink-300 hover:text-ink-100 flex items-center gap-1.5 transition-colors cursor-pointer py-1"
+        class="text-[12.5px] font-semibold text-ink-300 hover:text-ink-100 flex items-center gap-1.5 transition-colors cursor-pointer py-1.5 px-2 rounded-lg hover:bg-paper-2"
         @click="router.push('/items')"
       >
         <i class="pi pi-arrow-left text-[11px]" />
         <span>Kembali ke Daftar Barang</span>
       </button>
 
-      <div class="flex items-center gap-1.5">
+      <!-- Action buttons -->
+      <div v-if="item" class="flex items-center gap-2 flex-wrap">
         <Button
-          label="Edit"
+          label="Edit Data"
           icon="pi pi-pencil"
           size="small"
           severity="secondary"
@@ -246,6 +274,15 @@ async function deleteMaintRecord(mId: string) {
           outlined
           @click="router.push('/barcode')"
         />
+        <Button
+          label="Hapus Barang"
+          icon="pi pi-trash"
+          size="small"
+          severity="danger"
+          outlined
+          :loading="deleting"
+          @click="remove"
+        />
       </div>
     </div>
 
@@ -254,52 +291,50 @@ async function deleteMaintRecord(mId: string) {
       <i class="pi pi-spin pi-spinner text-2xl text-acc-500" />
     </div>
 
-    <!-- Main Detail Card -->
+    <!-- Main Detail Content -->
     <div v-else-if="item" class="flex flex-col gap-4">
-      <!-- Header Banner Card -->
-      <div class="panel p-5 rounded-xl border flex flex-col gap-3 shadow-md"
-           style="background: var(--paper-1); border-color: var(--line)">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2 flex-wrap mb-1.5">
-              <span class="t-mono text-[12px] font-bold text-acc-500 bg-acc-500/10 px-2 py-0.5 rounded border border-acc-500/20">
-                {{ item.sku }}
-              </span>
-              <span
-                class="px-2 py-0.5 rounded text-[11px] font-bold border"
-                :class="item.track_stock !== false ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' : 'bg-blue-500/10 text-blue-300 border-blue-500/30'"
-              >
-                {{ item.track_stock !== false ? 'Barang Stok / Konsumabel' : 'Aset Tetap / Unit Mandiri' }}
-              </span>
-              <StatusChip :kind="item.condition_status" />
-              <Tag v-if="item.is_available" severity="success" value="TERSEDIA" class="!text-[10px]" />
-              <Tag v-else severity="danger" value="TIDAK TERSEDIA" class="!text-[10px]" />
-            </div>
+      <!-- 1. Header Banner Card -->
+      <div
+        class="panel p-5 rounded-xl border flex flex-col gap-2.5 shadow-md"
+        style="background: var(--paper-1); border-color: var(--line)"
+      >
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="t-mono text-[12px] font-bold text-acc-500 bg-acc-500/10 px-2.5 py-0.5 rounded border border-acc-500/30">
+            {{ item.sku }}
+          </span>
+          <span
+            class="px-2.5 py-0.5 rounded text-[11px] font-bold border"
+            :class="item.track_stock !== false ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' : 'bg-blue-500/10 text-blue-300 border-blue-500/30'"
+          >
+            {{ item.track_stock !== false ? 'Barang Stok / Konsumabel' : 'Aset Tetap / Unit Mandiri' }}
+          </span>
+          <StatusChip :kind="item.condition_status" />
+          <Tag v-if="item.is_available" severity="success" value="TERSEDIA" class="!text-[10px]" />
+          <Tag v-else severity="danger" value="TIDAK TERSEDIA" class="!text-[10px]" />
+        </div>
 
-            <h1 class="text-xl sm:text-2xl font-bold leading-tight tracking-tight break-words">
-              {{ item.name }}
-            </h1>
+        <h1 class="text-2xl sm:text-3xl font-extrabold leading-tight tracking-tight break-words text-ink-100">
+          {{ item.name }}
+        </h1>
 
-            <div class="text-[12px] text-ink-400 mt-1 flex items-center gap-3 flex-wrap">
-              <span>Kategori: <strong class="text-ink-200">{{ item.category }}</strong></span>
-              <span>·</span>
-              <span class="flex items-center gap-1">
-                <i class="pi pi-map-marker text-acc-500 text-[10px]" />
-                Ruangan: <strong class="text-ink-200">{{ item.location }}</strong>
-              </span>
-            </div>
-          </div>
+        <div class="text-[12.5px] text-ink-400 flex items-center gap-3 flex-wrap pt-1">
+          <span>Kategori: <strong class="text-ink-200">{{ item.category }}</strong></span>
+          <span>·</span>
+          <span class="flex items-center gap-1">
+            <i class="pi pi-map-marker text-acc-500 text-xs" />
+            Ruangan: <strong class="text-ink-200">{{ item.location }}</strong>
+          </span>
         </div>
       </div>
 
-      <!-- Hero Photo Card with Geotag -->
+      <!-- 2. Hero Photo Card with Geotag -->
       <div
         v-if="item.photo_url"
         class="panel rounded-xl overflow-hidden border bg-black/40 flex flex-col shadow-md"
         style="border-color: var(--line)"
       >
         <div
-          class="relative w-full max-h-[380px] sm:max-h-[460px] bg-black/70 flex items-center justify-center cursor-pointer group p-2"
+          class="relative w-full max-h-[380px] sm:max-h-[460px] bg-black/80 flex items-center justify-center cursor-pointer group p-2"
           @click="lightboxUrl = item.photo_url; photoLightbox = true"
         >
           <img
@@ -307,34 +342,47 @@ async function deleteMaintRecord(mId: string) {
             :alt="item.name"
             class="max-h-[360px] sm:max-h-[440px] w-full object-contain rounded group-hover:scale-[1.01] transition-transform"
           />
-          <div class="absolute bottom-3 left-3 bg-black/85 px-2.5 py-1 rounded text-[11px] text-white flex items-center gap-1.5 border border-white/10">
-            <i class="pi pi-map-marker text-sig-ok text-[10px]" /> Foto Berstempel GPS Map Camera
+          <div class="absolute bottom-3 left-3 bg-black/85 px-3 py-1 rounded-md text-[11px] text-white flex items-center gap-1.5 border border-white/10">
+            <i class="pi pi-map-marker text-sig-ok text-[11px]" /> Foto Berstempel GPS Map Camera
           </div>
           <div class="absolute top-3 right-3 bg-black/80 px-2.5 py-1 rounded text-[11px] text-white flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <i class="pi pi-search-plus text-[10px]" /> Perbesar
+            <i class="pi pi-search-plus text-[10px]" /> Perbesar Foto
           </div>
         </div>
 
-        <div v-if="hasCoords" class="px-4 py-2.5 border-t flex items-center justify-between text-[11.5px]"
+        <div v-if="hasCoords || item.photo_url" class="px-4 py-2.5 border-t flex items-center justify-between text-[11.5px] flex-wrap gap-2"
              style="border-color: var(--line); background: var(--paper-2)">
-          <div class="t-mono text-sig-ok font-semibold flex items-center gap-1.5">
+          <div v-if="hasCoords" class="t-mono text-sig-ok font-semibold flex items-center gap-1.5">
             <i class="pi pi-compass text-[11px]" />
             <span>GPS: {{ item.geo_lat.toFixed(5) }}, {{ item.geo_lng.toFixed(5) }}</span>
             <span v-if="item.geo_acc" class="text-ink-400 font-normal">(±{{ Math.round(item.geo_acc) }}m)</span>
           </div>
-          <a
-            :href="googleMapsUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-acc-500 hover:underline flex items-center gap-1 font-semibold"
-          >
-            <i class="pi pi-external-link text-[10px]" /> Buka di Google Maps
-          </a>
+          <div v-else></div>
+
+          <div class="flex items-center gap-2">
+            <Button
+              label="Unduh Foto (JPG)"
+              icon="pi pi-download"
+              size="small"
+              text
+              severity="secondary"
+              @click.stop="downloadImage(item.photo_url, (item.sku || 'foto') + '_geotag.jpg')"
+            />
+            <a
+              v-if="hasCoords"
+              :href="googleMapsUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-acc-500 hover:underline flex items-center gap-1 font-semibold"
+            >
+              <i class="pi pi-external-link text-[10px]" /> Google Maps
+            </a>
+          </div>
         </div>
       </div>
 
-      <!-- Quick Metrics Hero Card & Dedicated Stock Movement Action -->
-      <div v-if="item.track_stock !== false" class="panel p-4 rounded-xl border flex flex-col gap-4 shadow-md"
+      <!-- 3. Stock Management Card (Konsumabel / Pensil) -->
+      <div v-if="item.track_stock !== false" class="panel p-5 rounded-xl border flex flex-col gap-4 shadow-md"
            style="background: var(--paper-1); border-color: var(--line)">
         <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b" style="border-color: var(--line)">
           <div>
@@ -372,11 +420,11 @@ async function deleteMaintRecord(mId: string) {
         </div>
 
         <div class="grid grid-cols-2 gap-3 text-center text-[12px]">
-          <div class="p-2.5 rounded-lg border bg-paper-2 border-line">
+          <div class="p-3 rounded-lg border bg-paper-2 border-line">
             <div class="text-[11px] text-ink-400">Batas Minimum Peringatan</div>
             <div class="t-num font-bold text-[15px] mt-0.5">{{ item.min_stock }} {{ item.unit }}</div>
           </div>
-          <div class="p-2.5 rounded-lg border bg-paper-2 border-line">
+          <div class="p-3 rounded-lg border bg-paper-2 border-line">
             <div class="text-[11px] text-ink-400">Estimasi Nilai per Unit</div>
             <div class="t-num font-bold text-[15px] text-acc-400 mt-0.5">
               {{ item.price_per_unit ? 'Rp ' + Number(item.price_per_unit).toLocaleString('id-ID') : '—' }}
@@ -385,17 +433,17 @@ async function deleteMaintRecord(mId: string) {
         </div>
       </div>
 
-      <!-- Fixed Asset Card (Non-Consumable / Laptop) -->
-      <div v-else class="panel p-4 rounded-xl border flex items-center justify-between gap-3 shadow-md"
+      <!-- 3B. Fixed Asset Card (Laptop / Aset Tetap) -->
+      <div v-else class="panel p-5 rounded-xl border flex items-center justify-between gap-3 shadow-md"
            style="background: var(--paper-1); border-color: var(--line)">
         <div>
           <div class="text-[11px] font-bold text-ink-400 uppercase tracking-wider">Status Aset Tetap</div>
-          <div class="text-[14px] font-bold mt-0.5 text-ink-100 flex items-center gap-2">
+          <div class="text-[15px] font-bold mt-1 text-ink-100 flex items-center gap-2">
             <i class="pi pi-desktop text-acc-500" />
             <span>Unit Mandiri (Stok Tetap: 1 {{ item.unit }})</span>
           </div>
-          <div class="text-[11.5px] text-ink-400 mt-0.5">
-            Unit aset ini teridentifikasi unik berdasarkan nomor seri dan lokasi ruangan.
+          <div class="text-[12px] text-ink-400 mt-0.5">
+            Unit aset ini teridentifikasi unik berdasarkan nomor seri dan ruangan penempatan.
           </div>
         </div>
 
@@ -408,7 +456,7 @@ async function deleteMaintRecord(mId: string) {
         />
       </div>
 
-      <!-- Segment Tabs: Riwayat Mutasi vs Spesifikasi vs Riwayat Servis -->
+      <!-- 4. Segment Tabs: Riwayat Mutasi vs Spesifikasi vs Servis -->
       <div class="panel rounded-xl overflow-hidden border shadow-md"
            style="background: var(--paper-1); border-color: var(--line)">
         <div class="flex border-b text-[12.5px] font-bold overflow-x-auto" style="border-color: var(--line); background: var(--paper-2)">
@@ -419,9 +467,9 @@ async function deleteMaintRecord(mId: string) {
             :class="activeTab === 'stock_history' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
             @click="activeTab = 'stock_history'"
           >
-            <i class="pi pi-history text-[12px]" />
+            <i class="pi pi-history text-xs" />
             <span>Riwayat Mutasi Stok</span>
-            <span v-if="stockTransactions.length" class="text-[10px] px-1.5 py-0.2 rounded-full bg-acc-500 text-ink-950 font-bold">
+            <span v-if="stockTransactions.length" class="text-[10px] px-2 py-0.2 rounded-full bg-acc-500 text-ink-950 font-bold">
               {{ stockTransactions.length }}
             </span>
           </button>
@@ -432,7 +480,7 @@ async function deleteMaintRecord(mId: string) {
             :class="activeTab === 'spec' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
             @click="activeTab = 'spec'"
           >
-            <i class="pi pi-list text-[12px]" />
+            <i class="pi pi-list text-xs" />
             <span>Spesifikasi Lengkap</span>
           </button>
 
@@ -442,9 +490,9 @@ async function deleteMaintRecord(mId: string) {
             :class="activeTab === 'maintenance' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
             @click="activeTab = 'maintenance'"
           >
-            <i class="pi pi-wrench text-[12px]" />
+            <i class="pi pi-wrench text-xs" />
             <span>Riwayat Servis &amp; Kalibrasi</span>
-            <span v-if="maintenanceList.length" class="text-[10px] px-1.5 py-0.2 rounded-full bg-acc-500 text-ink-950 font-bold">
+            <span v-if="maintenanceList.length" class="text-[10px] px-2 py-0.2 rounded-full bg-acc-500 text-ink-950 font-bold">
               {{ maintenanceList.length }}
             </span>
           </button>
@@ -641,54 +689,6 @@ async function deleteMaintRecord(mId: string) {
       </div>
     </div>
 
-    <!-- Sticky Bottom Mobile Action Bar -->
-    <div class="fixed bottom-0 inset-x-0 z-30 p-3 border-t bg-[var(--paper-1)]/95 backdrop-blur-md shadow-2xl flex items-center justify-between gap-2 max-w-4xl mx-auto"
-         style="border-color: var(--line)">
-      <div class="flex items-center gap-2 flex-wrap">
-        <Button
-          v-if="item?.track_stock !== false"
-          label="+ Stok Masuk"
-          icon="pi pi-arrow-down"
-          size="small"
-          severity="success"
-          @click="openStockModal('IN')"
-        />
-        <Button
-          v-if="item?.track_stock !== false"
-          label="− Stok Keluar"
-          icon="pi pi-arrow-up"
-          size="small"
-          severity="danger"
-          :disabled="!item || item.current_stock <= 0"
-          @click="openStockModal('OUT')"
-        />
-        <Button
-          label="Edit"
-          icon="pi pi-pencil"
-          size="small"
-          severity="secondary"
-          @click="router.push('/items/' + route.params.id + '/edit')"
-        />
-        <Button
-          label="Label QR"
-          icon="pi pi-qrcode"
-          size="small"
-          text
-          severity="secondary"
-          @click="router.push('/barcode')"
-        />
-      </div>
-
-      <Button
-        icon="pi pi-trash"
-        size="small"
-        text
-        severity="danger"
-        v-tooltip.top="'Hapus Barang'"
-        @click="remove"
-      />
-    </div>
-
     <!-- ======================================================== -->
     <!-- Modal: Pencatatan Stok Masuk & Keluar dengan Foto Geotag -->
     <!-- ======================================================== -->
@@ -830,9 +830,24 @@ async function deleteMaintRecord(mId: string) {
     </Dialog>
 
     <!-- Modal Lightbox Foto -->
-    <Dialog v-model:visible="photoLightbox" modal :style="{ width: '640px' }" class="p-fluid">
-      <div v-if="lightboxUrl" class="p-2 bg-black rounded-lg flex items-center justify-center">
-        <img :src="lightboxUrl" alt="Foto Geotag" class="max-h-[75vh] object-contain rounded" />
+    <Dialog v-model:visible="photoLightbox" modal header="Pratinjau Foto Berstempel Geotag" :style="{ width: '680px' }" class="p-fluid">
+      <div v-if="lightboxUrl" class="flex flex-col gap-3">
+        <div class="p-2 bg-black rounded-lg flex items-center justify-center">
+          <img :src="lightboxUrl" alt="Foto Geotag" class="max-h-[75vh] object-contain rounded" />
+        </div>
+        <div class="flex items-center justify-between pt-2 border-t border-line">
+          <span class="text-xs text-ink-400">Berkas gambar berstempel GPS Map Camera</span>
+          <div class="flex gap-2">
+            <Button
+              label="Unduh Foto (JPG)"
+              icon="pi pi-download"
+              size="small"
+              severity="success"
+              @click="downloadImage(lightboxUrl, (item?.sku || 'foto') + '_geotag.jpg')"
+            />
+            <Button label="Tutup" size="small" severity="secondary" text @click="photoLightbox = false" />
+          </div>
+        </div>
       </div>
     </Dialog>
   </div>

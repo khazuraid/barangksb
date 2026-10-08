@@ -208,6 +208,9 @@ func (h *UploadHandler) Serve(c *gin.Context) {
 
 	c.Header("Content-Type", "image/jpeg")
 	c.Header("Cache-Control", "public, max-age=86400")
+	if c.Query("download") == "true" || c.Query("download") == "1" {
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", name))
+	}
 	io.Copy(c.Writer, reader)
 }
 

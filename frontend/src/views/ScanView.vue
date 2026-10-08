@@ -48,6 +48,28 @@ const googleMapsUrl = computed(() => {
   return `https://www.google.com/maps?q=${item.value.geo_lat},${item.value.geo_lng}`
 })
 
+async function downloadImage(url: string, filename = 'foto_geotag.jpg') {
+  if (!url) return
+  try {
+    const res = await fetch(url)
+    const blob = await res.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(blobUrl)
+  } catch {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.target = '_blank'
+    a.click()
+  }
+}
+
 const maintenances = computed(() => item.value?.maintenances || [])
 
 function rows() {
@@ -307,9 +329,14 @@ function rows() {
               <a v-if="hasCoords" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer">
                 <Button label="Google Maps" icon="pi pi-map-marker" size="small" text />
               </a>
-              <a :href="selectedPhoto" target="_blank" download>
-                <Button label="Unduh" icon="pi pi-download" size="small" text severity="secondary" />
-              </a>
+              <Button
+                label="Unduh (JPG)"
+                icon="pi pi-download"
+                size="small"
+                text
+                severity="success"
+                @click="downloadImage(selectedPhoto, (item?.sku || 'foto') + '_geotag.jpg')"
+              />
             </div>
           </div>
         </div>
