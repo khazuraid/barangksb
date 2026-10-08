@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,22 +34,30 @@ type UploadHandler struct {
 
 func NewUploadHandler(pool *pgxpool.Pool, endpoint, accessKey, secretKey, bucket string) *UploadHandler {
 	h := &UploadHandler{pool: pool, bucket: bucket, useDisk: true}
-	if endpoint != "" && accessKey != "" && secretKey != "" && endpoint != "minio:9000" {
+	// Only initialize MinIO if explicitly configured, not default localhost/docker
+	if endpoint != "" && accessKey != "" && secretKey != "" &&
+		endpoint != "minio:9000" && endpoint != "localhost:9000" && endpoint != "127.0.0.1:9000" {
 		mc, err := minio.New(endpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-			Secure: false, // internal docker network
+			Secure: false,
 		})
 		if err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			// Ensure bucket exists
-			exists, _ := mc.BucketExists(ctx, bucket)
-			if !exists {
-				mc.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
+			exists, errBucket := mc.BucketExists(ctx, bucket)
+			if errBucket == nil {
+				if !exists {
+					_ = mc.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
+				}
+				h.minio = mc
+				h.useDisk = false
+				slog.Info("MinIO storage initialized", "endpoint", endpoint, "bucket", bucket)
+			} else {
+				slog.Warn("MinIO not reachable, using disk storage", "endpoint", endpoint, "err", errBucket)
 			}
-			h.minio = mc
-			h.useDisk = false
 		}
+	} else {
+		slog.Info("using disk storage for uploads", "dir", getUploadDir())
 	}
 	return h
 }
@@ -140,8 +149,16 @@ func (h *UploadHandler) saveDisk(name string, data []byte) string {
 	dir := getUploadDir()
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
+		slog.Error("failed writing to primary upload dir", "path", path, "err", err)
 		_ = os.MkdirAll("uploads", 0o755)
-		_ = os.WriteFile(filepath.Join("uploads", name), data, 0o644)
+		fallbackPath := filepath.Join("uploads", name)
+		if err2 := os.WriteFile(fallbackPath, data, 0o644); err2 != nil {
+			slog.Error("failed writing to fallback upload dir", "path", fallbackPath, "err", err2)
+		} else {
+			slog.Info("saved photo to fallback dir", "path", fallbackPath, "bytes", len(data))
+		}
+	} else {
+		slog.Info("saved photo to primary dir", "path", path, "bytes", len(data))
 	}
 	return "/api/uploads/" + name
 }
@@ -150,30 +167,38 @@ func (h *UploadHandler) saveDisk(name string, data []byte) string {
 func (h *UploadHandler) GetObject(ctx context.Context, name string) (io.ReadCloser, error) {
 	if h.minio != nil && !h.useDisk {
 		obj, err := h.minio.GetObject(ctx, h.bucket, name, minio.GetObjectOptions{})
-		if err != nil {
-			return nil, err
+		if err == nil {
+			if _, statErr := obj.Stat(); statErr == nil {
+				return obj, nil
+			}
+			obj.Close()
 		}
-		return obj, nil
 	}
-	// disk fallback
+	// disk fallback - check both getUploadDir() and local uploads/
 	dir := getUploadDir()
 	f, err := os.Open(filepath.Join(dir, name))
-	if err != nil {
-		return os.Open(filepath.Join("uploads", name))
+	if err == nil {
+		return f, nil
 	}
-	return f, nil
+	fFallback, errFallback := os.Open(filepath.Join("uploads", name))
+	if errFallback == nil {
+		return fFallback, nil
+	}
+	slog.Error("photo file not found on disk", "name", name, "primaryDir", dir, "err", err, "fallbackErr", errFallback)
+	return nil, err
 }
 
 // Serve streams uploaded image from MinIO or disk
 func (h *UploadHandler) Serve(c *gin.Context) {
 	name := filepath.Base(c.Param("name"))
 	if name == "" || name == "." {
-		c.Status(http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid file name"})
 		return
 	}
 	reader, err := h.GetObject(c.Request.Context(), name)
 	if err != nil {
-		c.Status(http.StatusNotFound)
+		slog.Error("serve image failed: file not found", "name", name, "err", err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "file not found: " + name})
 		return
 	}
 	defer reader.Close()

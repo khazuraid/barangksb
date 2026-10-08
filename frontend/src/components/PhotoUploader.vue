@@ -19,7 +19,7 @@ const props = withDefaults(
     modelValue: '',
     label: 'Foto Barang',
     locationName: '',
-    hint: 'Foto akan otomatis dicap watermark GPS Map Camera di dalam foto.',
+    hint: 'Foto akan otomatis dikompresi dan dicap watermark GPS Map Camera.',
     geoLat: null,
     geoLng: null,
     geoAcc: null,
@@ -62,6 +62,12 @@ function addLog(text: string, type: 'info' | 'success' | 'warn' | 'error' = 'inf
   const now = new Date()
   const time = now.toTimeString().split(' ')[0]
   logs.value.push({ time, text, type })
+}
+
+function copyLogs() {
+  const text = logs.value.map((l) => `[${l.time}] ${l.text}`).join('\n')
+  navigator.clipboard.writeText(text)
+  toast.add({ severity: 'info', summary: 'Log disalin ke clipboard', life: 2000 })
 }
 
 const currentPhotoSrc = computed(() => props.modelValue || localPreviewUrl.value)
@@ -207,7 +213,7 @@ async function loadTileBlobImage(lat: number, lng: number): Promise<HTMLImageEle
     const { x, y } = latLngToTile(lat, lng, 16)
     const tileUrl = `https://tile.openstreetmap.org/16/${x}/${y}.png`
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 2500)
+    const timer = setTimeout(() => controller.abort(), 2000)
     const res = await fetch(tileUrl, { signal: controller.signal })
     clearTimeout(timer)
     if (!res.ok) return null
@@ -270,13 +276,11 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 
 function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
   ctx.save()
-  // Shadow
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
   ctx.beginPath()
   ctx.ellipse(cx, cy + size * 0.15, size * 0.35, size * 0.15, 0, 0, Math.PI * 2)
   ctx.fill()
 
-  // Red teardrop
   ctx.fillStyle = '#ea4335'
   ctx.beginPath()
   ctx.arc(cx, cy - size * 0.65, size * 0.45, Math.PI * 0.8, Math.PI * 0.2, false)
@@ -284,7 +288,6 @@ function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: nu
   ctx.closePath()
   ctx.fill()
 
-  // Inner white dot
   ctx.fillStyle = '#ffffff'
   ctx.beginPath()
   ctx.arc(cx, cy - size * 0.65, size * 0.16, 0, Math.PI * 2)
@@ -295,18 +298,15 @@ function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: nu
 
 function drawProceduralMap(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
   ctx.save()
-  // Base terrain
   ctx.fillStyle = '#2d3748'
   ctx.fillRect(x, y, w, h)
 
-  // Green spaces
   ctx.fillStyle = '#22543d'
   ctx.fillRect(x + w * 0.1, y + h * 0.1, w * 0.35, h * 0.4)
   ctx.fillRect(x + w * 0.6, y + h * 0.5, w * 0.3, h * 0.35)
 
-  // Street roads
   ctx.strokeStyle = '#4a5568'
-  ctx.lineWidth = Math.max(3, w * 0.04)
+  ctx.lineWidth = Math.max(2, w * 0.04)
   ctx.beginPath()
   ctx.moveTo(x, y + h * 0.35)
   ctx.lineTo(x + w, y + h * 0.35)
@@ -314,9 +314,8 @@ function drawProceduralMap(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.lineTo(x + w * 0.45, y + h)
   ctx.stroke()
 
-  // Main yellow highway
   ctx.strokeStyle = '#d97706'
-  ctx.lineWidth = Math.max(4, w * 0.05)
+  ctx.lineWidth = Math.max(3, w * 0.05)
   ctx.beginPath()
   ctx.moveTo(x, y + h * 0.7)
   ctx.lineTo(x + w * 0.45, y + h * 0.35)
@@ -326,17 +325,19 @@ function drawProceduralMap(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.restore()
 }
 
-// Canvas Stamping following GPS Map Camera pattern
+// Compact GPS Map Camera Stamping + Compression
 async function stampGpsMapCamera(
   file: File,
   geoCoords: { lat: number; lng: number; acc: number } | null,
   locName: string
-): Promise<{ blob: Blob; previewUrl: string }> {
+): Promise<{ blob: Blob; previewUrl: string; originalSizeKB: number; compressedSizeKB: number }> {
   return new Promise(async (resolve) => {
-    currentStepText.value = 'Membaca berkas gambar...'
-    addLog('Membaca berkas gambar...', 'info')
+    currentStepText.value = 'Membaca & mengompresi gambar...'
+    addLog(`Membaca berkas: ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`, 'info')
 
+    const originalSizeKB = Math.round(file.size / 1024)
     const reader = new FileReader()
+
     reader.onload = async () => {
       const img = new Image()
       img.onload = async () => {
@@ -344,7 +345,8 @@ async function stampGpsMapCamera(
         let width = img.width
         let height = img.height
 
-        const maxDim = 1920
+        // Compress resolution: max 1440px
+        const maxDim = 1440
         if (width > maxDim || height > maxDim) {
           if (width > height) {
             height = Math.round((height * maxDim) / width)
@@ -353,80 +355,77 @@ async function stampGpsMapCamera(
             width = Math.round((width * maxDim) / height)
             height = maxDim
           }
+          addLog(`📐 Dimensi dioptimasi: ${img.width}x${img.height} ➔ ${width}x${height}`, 'info')
         }
 
         canvas.width = width
         canvas.height = height
         const ctx = canvas.getContext('2d')
         if (!ctx) {
-          resolve({ blob: file, previewUrl: reader.result as string })
+          resolve({ blob: file, previewUrl: reader.result as string, originalSizeKB, compressedSizeKB: originalSizeKB })
           return
         }
 
-        // 1. Draw base photo
+        // Draw base photo
         ctx.drawImage(img, 0, 0, width, height)
 
         if (!geoCoords) {
           addLog('Koordinat GPS tidak tersedia, foto disimpan tanpa cap peta', 'warn')
           canvas.toBlob(
-            (b) => resolve({ blob: b || file, previewUrl: b ? URL.createObjectURL(b) : (reader.result as string) }),
+            (b) => {
+              const compressedSizeKB = Math.round((b?.size || file.size) / 1024)
+              resolve({ blob: b || file, previewUrl: b ? URL.createObjectURL(b) : (reader.result as string), originalSizeKB, compressedSizeKB })
+            },
             'image/jpeg',
-            0.88
+            0.80
           )
           return
         }
 
-        // 2. Reverse Geocoding
-        currentStepText.value = 'Mencari alamat daerah (Reverse Geocoding)...'
-        addLog(`Reverse geocoding untuk Lat: ${geoCoords.lat.toFixed(5)}, Lng: ${geoCoords.lng.toFixed(5)}...`, 'info')
+        // Reverse Geocoding
+        currentStepText.value = 'Mengambil alamat daerah...'
+        addLog(`Reverse geocoding (Lat: ${geoCoords.lat.toFixed(5)}, Lng: ${geoCoords.lng.toFixed(5)})...`, 'info')
         const geoData = await getReverseGeocode(geoCoords.lat, geoCoords.lng)
         const titleText = locName ? `${locName}, ${geoData.title}` : geoData.title
         const addressText = geoData.fullAddress
-        addLog(`Alamat terdeteksi: ${titleText}`, 'success')
+        addLog(`Alamat: ${titleText}`, 'success')
 
-        // 3. Prepare map tile
+        // Prepare map tile
         currentStepText.value = 'Menyiapkan thumbnail peta lokasi...'
-        addLog('Mengunduh thumbnail peta...', 'info')
+        addLog('Mengunduh thumbnail peta OSM...', 'info')
         const tileImg = await loadTileBlobImage(geoCoords.lat, geoCoords.lng)
 
-        // 4. Calculate layout based on canvas width
+        // Compact Proportional Scale (Only ~16-19% of image height)
         currentStepText.value = 'Mengecap watermark GPS Map Camera...'
-        addLog('Merender watermark GPS Map Camera ke pixel foto...', 'info')
+        addLog('Merender watermark GPS Map Camera (mode proporsional kompak)...', 'info')
 
-        const scale = width / 950
-        const padX = Math.round(18 * scale)
-        const padY = Math.round(16 * scale)
+        const baseDim = Math.min(width, height)
+        const scale = Math.max(0.65, Math.min(1.15, baseDim / 1400))
 
-        const titleSize = Math.max(16, Math.round(23 * scale))
-        const bodySize = Math.max(11, Math.round(13.5 * scale))
-        const metaSize = Math.max(11, Math.round(14 * scale))
-        const badgeSize = Math.max(10, Math.round(12.5 * scale))
+        const margin = Math.round(width * 0.02)
+        const cardW = Math.min(width - margin * 2, Math.round(width * 0.94))
+        const cardX = Math.round((width - cardW) / 2)
 
-        const margin = Math.round(width * 0.025)
-        const cardW = width - margin * 2
-        const cardX = margin
-
-        // Map box size
-        const mapSize = Math.round(cardW * 0.28)
-
-        // Text area width
-        const textAreaW = cardW - mapSize - padX * 3
-
-        ctx.font = `500 ${bodySize}px system-ui, -apple-system, sans-serif`
-        const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 3)
-
-        const titleLineH = Math.round(titleSize * 1.3)
-        const bodyLineH = Math.round(bodySize * 1.35)
-        const metaLineH = Math.round(metaSize * 1.4)
-
-        const textContentH = titleLineH + addressLines.length * bodyLineH + metaLineH * 2 + Math.round(12 * scale)
-        const cardH = Math.max(mapSize + padY * 2, textContentH + padY * 2)
+        // Card height capped at ~18% of photo height
+        const cardH = Math.max(130, Math.min(Math.round(height * 0.20), Math.round(180 * scale)))
         const cardY = height - cardH - margin
 
-        // Draw Card Background (near black translucent rounded rect)
+        const padX = Math.round(14 * scale)
+        const padY = Math.round(10 * scale)
+
+        // Map Box: compact square fitting inside cardH
+        const mapSize = Math.round((cardH - padY * 2) * 0.94)
+
+        // Font sizes
+        const titleSize = Math.max(13, Math.round(17 * scale))
+        const bodySize = Math.max(10, Math.round(11.5 * scale))
+        const metaSize = Math.max(10, Math.round(11.5 * scale))
+        const badgeSize = Math.max(9, Math.round(10.5 * scale))
+
+        // Draw Card Background
         ctx.save()
         ctx.fillStyle = 'rgba(22, 22, 24, 0.88)'
-        const radius = Math.round(14 * scale)
+        const radius = Math.round(10 * scale)
         ctx.beginPath()
         ctx.moveTo(cardX + radius, cardY)
         ctx.lineTo(cardX + cardW - radius, cardY)
@@ -453,20 +452,20 @@ async function stampGpsMapCamera(
 
         // Cyan Camera Icon
         ctx.fillStyle = '#06b6d4'
-        ctx.fillRect(badgeX, badgeY - 2, badgeIconSize, badgeIconSize)
+        ctx.fillRect(badgeX, badgeY - 1, badgeIconSize, badgeIconSize)
         ctx.fillStyle = '#ffffff'
-        ctx.fillRect(badgeX + 3, badgeY + 1, badgeIconSize - 6, badgeIconSize - 6)
+        ctx.fillRect(badgeX + 2, badgeY + 1, badgeIconSize - 4, badgeIconSize - 4)
 
         // Badge Text
         ctx.fillStyle = '#f3f4f6'
         ctx.textBaseline = 'top'
-        ctx.fillText(badgeText, badgeX + badgeIconSize + 6, badgeY - 1)
+        ctx.fillText(badgeText, badgeX + badgeIconSize + 5, badgeY - 1)
         ctx.restore()
 
         // Draw Map Box (Left column)
         const mapX = cardX + padX
         const mapY = cardY + (cardH - mapSize) / 2
-        const mapRadius = Math.round(10 * scale)
+        const mapRadius = Math.round(8 * scale)
 
         ctx.save()
         ctx.beginPath()
@@ -489,69 +488,72 @@ async function stampGpsMapCamera(
         }
 
         // Draw Red Google Map Pin in center
-        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2 + Math.round(8 * scale), Math.round(mapSize * 0.22))
+        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2 + Math.round(6 * scale), Math.round(mapSize * 0.22))
 
         // Google watermark at bottom of map
-        ctx.font = `bold ${Math.max(10, Math.round(12 * scale))}px system-ui, sans-serif`
+        ctx.font = `bold ${Math.max(9, Math.round(10.5 * scale))}px system-ui, sans-serif`
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
-        ctx.fillText('Google', mapX + 7, mapY + mapSize - 6)
+        ctx.fillText('Google', mapX + 6, mapY + mapSize - 5)
         ctx.fillStyle = '#ffffff'
-        ctx.fillText('Google', mapX + 6, mapY + mapSize - 7)
+        ctx.fillText('Google', mapX + 5, mapY + mapSize - 6)
         ctx.restore()
 
         // Draw Text Block (Right column)
         const textX = mapX + mapSize + padX
+        const textAreaW = cardX + cardW - textX - padX
         let textY = cardY + padY
 
-        // 1. Title Header: [Kecamatan, Jawa Barat, Indonesia 🇮🇩]
+        // 1. Title Header
         ctx.save()
         ctx.font = `bold ${titleSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#ffffff'
         ctx.textBaseline = 'top'
         ctx.fillText(titleText, textX, textY)
-        textY += titleLineH + Math.round(3 * scale)
+        textY += Math.round(titleSize * 1.25) + 2
 
-        // 2. Full Detailed Address
+        // 2. Full Detailed Address (wrapped 1-2 lines)
         ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#e5e7eb'
+        ctx.fillStyle = '#d1d5db'
+        const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
         for (const line of addressLines) {
           ctx.fillText(line, textX, textY)
-          textY += bodyLineH
+          textY += Math.round(bodySize * 1.3)
         }
-        textY += Math.round(3 * scale)
+        textY += 2
 
-        // 3. Coordinates: Lat -6.730005° Long 108.555991°
+        // 3. Coordinates
         ctx.font = `600 ${metaSize}px ui-monospace, SFMono-Regular, monospace`
         ctx.fillStyle = '#ffffff'
         ctx.fillText(`Lat ${geoCoords.lat.toFixed(6)}° Long ${geoCoords.lng.toFixed(6)}°`, textX, textY)
-        textY += metaLineH
+        textY += Math.round(metaSize * 1.3)
 
-        // 4. Timestamp: Tuesday, 29/09/2026 10:55 AM GMT +07:00
+        // 4. Timestamp
         const dateStr = formatGpsDate(new Date())
         ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#d1d5db'
+        ctx.fillStyle = '#9ca3af'
         ctx.fillText(dateStr, textX, textY)
         ctx.restore()
 
-        // 5. Output Blob
-        currentStepText.value = 'Menyimpan berkas JPEG...'
+        // Output Blob with compression (quality: 0.80)
+        currentStepText.value = 'Mengompresi ke JPEG (q=0.80)...'
         canvas.toBlob(
           (blob) => {
             if (blob) {
+              const compressedSizeKB = Math.round(blob.size / 1024)
               const previewUrl = URL.createObjectURL(blob)
-              resolve({ blob, previewUrl })
+              resolve({ blob, previewUrl, originalSizeKB, compressedSizeKB })
             } else {
-              resolve({ blob: file, previewUrl: reader.result as string })
+              resolve({ blob: file, previewUrl: reader.result as string, originalSizeKB, compressedSizeKB: originalSizeKB })
             }
           },
           'image/jpeg',
-          0.88
+          0.80
         )
       }
-      img.onerror = () => resolve({ blob: file, previewUrl: reader.result as string })
+      img.onerror = () => resolve({ blob: file, previewUrl: reader.result as string, originalSizeKB, compressedSizeKB: originalSizeKB })
       img.src = reader.result as string
     }
-    reader.onerror = () => resolve({ blob: file, previewUrl: '' })
+    reader.onerror = () => resolve({ blob: file, previewUrl: '', originalSizeKB: 0, compressedSizeKB: 0 })
     reader.readAsDataURL(file)
   })
 }
@@ -566,7 +568,7 @@ async function onFileSelected(e: Event) {
   uploadProgress.value = 10
   logs.value = []
 
-  addLog(`📁 Berkas dipilih: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'info')
+  addLog(`📁 Berkas dipilih: ${file.name} (${(file.size / 1024).toFixed(1)} KB, tipe: ${file.type})`, 'info')
 
   try {
     // 1. Lock GPS
@@ -588,15 +590,20 @@ async function onFileSelected(e: Event) {
       emit('update:geoName', locName)
     }
 
-    // 2. Stamp photo with GPS Map Camera template
+    // 2. Stamp photo with compact GPS Map Camera template & compression
     const stamped = await stampGpsMapCamera(file, coords.value, locName)
     if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
     localPreviewUrl.value = stamped.previewUrl
+
+    const savedPct = stamped.originalSizeKB > 0
+      ? Math.round((1 - stamped.compressedSizeKB / stamped.originalSizeKB) * 100)
+      : 0
+    addLog(`📦 Hasil kompresi: ${stamped.originalSizeKB} KB ➔ ${stamped.compressedSizeKB} KB (Hemat ${savedPct}%)`, 'success')
     uploadProgress.value = 65
 
     // 3. Upload to server
     currentStepText.value = 'Mengunggah foto berstempel ke server...'
-    addLog('Mengunggah ke server /api/upload...', 'info')
+    addLog('Mengunggah form data ke POST /api/upload...', 'info')
 
     const fd = new FormData()
     fd.append('photo', stamped.blob, 'photo.jpg')
@@ -633,20 +640,26 @@ async function onFileSelected(e: Event) {
     }
 
     uploadProgress.value = 100
-    currentStepText.value = 'Unggah dan pengecapan selesai!'
-    addLog(`Foto berhasil tersimpan di server: ${url}`, 'success')
+    currentStepText.value = 'Foto berhasil diunggah dan diverifikasi!'
+    addLog(`Respon server: status ${res.status}, url: ${url}`, 'success')
 
-    setTimeout(() => {
-      showProgressModal.value = false
-      modalTab.value = 'photo'
-      previewOpen.value = true
-    }, 1000)
+    // Immediate verification of the uploaded image
+    try {
+      const check = await fetch(url, { method: 'HEAD' })
+      if (check.ok) {
+        addLog(`Verifikasi akses URL: ${check.status} OK (Dapat diakses publik)`, 'success')
+      } else {
+        addLog(`Verifikasi URL ${url}: ${check.status} ${check.statusText}`, 'warn')
+      }
+    } catch (e: any) {
+      addLog(`Status akses: ${e.message}`, 'info')
+    }
 
     toast.add({
       severity: 'success',
       summary: 'Foto Geotag Berhasil',
       detail: coords.value
-        ? `Watermark GPS Map Camera (${coords.value.lat.toFixed(4)}, ${coords.value.lng.toFixed(4)}) tercetak di dalam foto`
+        ? `Watermark GPS (${coords.value.lat.toFixed(4)}, ${coords.value.lng.toFixed(4)}) tercetak di dalam foto`
         : 'Foto berhasil disimpan',
       life: 3500,
     })
@@ -720,6 +733,16 @@ function removePhoto() {
 
       <div class="flex items-center gap-1">
         <Button
+          v-if="logs.length"
+          label="Log"
+          icon="pi pi-list"
+          text
+          size="small"
+          severity="secondary"
+          v-tooltip.top="'Lihat log debug unggahan'"
+          @click="showProgressModal = true"
+        />
+        <Button
           v-if="coords"
           :label="showInlineMap ? 'Tutup Peta' : 'Peta'"
           :icon="showInlineMap ? 'pi pi-map-marker' : 'pi pi-map'"
@@ -792,6 +815,15 @@ function removePhoto() {
         </div>
         <div class="flex items-center gap-1">
           <Button
+            label="Log"
+            icon="pi pi-list"
+            size="small"
+            text
+            severity="secondary"
+            v-tooltip.top="'Buka log proses & debug'"
+            @click="showProgressModal = true"
+          />
+          <Button
             label="Perbesar"
             icon="pi pi-search-plus"
             size="small"
@@ -851,6 +883,12 @@ function removePhoto() {
 
       <div class="flex items-center justify-between text-[11px] px-1" style="color: var(--txt-dim)">
         <span>Stempel peta, alamat lengkap, dan koordinat GPS tercetak langsung di dalam foto</span>
+        <button
+          class="text-acc-500 hover:underline cursor-pointer flex items-center gap-1"
+          @click="showProgressModal = true"
+        >
+          <i class="pi pi-info-circle text-[10px]" /> Debug Log
+        </button>
       </div>
     </div>
 
@@ -904,7 +942,7 @@ function removePhoto() {
       class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 backdrop-blur-xs"
     >
       <div
-        class="relative max-w-lg w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col p-4 gap-3.5"
+        class="relative max-w-xl w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col p-4 gap-3.5"
         style="border-color: var(--line)"
       >
         <div class="flex items-center justify-between border-b pb-2.5" style="border-color: var(--line)">
@@ -914,7 +952,6 @@ function removePhoto() {
             <span>Proses Geotagging &amp; Unggah Foto</span>
           </div>
           <Button
-            v-if="!uploading"
             icon="pi pi-times"
             text
             rounded
@@ -927,7 +964,7 @@ function removePhoto() {
         <!-- Progress bar -->
         <div class="flex flex-col gap-1.5">
           <div class="flex items-center justify-between text-[11.5px]">
-            <span class="font-medium text-acc-400">{{ currentStepText }}</span>
+            <span class="font-medium text-acc-400">{{ currentStepText || 'Menunggu berkas...' }}</span>
             <span class="t-mono font-bold">{{ uploadProgress }}%</span>
           </div>
           <div class="w-full h-2 rounded-full overflow-hidden bg-black/50 border" style="border-color: var(--line)">
@@ -940,9 +977,18 @@ function removePhoto() {
 
         <!-- Live Terminal Logs -->
         <div class="flex flex-col gap-1">
-          <div class="text-[11px] font-semibold" style="color: var(--txt-dim)">Log Aktivitas:</div>
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Log Detail &amp; Debug:</span>
+            <button
+              v-if="logs.length"
+              class="text-[10.5px] text-acc-500 hover:underline flex items-center gap-1 cursor-pointer"
+              @click="copyLogs"
+            >
+              <i class="pi pi-copy text-[10px]" /> Salin Log
+            </button>
+          </div>
           <div
-            class="bg-black/80 rounded border p-2.5 max-h-48 overflow-y-auto flex flex-col gap-1 font-mono text-[11px]"
+            class="bg-black/90 rounded border p-2.5 max-h-56 overflow-y-auto flex flex-col gap-1 font-mono text-[11px]"
             style="border-color: var(--line)"
           >
             <div
@@ -957,18 +1003,31 @@ function removePhoto() {
               }"
             >
               <span class="text-ink-500 shrink-0">[{{ log.time }}]</span>
-              <span>{{ log.text }}</span>
+              <span class="break-all">{{ log.text }}</span>
             </div>
           </div>
         </div>
 
-        <div v-if="!uploading" class="flex justify-end pt-1">
-          <Button
-            label="Tutup"
-            size="small"
-            severity="secondary"
-            @click="showProgressModal = false"
-          />
+        <div class="flex justify-between items-center pt-1 border-t text-[11px]" style="border-color: var(--line)">
+          <span style="color: var(--txt-dim)">
+            {{ uploading ? 'Sedang memproses foto...' : 'Proses selesai' }}
+          </span>
+          <div class="flex gap-2">
+            <Button
+              v-if="currentPhotoSrc && !uploading"
+              label="Lihat Foto"
+              icon="pi pi-eye"
+              size="small"
+              severity="primary"
+              @click="showProgressModal = false; modalTab = 'photo'; previewOpen = true"
+            />
+            <Button
+              label="Tutup"
+              size="small"
+              severity="secondary"
+              @click="showProgressModal = false"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -1044,6 +1103,14 @@ function removePhoto() {
           <div v-else></div>
 
           <div class="flex items-center gap-2">
+            <Button
+              label="Log Debug"
+              icon="pi pi-list"
+              size="small"
+              text
+              severity="secondary"
+              @click="previewOpen = false; showProgressModal = true"
+            />
             <a
               v-if="coords"
               :href="googleMapsUrl"
