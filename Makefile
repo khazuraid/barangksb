@@ -1,4 +1,4 @@
-.PHONY: dev-backend dev-frontend build test
+.PHONY: dev-backend dev-frontend build test up down logs create-user
 
 dev-backend:
 	cd backend && go run ./cmd/server

@@ -8,5 +8,4 @@ coverage/
 !.env.example
 bin/
 *.db
-web/uploads/*
-!web/uploads/.gitkeep
+backups/*.sql.gz

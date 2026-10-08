@@ -1,9 +1,0 @@
-{
-  "name": "InventarisKantor - Sistem Barcode & Stok Real-Time",
-  "description": "Aplikasi manajemen aset dan barang kantor dengan generator barcode/QR, pemindai kamera, pelacakan penerimaan barang baru masuk real-time, geotagging GPS, dan integrasi Google Sheets & Drive.",
-  "requestFramePermissions": [
-    "camera",
-    "geolocation"
-  ],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

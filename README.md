@@ -1,20 +1,59 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Inventaris Kantor — Sistem Barcode & Stok Real-Time
 
-# Run and deploy your AI Studio app
+Aplikasi inventaris kantor dengan barcode scanning dan pemantauan stok real-time.
 
-This contains everything you need to run your app locally.
+## Stack
 
-View your app in AI Studio: https://ai.studio/apps/2ff09e53-dd1c-4603-afe9-d71ae80f3fb4
+| Layer | Teknologi |
+|---|---|
+| Backend | Go + Gin + pgx + JWT + Casbin RBAC |
+| Frontend | Vue 3 + TypeScript + Vite + Pinia + Vue Router + PrimeVue 4 |
+| Database | PostgreSQL 16 |
+| Storage | MinIO (foto) |
+| Proxy | Caddy (reverse proxy + auto TLS) |
 
-## Run Locally
+## Struktur
 
-**Prerequisites:**  Node.js
+```
+├── backend/            # Go API server
+│   ├── cmd/server/     # entry point
+│   └── internal/       # auth, db, handler, middleware, service, telegram
+├── frontend/           # Vue 3 SPA
+│   └── src/            # views, components, stores, api
+├── docker-compose.yml  # backend + frontend + postgres + minio + caddy
+└── Caddyfile           # /api/* → backend:8080, lain → frontend:3000
+```
 
+## Jalankan
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+cp .env.example .env
+make up           # docker compose up -d --build
+make logs
+```
+
+Dev lokal:
+
+```bash
+make dev-backend    # go run ./cmd/server (port 8080)
+make dev-frontend   # npm run dev (port 3000)
+```
+
+Buat user admin:
+
+```bash
+make create-user    # admin@kantor.id
+```
+
+## Port
+
+- Caddy: 80 / 443
+- backend: 8080 (internal)
+- frontend: 3000 (internal, nginx)
+- minio console: 9001
+
+## Test
+
+```bash
+make test           # go test ./...
+```
