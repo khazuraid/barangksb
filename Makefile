@@ -1,16 +1,26 @@
-.PHONY: run build test generate tidy
+.PHONY: dev-backend dev-frontend build test
 
-run:
-	air 2>/dev/null || go run ./cmd/server
+dev-backend:
+	cd backend && go run ./cmd/server
+
+dev-frontend:
+	cd frontend && npm run dev
 
 build:
-	go build -o bin/server ./cmd/server
+	cd backend && go build -o bin/server ./cmd/server
+	cd frontend && npm run build
 
 test:
-	go test ./...
+	cd backend && go test ./...
 
-generate:
-	cd internal/views && templ generate
+up:
+	docker compose up -d --build
 
-tidy:
-	go mod tidy
+down:
+	docker compose down
+
+logs:
+	docker compose logs -f
+
+create-user:
+	cd backend && go run ./cmd/server -create-user admin@kantor.id

@@ -1,57 +1,60 @@
 services:
-  db:
-    image: postgres:16
+  postgres:
+    image: postgres:18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: inventaris
     volumes:
-      - inventaris_pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d inventaris"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
-      timeout: 3s
       retries: 10
 
-  app:
-    build: .
-    ports:
-      - "8080:8080"
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/inventaris?sslmode=disable
-      APP_PORT: "8080"
-      SESSION_KEY: ${SESSION_KEY:-dev-only-insecure-key}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
-      GOOGLE_SA_JSON: ${GOOGLE_SA_JSON:-}
-      GOOGLE_DRIVE_PHOTO_FOLDER_ID: ${GOOGLE_DRIVE_PHOTO_FOLDER_ID:-}
-      GOOGLE_FOLDER_ID: ${GOOGLE_FOLDER_ID:-}
-    depends_on:
-      db:
-        condition: service_healthy
-
-  backup:
-    image: postgres:16
-    environment:
-      PGHOST: db
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      PGDATABASE: inventaris
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
     volumes:
-      - ./backups:/backups
+      - miniodata:/data
+    ports:
+      - "9001:9001"
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/inventaris?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-prod}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_BUCKET: inventaris
+      PORT: "8080"
+      APP_ENV: dev
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        while true; do
-          STAMP=$$(date +%Y%m%d_%H%M%S)
-          pg_dump -h db -U postgres inventaris | gzip > /backups/inventaris_$$STAMP.sql.gz
-          find /backups -name "inventaris_*.sql.gz" -mtime +30 -delete
-          echo "backup done: $$STAMP"
-          sleep 86400
-        done
+      minio:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddydata:/data
+    depends_on: [backend, frontend]
 
 volumes:
-  inventaris_pgdata:
+  pgdata:
+  miniodata:
+  caddydata:
