@@ -30,7 +30,11 @@ const category = ref('')
 const location = ref('')
 const onlyLow = ref(false)
 const loading = ref(true)
-const expanded = ref<string | null>(null)
+
+// --- Slide-over Drawer State ---
+const drawerOpen = ref(false)
+const drawerItem = ref<any>(null)
+const photoLightbox = ref(false)
 
 const categories = ref<any[]>([])
 const locations = ref<any[]>([])
@@ -71,6 +75,12 @@ async function fetchItems() {
     })
     items.value = res.data.data
     total.value = res.data.total
+
+    // Keep drawer item in sync if open
+    if (drawerItem.value) {
+      const updated = items.value.find(i => i.id === drawerItem.value.id)
+      if (updated) drawerItem.value = updated
+    }
   } finally { loading.value = false }
 }
 async function fetchFilters() {
@@ -87,11 +97,20 @@ const range = computed(() => {
   if (!total.value) return '0 barang'
   return `${page.value * perPage.value + 1}–${Math.min(total.value, (page.value + 1) * perPage.value)} dari ${total.value}`
 })
-const lowCount = computed(() => shown.value.filter(i => i.current_stock <= i.min_stock).length)
+const lowCount = computed(() => items.value.filter(i => i.current_stock <= i.min_stock).length)
 
 function resetFilters() {
   q.value = ''; category.value = ''; location.value = ''; onlyLow.value = false
   page.value = 0; fetchItems()
+}
+
+function openDrawer(it: any) {
+  drawerItem.value = it
+  drawerOpen.value = true
+}
+
+function closeDrawer() {
+  drawerOpen.value = false
 }
 
 function remove(item: any) {
@@ -103,6 +122,7 @@ function remove(item: any) {
     accept: async () => {
       await api.delete(`/items/${item.id}`)
       toast.add({ severity: 'success', summary: 'Barang dihapus', detail: item.name, life: 2500 })
+      if (drawerItem.value?.id === item.id) closeDrawer()
       fetchItems()
     },
   })
@@ -219,50 +239,90 @@ async function deleteMaintRecord(mId: string) {
       </template>
     </PageHeader>
 
-    <div class="panel p-3.5 mb-4">
-      <div class="flex flex-wrap gap-3 items-end">
-        <label class="flex flex-col gap-1.5 flex-1 min-w-[200px]">
-          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Cari</span>
-          <InputText v-model="q" placeholder="Nama, SKU, atau lokasi…" class="w-full !text-[12.5px]"
-                     @keyup.enter="page = 0; fetchItems()" />
-        </label>
-        <label class="flex flex-col gap-1.5 min-w-[180px]">
-          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Kategori</span>
-          <Select v-model="category" :options="categories" optionLabel="name" optionValue="name" showClear
-                  placeholder="Semua" class="!text-[12.5px]" @change="page = 0; fetchItems()" filter />
-        </label>
-        <label class="flex flex-col gap-1.5 min-w-[170px]">
-          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Lokasi</span>
-          <Select v-model="location" :options="locations" optionLabel="name" optionValue="name" showClear
-                  placeholder="Semua" class="!text-[12.5px]" @change="page = 0; fetchItems()" filter />
-        </label>
-        <div class="flex items-center gap-2 pb-1.5">
-          <Button :label="onlyLow ? 'Hanya menipis (aktif)' : 'Hanya stok menipis'"
-                  icon="pi pi-exclamation-triangle" text size="small"
-                  :severity="onlyLow ? 'danger' : 'secondary'"
-                  @click="onlyLow = !onlyLow" />
-          <Button icon="pi pi-search" size="small" @click="page = 0; fetchItems()" />
-          <Button icon="pi pi-filter-slash" size="small" text severity="secondary"
-                  v-tooltip.top="'Reset filter'" @click="resetFilters" />
+    <!-- Clean Unified 1-Row Toolbar -->
+    <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
+      <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+        <!-- Search bar with icon -->
+        <div class="relative flex-1 min-w-[190px] max-w-sm">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
+          <InputText
+            v-model="q"
+            placeholder="Cari nama, SKU, atau ruangan…"
+            class="w-full !pl-8 !text-[12px] !py-1.5"
+            @keyup.enter="page = 0; fetchItems()"
+          />
         </div>
+
+        <!-- Filter Kategori -->
+        <Select
+          v-model="category"
+          :options="categories"
+          optionLabel="name"
+          optionValue="name"
+          showClear
+          placeholder="Kategori"
+          class="!text-[12px] !py-0.5 w-[150px]"
+          @change="page = 0; fetchItems()"
+          filter
+        />
+
+        <!-- Filter Lokasi -->
+        <Select
+          v-model="location"
+          :options="locations"
+          optionLabel="name"
+          optionValue="name"
+          showClear
+          placeholder="Ruangan"
+          class="!text-[12px] !py-0.5 w-[140px]"
+          @change="page = 0; fetchItems()"
+          filter
+        />
+
+        <!-- Chip filter stok menipis -->
+        <button
+          class="px-2.5 py-1.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border"
+          :class="onlyLow
+            ? 'bg-rose-500/20 text-rose-300 border-rose-500/50'
+            : 'bg-paper-2 text-ink-300 border-line hover:border-acc-500/40'"
+          @click="onlyLow = !onlyLow; page = 0; fetchItems()"
+        >
+          <i class="pi pi-exclamation-triangle text-[10px]" :class="onlyLow ? 'text-rose-400' : 'text-amber-400'" />
+          <span>Stok Menipis</span>
+          <span v-if="lowCount" class="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500/30 text-rose-300 font-bold">
+            {{ lowCount }}
+          </span>
+        </button>
+
+        <Button
+          v-if="q || category || location || onlyLow"
+          icon="pi pi-filter-slash"
+          text
+          rounded
+          size="small"
+          severity="secondary"
+          v-tooltip.top="'Reset Semua Filter'"
+          @click="resetFilters"
+        />
+      </div>
+
+      <!-- Export Buttons -->
+      <div class="flex items-center gap-1.5 shrink-0">
+        <Button label="CSV" icon="pi pi-file" size="small" text severity="secondary" @click="exportCsv" />
+        <Button label="Excel" icon="pi pi-file-excel" size="small" text severity="secondary" @click="exportXlsx" />
+        <Button label="PDF" icon="pi pi-file-pdf" size="small" text severity="secondary" @click="printReport" />
       </div>
     </div>
 
-    <Panel title="Data Barang" icon="pi pi-box" dense>
+    <!-- Calm & Clean Table -->
+    <Panel title="Inventaris Aset" icon="pi pi-box" dense>
       <template #actions>
         <Tag severity="secondary" :value="range" />
-        <Tag v-if="lowCount" severity="danger" :value="lowCount + ' menipis'" />
-        <Button icon="pi pi-file" size="small" text severity="secondary" v-tooltip.top="'Ekspor CSV'"
-                @click="exportCsv" />
-        <Button icon="pi pi-file-excel" size="small" text severity="secondary" v-tooltip.top="'Ekspor Excel'"
-                @click="exportXlsx" />
-        <Button icon="pi pi-file-pdf" size="small" text severity="secondary" v-tooltip.top="'Laporan PDF'"
-                @click="printReport" />
       </template>
 
       <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat data barang…" />
       <EmptyState v-else-if="!shown.length" icon="pi pi-box" title="Tidak ada barang"
-                  sub="Ubah kata kunci atau tambahkan barang baru ke inventaris.">
+                  sub="Ubah kata kunci pencarian atau tambahkan barang baru.">
         <Button label="Tambah barang" icon="pi pi-plus" size="small" @click="router.push('/items/new')" />
       </EmptyState>
 
@@ -270,99 +330,80 @@ async function deleteMaintRecord(mId: string) {
         <table class="w-full text-[12.5px]">
           <thead>
             <tr class="text-left" style="background: var(--paper-2)">
-              <th class="t-label px-4 py-2.5 w-[140px]">SKU</th>
-              <th class="t-label px-4 py-2.5">Nama Barang</th>
-              <th class="t-label px-4 py-2.5 w-[160px]">Kategori</th>
-              <th class="t-label px-4 py-2.5 w-[140px]">Lokasi</th>
-              <th class="t-label px-4 py-2.5 w-[130px] text-right">Stok</th>
+              <th class="t-label px-4 py-2.5">Barang &amp; SKU</th>
+              <th class="t-label px-4 py-2.5 w-[220px]">Kategori &amp; Ruangan</th>
+              <th class="t-label px-4 py-2.5 w-[140px] text-right">Stok</th>
               <th class="t-label px-4 py-2.5 w-[130px]">Kondisi</th>
-              <th class="t-label px-4 py-2.5 w-[120px] text-right">Aksi</th>
+              <th class="t-label px-4 py-2.5 w-[90px] text-center">Detail</th>
             </tr>
           </thead>
           <tbody class="divide-y" style="border-color: var(--line-soft)">
-            <template v-for="it in shown" :key="it.id">
-              <tr class="hover:bg-paper-2 transition-colors cursor-pointer"
-                  @click="expanded = expanded === it.id ? null : it.id">
-                <td class="px-4 py-2.5"><span class="t-mono font-semibold">{{ it.sku }}</span></td>
-                <td class="px-4 py-2.5">
-                  <div class="flex items-center gap-2.5">
-                    <span v-if="it.photo_url" class="w-7 h-7 shrink-0 rounded overflow-hidden border"
-                          style="border-color: var(--line)">
-                      <img :src="it.photo_url" :alt="it.name" class="w-full h-full object-cover" />
-                    </span>
-                    <span v-else class="w-7 h-7 shrink-0 grid place-items-center rounded border"
-                          style="border-color: var(--line); background: var(--paper-2)">
-                      <i class="pi pi-box text-[10px]" style="color: var(--txt-dim)" />
-                    </span>
-                    <span class="font-semibold">{{ it.name }}</span>
+            <tr
+              v-for="it in shown"
+              :key="it.id"
+              class="hover:bg-paper-2 transition-colors cursor-pointer group"
+              :class="{ 'bg-paper-2/60': drawerItem?.id === it.id && drawerOpen }"
+              @click="openDrawer(it)"
+            >
+              <!-- 1. Barang & Foto -->
+              <td class="px-4 py-2.5">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 shrink-0 rounded-md overflow-hidden border bg-black/20 flex items-center justify-center"
+                       style="border-color: var(--line)">
+                    <img v-if="it.photo_url" :src="it.photo_url" :alt="it.name" class="w-full h-full object-cover" />
+                    <i v-else class="pi pi-box text-xs text-ink-400" />
                   </div>
-                </td>
-                <td class="px-4 py-2.5" style="color: var(--txt-dim)">{{ it.category }}</td>
-                <td class="px-4 py-2.5" style="color: var(--txt-dim)">{{ it.location }}</td>
-                <td class="px-4 py-2.5 text-right">
-                  <span class="t-num font-bold" :class="it.current_stock <= it.min_stock ? 'text-sig-bad' : ''">
-                    {{ it.current_stock }}
-                  </span>
-                  <span class="text-[11px] ml-1" style="color: var(--txt-dim)">{{ it.unit }}</span>
-                  <div v-if="it.current_stock <= it.min_stock" class="t-label !text-[9px] text-sig-bad">min {{ it.min_stock }}</div>
-                </td>
-                <td class="px-4 py-2.5"><StatusChip :kind="it.condition_status" /></td>
-                <td class="px-4 py-2.5 text-right" @click.stop>
-                  <Button icon="pi pi-wrench" text rounded size="small" severity="warn"
-                          v-tooltip.top="'Servis & Kalibrasi'" @click="openMaintenance(it)" />
-                  <Button icon="pi pi-pencil" text rounded size="small" severity="secondary"
-                          v-tooltip.top="'Edit'" @click="router.push(`/items/${it.id}/edit`)" />
-                  <Button icon="pi pi-trash" text rounded size="small" severity="danger"
-                          v-tooltip.top="'Hapus'" @click="remove(it)" />
-                </td>
-              </tr>
-              <tr v-if="expanded === it.id">
-                <td colspan="7" class="px-4 pb-3.5 pt-0" style="background: var(--paper-1)">
-                  <div class="flex flex-wrap sm:flex-nowrap gap-4 text-[12px] items-center pt-2">
-                    <div v-if="it.photo_url" class="relative group w-24 h-20 shrink-0 rounded overflow-hidden border bg-black/10"
-                         style="border-color: var(--line)">
-                      <img :src="it.photo_url" :alt="it.name" class="w-full h-full object-cover" />
-                      <a :href="it.photo_url" target="_blank"
-                         class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
-                         title="Lihat foto geotag asli">
-                        <i class="pi pi-external-link text-xs" />
-                      </a>
+                  <div class="min-w-0">
+                    <div class="font-bold text-[13px] leading-snug group-hover:text-acc-400 transition-colors">
+                      {{ it.name }}
                     </div>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
-                      <div>
-                        <div class="t-label mb-1">Harga Satuan</div>
-                        <div class="t-num">{{ it.price_per_unit ? 'Rp ' + Number(it.price_per_unit).toLocaleString('id-ID') : '—' }}</div>
-                      </div>
-                      <div>
-                        <div class="t-label mb-1">Ketersediaan</div>
-                        <div>{{ it.is_available ? 'Tersedia' : 'Tidak tersedia' }}</div>
-                      </div>
-                      <div>
-                        <div class="t-label mb-1">Foto &amp; Geotag</div>
-                        <div class="flex items-center gap-1.5">
-                          <span>{{ it.photo_url ? 'Tersedia' : 'Belum ada' }}</span>
-                          <a v-if="it.geo_lat && it.geo_lng"
-                             :href="`https://www.google.com/maps?q=${it.geo_lat},${it.geo_lng}`"
-                             target="_blank"
-                             class="text-acc-500 hover:underline flex items-center gap-0.5 text-[11px]"
-                             title="Buka peta lokasi di Google Maps">
-                            <i class="pi pi-map-marker text-[10px]" /> Peta
-                          </a>
-                        </div>
-                      </div>
-                      <div class="flex items-end gap-1.5 flex-wrap">
-                        <Button label="Servis &amp; Kalibrasi" icon="pi pi-wrench" size="small" text severity="warn"
-                                @click="openMaintenance(it)" />
-                        <Button label="Edit" icon="pi pi-pencil" size="small" text
-                                @click="router.push(`/items/${it.id}/edit`)" />
-                        <Button label="QR" icon="pi pi-qrcode" size="small" text
-                                @click="router.push('/barcode')" />
-                      </div>
+                    <div class="t-mono text-[11px] text-ink-400 mt-0.5 flex items-center gap-2">
+                      <span>{{ it.sku }}</span>
+                      <span v-if="it.merk" class="text-[10.5px]">· {{ it.merk }}</span>
                     </div>
                   </div>
-                </td>
-              </tr>
-            </template>
+                </div>
+              </td>
+
+              <!-- 2. Kategori & Ruangan -->
+              <td class="px-4 py-2.5">
+                <div class="font-medium text-[12px] truncate">{{ it.category }}</div>
+                <div class="text-[11px] text-ink-400 flex items-center gap-1 mt-0.5">
+                  <i class="pi pi-map-marker text-[9px]" />
+                  <span class="truncate">{{ it.location }}</span>
+                </div>
+              </td>
+
+              <!-- 3. Stok -->
+              <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                <span class="t-num font-bold text-[13.5px]" :class="it.current_stock <= it.min_stock ? 'text-rose-400' : 'text-ink-100'">
+                  {{ it.current_stock }}
+                </span>
+                <span class="text-[11px] ml-1 text-ink-400">{{ it.unit }}</span>
+                <div v-if="it.current_stock <= it.min_stock" class="text-[10px] text-rose-400 font-semibold">
+                  min {{ it.min_stock }}
+                </div>
+              </td>
+
+              <!-- 4. Kondisi -->
+              <td class="px-4 py-2.5 whitespace-nowrap">
+                <StatusChip :kind="it.condition_status" />
+              </td>
+
+              <!-- 5. Aksi / Panah Drawer -->
+              <td class="px-4 py-2.5 text-center">
+                <Button
+                  icon="pi pi-chevron-right"
+                  text
+                  rounded
+                  size="small"
+                  severity="secondary"
+                  class="group-hover:text-acc-400 group-hover:translate-x-0.5 transition-all"
+                  v-tooltip.top="'Buka panel detail'"
+                  @click.stop="openDrawer(it)"
+                />
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -381,6 +422,187 @@ async function deleteMaintRecord(mId: string) {
         </div>
       </template>
     </Panel>
+
+    <!-- ======================================================== -->
+    <!-- Slide-over Detail Drawer (Panel Geser Kanan) -->
+    <!-- ======================================================== -->
+    <div
+      v-if="drawerOpen && drawerItem"
+      class="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity"
+      @click="closeDrawer"
+    />
+
+    <aside
+      class="fixed inset-y-0 right-0 z-50 w-full sm:w-[460px] md:w-[490px] border-l shadow-2xl flex flex-col transition-transform duration-300 ease-out"
+      :class="drawerOpen && drawerItem ? 'translate-x-0' : 'translate-x-full'"
+      style="background: var(--paper-1); border-color: var(--line)"
+    >
+      <template v-if="drawerItem">
+        <!-- Drawer Header -->
+        <div class="p-4 border-b flex items-start justify-between gap-3" style="border-color: var(--line)">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap mb-1">
+              <span class="t-mono text-[11px] font-semibold text-acc-400">{{ drawerItem.sku }}</span>
+              <StatusChip :kind="drawerItem.condition_status" />
+              <Tag v-if="drawerItem.is_available" severity="success" value="Tersedia" class="!text-[10px] !py-0" />
+            </div>
+            <h2 class="text-[17px] font-bold leading-tight break-words">{{ drawerItem.name }}</h2>
+          </div>
+          <Button icon="pi pi-times" text rounded size="small" severity="secondary" @click="closeDrawer" />
+        </div>
+
+        <!-- Drawer Scrollable Content -->
+        <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 text-[12.5px]">
+          <!-- Hero Geotag Photo Card -->
+          <div
+            v-if="drawerItem.photo_url"
+            class="relative rounded-lg overflow-hidden border bg-black/40 group cursor-pointer"
+            style="border-color: var(--line); max-height: 240px"
+            @click="photoLightbox = true"
+          >
+            <img :src="drawerItem.photo_url" alt="Foto Berstempel Geotag" class="w-full max-h-60 object-contain mx-auto" />
+            <div class="absolute bottom-2 left-2 bg-black/80 px-2 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
+              <i class="pi pi-map-marker text-sig-ok text-[9px]" /> Cap GPS Map Camera
+            </div>
+            <div class="absolute top-2 right-2 bg-black/75 px-2 py-1 rounded text-[10.5px] text-white flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <i class="pi pi-search-plus text-[10px]" /> Perbesar
+            </div>
+          </div>
+          <div
+            v-else
+            class="rounded-lg p-5 border border-dashed text-center text-ink-400 flex flex-col items-center justify-center gap-1.5"
+            style="border-color: var(--line); background: var(--paper-2)"
+          >
+            <i class="pi pi-camera text-xl text-ink-500" />
+            <span>Belum ada foto berstempel geotag</span>
+            <Button label="Tambah Foto di Form Edit" size="small" text class="!text-[11.5px] !p-0"
+                    @click="router.push(`/items/${drawerItem.id}/edit`)" />
+          </div>
+
+          <!-- Quick Stock & Price Hero Card -->
+          <div class="grid grid-cols-3 gap-2 p-3 rounded-lg border text-center"
+               style="background: var(--paper-2); border-color: var(--line)">
+            <div>
+              <div class="text-[10.5px] text-ink-400">Stok Saat Ini</div>
+              <div class="t-num text-[18px] font-extrabold mt-0.5"
+                   :class="drawerItem.current_stock <= drawerItem.min_stock ? 'text-rose-400' : 'text-emerald-400'">
+                {{ drawerItem.current_stock }} <span class="text-[11px] font-normal text-ink-400">{{ drawerItem.unit }}</span>
+              </div>
+            </div>
+            <div>
+              <div class="text-[10.5px] text-ink-400">Batas Minimum</div>
+              <div class="t-num text-[18px] font-extrabold mt-0.5 text-ink-200">
+                {{ drawerItem.min_stock }} <span class="text-[11px] font-normal text-ink-400">{{ drawerItem.unit }}</span>
+              </div>
+            </div>
+            <div>
+              <div class="text-[10.5px] text-ink-400">Harga Satuan</div>
+              <div class="t-num text-[14px] font-bold mt-1 text-acc-400 truncate">
+                {{ drawerItem.price_per_unit ? 'Rp ' + Number(drawerItem.price_per_unit).toLocaleString('id-ID') : '—' }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Specifications DL -->
+          <div class="rounded-lg border p-3 flex flex-col gap-2" style="background: var(--paper-2); border-color: var(--line)">
+            <div class="text-[11px] font-bold text-ink-400 uppercase tracking-wider mb-1">Identitas &amp; Spesifikasi</div>
+
+            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">Kategori</span>
+                <span class="font-semibold">{{ drawerItem.category }}</span>
+              </div>
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">Ruangan / Lokasi</span>
+                <span class="font-semibold flex items-center gap-1">
+                  <i class="pi pi-map-marker text-acc-500 text-[10px]" /> {{ drawerItem.location }}
+                </span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">Merk / Pabrikan</span>
+                <span>{{ drawerItem.merk || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">Model / Tipe</span>
+                <span>{{ drawerItem.type_model || '—' }}</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">Nomor Seri</span>
+                <span class="t-mono font-medium">{{ drawerItem.serial_number || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">Tahun Pengadaan</span>
+                <span>{{ drawerItem.procurement_year || '—' }}</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">Sumber Dana</span>
+                <span>{{ drawerItem.funding_source || '—' }}</span>
+              </div>
+              <div>
+                <span class="text-[10.5px] text-ink-400 block">AKL / AKD</span>
+                <span>{{ drawerItem.akl_akd || '—' }}</span>
+              </div>
+            </div>
+
+            <div v-if="drawerItem.geo_lat && drawerItem.geo_lng" class="pt-1 flex items-center justify-between text-[11.5px]">
+              <span class="t-mono text-sig-ok flex items-center gap-1">
+                <i class="pi pi-compass text-[10px]" /> GPS: {{ drawerItem.geo_lat.toFixed(5) }}, {{ drawerItem.geo_lng.toFixed(5) }}
+              </span>
+              <a :href="`https://www.google.com/maps?q=${drawerItem.geo_lat},${drawerItem.geo_lng}`"
+                 target="_blank" class="text-acc-500 hover:underline flex items-center gap-0.5 font-medium">
+                <i class="pi pi-external-link text-[10px]" /> Peta
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sticky Bottom Action Bar -->
+        <div class="p-3 border-t flex items-center justify-between gap-2" style="border-color: var(--line); background: var(--paper-2)">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <Button
+              label="Servis &amp; Kalibrasi"
+              icon="pi pi-wrench"
+              size="small"
+              severity="warn"
+              @click="openMaintenance(drawerItem)"
+            />
+            <Button
+              label="Edit"
+              icon="pi pi-pencil"
+              size="small"
+              severity="secondary"
+              @click="router.push(`/items/${drawerItem.id}/edit`)"
+            />
+            <Button
+              label="Label QR"
+              icon="pi pi-qrcode"
+              size="small"
+              text
+              severity="secondary"
+              @click="router.push('/barcode')"
+            />
+          </div>
+          <Button
+            icon="pi pi-trash"
+            text
+            rounded
+            size="small"
+            severity="danger"
+            v-tooltip.top="'Hapus Barang'"
+            @click="remove(drawerItem)"
+          />
+        </div>
+      </template>
+    </aside>
 
     <!-- Modal Dialog: Import Excel / CSV -->
     <Dialog v-model:visible="importVisible" modal header="Import Master Barang (Excel / CSV)" :style="{ width: '560px' }" class="p-fluid">
@@ -450,7 +672,6 @@ async function deleteMaintRecord(mId: string) {
       </template>
 
       <div class="flex flex-col gap-4 pt-1 text-[12.5px]">
-        <!-- Action bar -->
         <div class="flex items-center justify-between">
           <span class="font-semibold text-ink-300">Catatan Servis &amp; Pemeriksaan</span>
           <Button :label="showAddMaintForm ? 'Tutup Formulir' : '+ Catat Servis Baru'"
@@ -459,7 +680,6 @@ async function deleteMaintRecord(mId: string) {
                   @click="showAddMaintForm = !showAddMaintForm" />
         </div>
 
-        <!-- Add Form Collapsible -->
         <div v-if="showAddMaintForm" class="p-4 rounded-lg border flex flex-col gap-3"
              style="background: var(--paper-2); border-color: var(--line)">
           <div class="font-bold text-acc-500 text-[12px] flex items-center gap-1.5">
@@ -512,7 +732,6 @@ async function deleteMaintRecord(mId: string) {
           </div>
         </div>
 
-        <!-- Maintenance List Table / Timeline -->
         <div v-if="loadingMaint" class="text-center py-8 text-ink-400">
           <i class="pi pi-spin pi-spinner text-xl text-acc-500" />
         </div>
@@ -572,6 +791,13 @@ async function deleteMaintRecord(mId: string) {
         <div class="flex justify-end pt-2 border-t" style="border-color: var(--line)">
           <Button label="Tutup" size="small" severity="secondary" @click="maintenanceVisible = false" />
         </div>
+      </div>
+    </Dialog>
+
+    <!-- Modal Lightbox Foto Penuh -->
+    <Dialog v-model:visible="photoLightbox" modal :style="{ width: '600px' }" class="p-fluid">
+      <div v-if="drawerItem?.photo_url" class="p-2 bg-black rounded-lg flex items-center justify-center">
+        <img :src="drawerItem.photo_url" alt="Foto Geotag" class="max-h-[70vh] object-contain rounded" />
       </div>
     </Dialog>
   </div>
