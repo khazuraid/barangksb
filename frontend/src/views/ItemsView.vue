@@ -351,13 +351,20 @@ async function deleteMaintRecord(mId: string) {
 
               <!-- 3. Stok -->
               <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                <span class="t-num font-bold text-[13.5px]" :class="it.current_stock <= it.min_stock ? 'text-rose-400' : 'text-ink-100'">
-                  {{ it.current_stock }}
-                </span>
-                <span class="text-[11px] ml-1 text-ink-400">{{ it.unit }}</span>
-                <div v-if="it.current_stock <= it.min_stock" class="text-[10px] text-rose-400 font-semibold">
-                  min {{ it.min_stock }}
-                </div>
+                <template v-if="it.track_stock !== false">
+                  <span class="t-num font-bold text-[13.5px]" :class="it.current_stock <= it.min_stock ? 'text-rose-400' : 'text-ink-100'">
+                    {{ it.current_stock }}
+                  </span>
+                  <span class="text-[11px] ml-1 text-ink-400">{{ it.unit }}</span>
+                  <div v-if="it.current_stock <= it.min_stock" class="text-[10px] text-rose-400 font-semibold">
+                    min {{ it.min_stock }}
+                  </div>
+                </template>
+                <template v-else>
+                  <span class="text-[11px] font-semibold text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                    Aset Tetap
+                  </span>
+                </template>
               </td>
 
               <!-- 4. Kondisi -->
