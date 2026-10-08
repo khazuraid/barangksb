@@ -12,8 +12,8 @@ WORKDIR /src
 COPY backend/go.* ./
 RUN go mod download
 COPY backend/ .
-# Copy frontend dist into backend's dist/ for embed
-COPY --from=frontend-build /app/dist ./dist
+# Copy frontend dist into backend cmd/server/dist/ for embed
+COPY --from=frontend-build /app/dist ./cmd/server/dist
 RUN CGO_ENABLED=0 go build -o /server ./cmd/server
 
 # Stage 3: Runtime

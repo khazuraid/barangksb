@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"embed"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -24,9 +23,6 @@ import (
 	"inventariskantor/internal/middleware"
 	"inventariskantor/internal/telegram"
 )
-
-//go:embed all:dist
-var frontendDist embed.FS
 
 func dbMigrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return db.Migrate(ctx, pool)

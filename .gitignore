@@ -13,3 +13,4 @@ backend/server
 /server
 cmd/server/dist/
 backend/cmd/server/dist/
+backend/cmd/server/dist/
