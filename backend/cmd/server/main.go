@@ -13,9 +13,14 @@ import (
 
 	"inventariskantor/internal/auth"
 	"inventariskantor/internal/config"
+	"inventariskantor/internal/db"
 	"inventariskantor/internal/handler"
 	"inventariskantor/internal/middleware"
 )
+
+func dbMigrate(ctx context.Context, pool *pgxpool.Pool) error {
+	return db.Migrate(ctx, pool)
+}
 
 func main() {
 	createUser := flag.String("create-user", "", "email untuk membuat user (password di-prompt)")
@@ -45,6 +50,12 @@ func main() {
 		return
 	}
 
+	// Run migrations
+	if err := dbMigrate(context.Background(), pool); err != nil {
+		slog.Error("migrate failed", "err", err)
+		os.Exit(1)
+	}
+
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -60,6 +71,9 @@ func main() {
 	authH := handler.NewAuthHandler(pool, cfg)
 	itemH := handler.NewItemHandler(pool)
 	mvH := handler.NewMovementHandler(pool)
+	userH := handler.NewUserHandler(pool)
+	bcH := handler.NewBarcodeHandler(pool)
+	expH := handler.NewExportHandler(pool)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -91,7 +105,25 @@ func main() {
 	api.GET("/transactions", mvH.ListTransactions)
 
 	api.GET("/categories", mvH.Categories)
+	api.POST("/categories", userH.CreateCategory)
+	api.DELETE("/categories/:id", userH.DeleteCategory)
+
 	api.GET("/locations", mvH.Locations)
+	api.POST("/locations", userH.CreateLocation)
+	api.DELETE("/locations/:id", userH.DeleteLocation)
+
+	api.GET("/users", userH.List)
+	api.POST("/users", userH.Create)
+	api.PUT("/users/:email/role", userH.UpdateRole)
+	api.DELETE("/users/:email", userH.Delete)
+
+	api.GET("/audit", userH.AuditLog)
+
+	api.GET("/barcode/:id.png", bcH.PNG)
+	api.GET("/barcode/sheet", bcH.Sheet)
+
+	api.GET("/export/items.csv", expH.ItemsCSV)
+	api.GET("/export/tx.csv", expH.TxCSV)
 
 	slog.Info("server starting", "port", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
