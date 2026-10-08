@@ -16,6 +16,7 @@ import (
 	"inventariskantor/internal/db"
 	"inventariskantor/internal/handler"
 	"inventariskantor/internal/middleware"
+	"inventariskantor/internal/telegram"
 )
 
 func dbMigrate(ctx context.Context, pool *pgxpool.Pool) error {
@@ -102,6 +103,9 @@ func main() {
 	userH := handler.NewUserHandler(pool)
 	bcH := handler.NewBarcodeHandler(pool)
 	expH := handler.NewExportHandler(pool)
+	upH := handler.NewUploadHandler(pool)
+	rptH := handler.NewReportHandler(pool)
+	bulkH := handler.NewBulkHandler(pool)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -152,6 +156,20 @@ func main() {
 
 	api.GET("/export/items.csv", expH.ItemsCSV)
 	api.GET("/export/tx.csv", expH.TxCSV)
+	api.GET("/export/items.xlsx", rptH.ItemsXLSX)
+	api.GET("/report.pdf", rptH.PDF)
+
+	api.POST("/upload", upH.Upload)
+	api.POST("/adjust/bulk", bulkH.BulkAdjust)
+
+	// Static files for uploads
+	r.Static("/uploads", "./uploads")
+
+	// Telegram bot
+	if cfg.TgToken != "" {
+		tgBot := telegram.NewBot(cfg.TgToken, cfg.TgChats, pool)
+		tgBot.Start(context.Background())
+	}
 
 	slog.Info("server starting", "port", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
