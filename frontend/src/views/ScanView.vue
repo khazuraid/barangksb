@@ -82,12 +82,22 @@ function rows() {
         <i class="pi pi-spin pi-spinner text-xl text-acc-500" />
       </div>
 
-      <div v-else-if="error" class="panel shell-panel-2 p-6 text-center">
-        <i class="pi pi-times-circle text-3xl text-sig-bad" />
-        <div class="text-[14px] font-bold mt-3">Tidak ditemukan</div>
-        <p class="text-[12.5px] mt-1.5 text-ink-400">{{ error }}</p>
-        <Button label="Ke panel utama" icon="pi pi-arrow-right" iconPos="right" size="small"
-                class="mt-5" @click="router.push('/')" />
+      <div v-else-if="error" class="panel shell-panel-2 p-8 text-center rounded-xl border flex flex-col items-center gap-3 shadow-xl"
+           style="background: var(--paper-1); border-color: var(--line)">
+        <div class="w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 text-2xl">
+          <i class="pi pi-qrcode" />
+        </div>
+        <div class="text-[16px] font-bold text-rose-400">Kode QR Tidak Terdaftar</div>
+        <p class="text-[12.5px] text-ink-300 leading-relaxed max-w-xs">
+          Barang tidak ditemukan di sistem inventaris. Kemungkinan kode QR salah, barang telah dihapus, atau belum diinput ke master data.
+        </p>
+        <div class="px-3 py-1.5 rounded text-[11px] t-mono text-ink-400 bg-paper-2 border border-line">
+          ID: {{ route.params.id }}
+        </div>
+        <div class="flex gap-2 w-full mt-2 pt-3 border-t" style="border-color: var(--line)">
+          <Button label="Dashboard" icon="pi pi-th-large" size="small" class="flex-1" @click="router.push('/')" />
+          <Button label="Daftar Barang" icon="pi pi-box" size="small" severity="secondary" outlined class="flex-1" @click="router.push('/items')" />
+        </div>
       </div>
 
       <template v-else>

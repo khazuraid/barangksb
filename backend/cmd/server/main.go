@@ -212,7 +212,11 @@ func main() {
 	r.NoRoute(func(c *gin.Context) {
 		p := c.Request.URL.Path
 		if strings.HasPrefix(p, "/api/") {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			c.JSON(http.StatusNotFound, gin.H{
+				"status": 404,
+				"error":  "Endpoint API tidak ditemukan",
+				"path":   p,
+			})
 			return
 		}
 		if p == "/" || p == "/index.html" {

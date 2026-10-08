@@ -31,15 +31,6 @@ const location = ref('')
 const onlyLow = ref(false)
 const loading = ref(true)
 
-// --- Slide-over Drawer State ---
-const drawerOpen = ref(false)
-const drawerItem = ref<any>(null)
-const photoLightbox = ref(false)
-
-const categories = ref<any[]>([])
-const locations = ref<any[]>([])
-const perPageOptions = [25, 50, 100]
-
 // --- Import Excel / CSV state ---
 const importVisible = ref(false)
 const importing = ref(false)
@@ -76,11 +67,6 @@ async function fetchItems() {
     items.value = res.data.data
     total.value = res.data.total
 
-    // Keep drawer item in sync if open
-    if (drawerItem.value) {
-      const updated = items.value.find(i => i.id === drawerItem.value.id)
-      if (updated) drawerItem.value = updated
-    }
   } finally { loading.value = false }
 }
 async function fetchFilters() {
@@ -103,14 +89,6 @@ function resetFilters() {
   q.value = ''; category.value = ''; location.value = ''; onlyLow.value = false
   page.value = 0; fetchItems()
 }
-
-function openDrawer(it: any) {
-  drawerItem.value = it
-  drawerOpen.value = true
-}
-
-function closeDrawer() {
-  drawerOpen.value = false
 }
 
 function remove(item: any) {
@@ -342,8 +320,7 @@ async function deleteMaintRecord(mId: string) {
               v-for="it in shown"
               :key="it.id"
               class="hover:bg-paper-2 transition-colors cursor-pointer group"
-              :class="{ 'bg-paper-2/60': drawerItem?.id === it.id && drawerOpen }"
-              @click="openDrawer(it)"
+              @click="router.push('/items/' + it.id)"
             >
               <!-- 1. Barang & Foto -->
               <td class="px-4 py-2.5">
@@ -390,7 +367,7 @@ async function deleteMaintRecord(mId: string) {
                 <StatusChip :kind="it.condition_status" />
               </td>
 
-              <!-- 5. Aksi / Panah Drawer -->
+              <!-- 5. Aksi / Panah Detail -->
               <td class="px-4 py-2.5 text-center">
                 <Button
                   icon="pi pi-chevron-right"
@@ -399,8 +376,8 @@ async function deleteMaintRecord(mId: string) {
                   size="small"
                   severity="secondary"
                   class="group-hover:text-acc-400 group-hover:translate-x-0.5 transition-all"
-                  v-tooltip.top="'Buka panel detail'"
-                  @click.stop="openDrawer(it)"
+                  v-tooltip.top="'Lihat Detail Lengkap'"
+                  @click.stop="router.push('/items/' + it.id)"
                 />
               </td>
             </tr>
@@ -422,187 +399,6 @@ async function deleteMaintRecord(mId: string) {
         </div>
       </template>
     </Panel>
-
-    <!-- ======================================================== -->
-    <!-- Slide-over Detail Drawer (Panel Geser Kanan) -->
-    <!-- ======================================================== -->
-    <div
-      v-if="drawerOpen && drawerItem"
-      class="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity"
-      @click="closeDrawer"
-    />
-
-    <aside
-      class="fixed inset-y-0 right-0 z-50 w-full sm:w-[460px] md:w-[490px] border-l shadow-2xl flex flex-col transition-transform duration-300 ease-out"
-      :class="drawerOpen && drawerItem ? 'translate-x-0' : 'translate-x-full'"
-      style="background: var(--paper-1); border-color: var(--line)"
-    >
-      <template v-if="drawerItem">
-        <!-- Drawer Header -->
-        <div class="p-4 border-b flex items-start justify-between gap-3" style="border-color: var(--line)">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2 flex-wrap mb-1">
-              <span class="t-mono text-[11px] font-semibold text-acc-400">{{ drawerItem.sku }}</span>
-              <StatusChip :kind="drawerItem.condition_status" />
-              <Tag v-if="drawerItem.is_available" severity="success" value="Tersedia" class="!text-[10px] !py-0" />
-            </div>
-            <h2 class="text-[17px] font-bold leading-tight break-words">{{ drawerItem.name }}</h2>
-          </div>
-          <Button icon="pi pi-times" text rounded size="small" severity="secondary" @click="closeDrawer" />
-        </div>
-
-        <!-- Drawer Scrollable Content -->
-        <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 text-[12.5px]">
-          <!-- Hero Geotag Photo Card -->
-          <div
-            v-if="drawerItem.photo_url"
-            class="relative rounded-lg overflow-hidden border bg-black/40 group cursor-pointer"
-            style="border-color: var(--line); max-height: 240px"
-            @click="photoLightbox = true"
-          >
-            <img :src="drawerItem.photo_url" alt="Foto Berstempel Geotag" class="w-full max-h-60 object-contain mx-auto" />
-            <div class="absolute bottom-2 left-2 bg-black/80 px-2 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
-              <i class="pi pi-map-marker text-sig-ok text-[9px]" /> Cap GPS Map Camera
-            </div>
-            <div class="absolute top-2 right-2 bg-black/75 px-2 py-1 rounded text-[10.5px] text-white flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <i class="pi pi-search-plus text-[10px]" /> Perbesar
-            </div>
-          </div>
-          <div
-            v-else
-            class="rounded-lg p-5 border border-dashed text-center text-ink-400 flex flex-col items-center justify-center gap-1.5"
-            style="border-color: var(--line); background: var(--paper-2)"
-          >
-            <i class="pi pi-camera text-xl text-ink-500" />
-            <span>Belum ada foto berstempel geotag</span>
-            <Button label="Tambah Foto di Form Edit" size="small" text class="!text-[11.5px] !p-0"
-                    @click="router.push(`/items/${drawerItem.id}/edit`)" />
-          </div>
-
-          <!-- Quick Stock & Price Hero Card -->
-          <div class="grid grid-cols-3 gap-2 p-3 rounded-lg border text-center"
-               style="background: var(--paper-2); border-color: var(--line)">
-            <div>
-              <div class="text-[10.5px] text-ink-400">Stok Saat Ini</div>
-              <div class="t-num text-[18px] font-extrabold mt-0.5"
-                   :class="drawerItem.current_stock <= drawerItem.min_stock ? 'text-rose-400' : 'text-emerald-400'">
-                {{ drawerItem.current_stock }} <span class="text-[11px] font-normal text-ink-400">{{ drawerItem.unit }}</span>
-              </div>
-            </div>
-            <div>
-              <div class="text-[10.5px] text-ink-400">Batas Minimum</div>
-              <div class="t-num text-[18px] font-extrabold mt-0.5 text-ink-200">
-                {{ drawerItem.min_stock }} <span class="text-[11px] font-normal text-ink-400">{{ drawerItem.unit }}</span>
-              </div>
-            </div>
-            <div>
-              <div class="text-[10.5px] text-ink-400">Harga Satuan</div>
-              <div class="t-num text-[14px] font-bold mt-1 text-acc-400 truncate">
-                {{ drawerItem.price_per_unit ? 'Rp ' + Number(drawerItem.price_per_unit).toLocaleString('id-ID') : '—' }}
-              </div>
-            </div>
-          </div>
-
-          <!-- Specifications DL -->
-          <div class="rounded-lg border p-3 flex flex-col gap-2" style="background: var(--paper-2); border-color: var(--line)">
-            <div class="text-[11px] font-bold text-ink-400 uppercase tracking-wider mb-1">Identitas &amp; Spesifikasi</div>
-
-            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">Kategori</span>
-                <span class="font-semibold">{{ drawerItem.category }}</span>
-              </div>
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">Ruangan / Lokasi</span>
-                <span class="font-semibold flex items-center gap-1">
-                  <i class="pi pi-map-marker text-acc-500 text-[10px]" /> {{ drawerItem.location }}
-                </span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">Merk / Pabrikan</span>
-                <span>{{ drawerItem.merk || '—' }}</span>
-              </div>
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">Model / Tipe</span>
-                <span>{{ drawerItem.type_model || '—' }}</span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">Nomor Seri</span>
-                <span class="t-mono font-medium">{{ drawerItem.serial_number || '—' }}</span>
-              </div>
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">Tahun Pengadaan</span>
-                <span>{{ drawerItem.procurement_year || '—' }}</span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2 pb-1 border-b" style="border-color: var(--line-soft)">
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">Sumber Dana</span>
-                <span>{{ drawerItem.funding_source || '—' }}</span>
-              </div>
-              <div>
-                <span class="text-[10.5px] text-ink-400 block">AKL / AKD</span>
-                <span>{{ drawerItem.akl_akd || '—' }}</span>
-              </div>
-            </div>
-
-            <div v-if="drawerItem.geo_lat && drawerItem.geo_lng" class="pt-1 flex items-center justify-between text-[11.5px]">
-              <span class="t-mono text-sig-ok flex items-center gap-1">
-                <i class="pi pi-compass text-[10px]" /> GPS: {{ drawerItem.geo_lat.toFixed(5) }}, {{ drawerItem.geo_lng.toFixed(5) }}
-              </span>
-              <a :href="`https://www.google.com/maps?q=${drawerItem.geo_lat},${drawerItem.geo_lng}`"
-                 target="_blank" class="text-acc-500 hover:underline flex items-center gap-0.5 font-medium">
-                <i class="pi pi-external-link text-[10px]" /> Peta
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <!-- Sticky Bottom Action Bar -->
-        <div class="p-3 border-t flex items-center justify-between gap-2" style="border-color: var(--line); background: var(--paper-2)">
-          <div class="flex items-center gap-1.5 flex-wrap">
-            <Button
-              label="Servis &amp; Kalibrasi"
-              icon="pi pi-wrench"
-              size="small"
-              severity="warn"
-              @click="openMaintenance(drawerItem)"
-            />
-            <Button
-              label="Edit"
-              icon="pi pi-pencil"
-              size="small"
-              severity="secondary"
-              @click="router.push(`/items/${drawerItem.id}/edit`)"
-            />
-            <Button
-              label="Label QR"
-              icon="pi pi-qrcode"
-              size="small"
-              text
-              severity="secondary"
-              @click="router.push('/barcode')"
-            />
-          </div>
-          <Button
-            icon="pi pi-trash"
-            text
-            rounded
-            size="small"
-            severity="danger"
-            v-tooltip.top="'Hapus Barang'"
-            @click="remove(drawerItem)"
-          />
-        </div>
-      </template>
-    </aside>
 
     <!-- Modal Dialog: Import Excel / CSV -->
     <Dialog v-model:visible="importVisible" modal header="Import Master Barang (Excel / CSV)" :style="{ width: '560px' }" class="p-fluid">
@@ -791,13 +587,6 @@ async function deleteMaintRecord(mId: string) {
         <div class="flex justify-end pt-2 border-t" style="border-color: var(--line)">
           <Button label="Tutup" size="small" severity="secondary" @click="maintenanceVisible = false" />
         </div>
-      </div>
-    </Dialog>
-
-    <!-- Modal Lightbox Foto Penuh -->
-    <Dialog v-model:visible="photoLightbox" modal :style="{ width: '600px' }" class="p-fluid">
-      <div v-if="drawerItem?.photo_url" class="p-2 bg-black rounded-lg flex items-center justify-center">
-        <img :src="drawerItem.photo_url" alt="Foto Geotag" class="max-h-[70vh] object-contain rounded" />
       </div>
     </Dialog>
   </div>

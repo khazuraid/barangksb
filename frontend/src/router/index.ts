@@ -13,6 +13,7 @@ const router = createRouter({
         { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
         { path: 'items', name: 'items', component: () => import('@/views/ItemsView.vue') },
         { path: 'items/new', name: 'item-new', component: () => import('@/views/ItemFormView.vue') },
+        { path: 'items/:id', name: 'item-detail', component: () => import('@/views/ItemDetailView.vue') },
         { path: 'items/:id/edit', name: 'item-edit', component: () => import('@/views/ItemFormView.vue') },
         { path: 'categories', name: 'categories', component: () => import('@/views/CategoriesView.vue') },
         { path: 'locations', name: 'locations', component: () => import('@/views/LocationsView.vue') },
@@ -27,7 +28,8 @@ const router = createRouter({
       ],
     },
     { path: '/scan/:id', name: 'scan', component: () => import('@/views/ScanView.vue') },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    { path: '/404', name: 'not-found', component: () => import('@/views/NotFoundView.vue') },
+    { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFoundView.vue') },
   ],
 })
 
