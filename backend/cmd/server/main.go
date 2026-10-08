@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"embed"
 	"flag"
+	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/gin-contrib/cors"
@@ -20,6 +24,9 @@ import (
 	"inventariskantor/internal/middleware"
 	"inventariskantor/internal/telegram"
 )
+
+//go:embed all:dist
+var frontendDist embed.FS
 
 func dbMigrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return db.Migrate(ctx, pool)
@@ -194,6 +201,26 @@ func main() {
 	// Static files for local uploads (disk fallback)
 	r.Static("/uploads", "./uploads")
 
+	// Serve embedded frontend (SPA) — for Zeabur single-container deploy
+	frontendFS, _ := fs.Sub(frontendDist, "dist")
+	r.NoRoute(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if strings.HasPrefix(p, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		if p == "/" {
+			p = "/index.html"
+		}
+		cleanPath := path.Clean(strings.TrimPrefix(p, "/"))
+		if data, err := fs.ReadFile(frontendFS, cleanPath); err == nil {
+			c.Data(http.StatusOK, guessContentType(cleanPath), data)
+			return
+		}
+		indexData, _ := fs.ReadFile(frontendFS, "index.html")
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
+	})
+
 	// Serve MinIO uploads via API (when MinIO is active)
 	api.GET("/uploads/:name", func(c *gin.Context) {
 		name := c.Param("name")
@@ -236,3 +263,36 @@ func fmtScanln(s *string) {
 		*s = (*s)[:len(*s)-1]
 	}
 }
+
+func guessContentType(name string) string {
+	switch path.Ext(name) {
+	case ".html", ".htm":
+		return "text/html; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".js", ".mjs":
+		return "application/javascript; charset=utf-8"
+	case ".json":
+		return "application/json; charset=utf-8"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".woff", ".woff2":
+		return "font/woff2"
+	case ".ttf":
+		return "font/ttf"
+	case ".eot":
+		return "application/vnd.ms-fontobject"
+	case ".map":
+		return "application/json; charset=utf-8"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+var _ = fmt.Sprintf

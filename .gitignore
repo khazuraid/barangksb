@@ -11,3 +11,5 @@ bin/
 backups/*.sql.gz
 backend/server
 /server
+cmd/server/dist/
+backend/cmd/server/dist/

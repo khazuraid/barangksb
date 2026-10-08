@@ -23,8 +23,8 @@ services:
     ports:
       - "9001:9001"
 
-  backend:
-    build: ./backend
+  app:
+    build: .
     environment:
       DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-inventaris}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
@@ -37,27 +37,14 @@ services:
       APP_ENV: ${APP_ENV:-dev}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@kantor.id}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+    ports:
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_started
 
-  frontend:
-    build: ./frontend
-    depends_on: [backend]
-
-  caddy:
-    image: caddy:2
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddydata:/data
-    depends_on: [backend, frontend]
-
 volumes:
   pgdata:
   miniodata:
-  caddydata:
