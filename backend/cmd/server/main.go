@@ -22,6 +22,31 @@ func dbMigrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return db.Migrate(ctx, pool)
 }
 
+func seedAdminUser(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) {
+	var count int
+	pool.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&count)
+	if count > 0 {
+		return
+	}
+	adminEmail := os.Getenv("ADMIN_EMAIL")
+	if adminEmail == "" {
+		adminEmail = "admin@kantor.id"
+	}
+	adminPw := os.Getenv("ADMIN_PASSWORD")
+	if adminPw == "" {
+		adminPw = "admin12345"
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(adminPw), bcrypt.DefaultCost)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,'admin')`,
+		"Admin", adminEmail, string(hash))
+	if err != nil {
+		slog.Error("seed admin failed", "err", err)
+		return
+	}
+	slog.Info("admin user seeded", "email", adminEmail)
+}
+
 func main() {
 	createUser := flag.String("create-user", "", "email untuk membuat user (password di-prompt)")
 	flag.Parse()
@@ -55,6 +80,9 @@ func main() {
 		slog.Error("migrate failed", "err", err)
 		os.Exit(1)
 	}
+
+	// Auto-seed admin user from env if DB empty
+	seedAdminUser(context.Background(), pool, cfg)
 
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
