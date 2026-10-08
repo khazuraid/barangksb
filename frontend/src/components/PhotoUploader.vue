@@ -45,6 +45,9 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const previewOpen = ref(false)
 const showInlineMap = ref(false)
 const modalTab = ref<'photo' | 'map'>('photo')
+const localPreviewUrl = ref('')
+
+const currentPhotoSrc = computed(() => props.modelValue || localPreviewUrl.value)
 
 // Sync props if provided from existing item
 watch(
@@ -137,6 +140,9 @@ async function onFileSelected(e: Event) {
   const file = target.files?.[0]
   if (!file) return
 
+  if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
+  localPreviewUrl.value = URL.createObjectURL(file)
+
   uploading.value = true
   try {
     // Pastikan koordinat GPS didapatkan sebelum unggah agar cap geotag selalu tercetak
@@ -213,6 +219,10 @@ async function onFileSelected(e: Event) {
 }
 
 function removePhoto() {
+  if (localPreviewUrl.value) {
+    URL.revokeObjectURL(localPreviewUrl.value)
+    localPreviewUrl.value = ''
+  }
   emit('update:modelValue', '')
 }
 </script>
@@ -324,7 +334,7 @@ function removePhoto() {
 
     <!-- Preview / Upload Container -->
     <div
-      v-if="modelValue"
+      v-if="currentPhotoSrc"
       class="rounded-lg overflow-hidden border flex flex-col gap-2.5 p-3"
       style="background: var(--paper-1); border-color: var(--line)"
     >
@@ -377,7 +387,8 @@ function removePhoto() {
         @click="modalTab = 'photo'; previewOpen = true"
       >
         <img
-          :src="modelValue"
+          :src="currentPhotoSrc"
+          @error="(e) => { if (localPreviewUrl && (e.target as HTMLImageElement).src !== localPreviewUrl) (e.target as HTMLImageElement).src = localPreviewUrl }"
           alt="Foto Berstempel Geotag"
           class="w-full h-auto max-h-[280px] object-contain group-hover:scale-[1.01] transition-transform"
         />
@@ -482,7 +493,12 @@ function removePhoto() {
         <div class="bg-black flex items-center justify-center min-h-[50vh] max-h-[72vh] overflow-hidden">
           <!-- Tab 1: Foto Geotag Penuh -->
           <div v-if="modalTab === 'photo'" class="p-3 w-full h-full flex items-center justify-center overflow-auto">
-            <img :src="modelValue" alt="Foto Geotag Penuh" class="max-h-[68vh] object-contain rounded" />
+            <img
+              :src="currentPhotoSrc"
+              @error="(e) => { if (localPreviewUrl && (e.target as HTMLImageElement).src !== localPreviewUrl) (e.target as HTMLImageElement).src = localPreviewUrl }"
+              alt="Foto Geotag Penuh"
+              class="max-h-[68vh] object-contain rounded"
+            />
           </div>
 
           <!-- Tab 2: Peta Lokasi Geotag Interaktif -->

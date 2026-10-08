@@ -127,12 +127,22 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+func getUploadDir() string {
+	if fi, err := os.Stat("/uploads"); err == nil && fi.IsDir() {
+		return "/uploads"
+	}
+	_ = os.MkdirAll("uploads", 0o755)
+	return "uploads"
+}
+
 func (h *UploadHandler) saveDisk(name string, data []byte) string {
-	dir := "uploads"
-	os.MkdirAll(dir, 0o755)
+	dir := getUploadDir()
 	path := filepath.Join(dir, name)
-	os.WriteFile(path, data, 0o644)
-	return "/uploads/" + name
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		_ = os.MkdirAll("uploads", 0o755)
+		_ = os.WriteFile(filepath.Join("uploads", name), data, 0o644)
+	}
+	return "/api/uploads/" + name
 }
 
 // GetObject retrieves a file from MinIO (or nil if using disk)
@@ -145,7 +155,12 @@ func (h *UploadHandler) GetObject(ctx context.Context, name string) (io.ReadClos
 		return obj, nil
 	}
 	// disk fallback
-	return os.Open(filepath.Join("uploads", name))
+	dir := getUploadDir()
+	f, err := os.Open(filepath.Join(dir, name))
+	if err != nil {
+		return os.Open(filepath.Join("uploads", name))
+	}
+	return f, nil
 }
 
 // Serve streams uploaded image from MinIO or disk
