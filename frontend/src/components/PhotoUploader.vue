@@ -186,14 +186,14 @@ async function getReverseGeocode(lat: number, lng: number): Promise<{ title: str
 
     const titleParts = [district]
     if (region && region !== district) titleParts.push(region)
-    titleParts.push(`${country} \u{1F1EE}\u{1F1E9}`)
+    titleParts.push(country)
 
     const title = titleParts.join(', ')
     const fullAddress = data.display_name || `${lat}, ${lng}`
     return { title, fullAddress }
   } catch (e: any) {
     return {
-      title: 'Indonesia \u{1F1EE}\u{1F1E9}',
+      title: 'Indonesia',
       fullAddress: `Koordinat GPS: Lat ${lat.toFixed(6)}°, Long ${lng.toFixed(6)}°`,
     }
   }
@@ -325,6 +325,21 @@ function drawProceduralMap(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.restore()
 }
 
+function drawIndonesianFlag(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save()
+  // Top red half
+  ctx.fillStyle = '#dc2626'
+  ctx.fillRect(x, y, w, h / 2)
+  // Bottom white half
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(x, y + h / 2, w, h / 2)
+  // Subtle border
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(x, y, w, h)
+  ctx.restore()
+}
+
 // Compact GPS Map Camera Stamping + Compression
 async function stampGpsMapCamera(
   file: File,
@@ -395,37 +410,43 @@ async function stampGpsMapCamera(
         addLog('Mengunduh thumbnail peta OSM...', 'info')
         const tileImg = await loadTileBlobImage(geoCoords.lat, geoCoords.lng)
 
-        // Compact Proportional Scale (Only ~16-19% of image height)
+        // Sizing with large, highly legible fonts
         currentStepText.value = 'Mengecap watermark GPS Map Camera...'
-        addLog('Merender watermark GPS Map Camera (mode proporsional kompak)...', 'info')
-
-        const baseDim = Math.min(width, height)
-        const scale = Math.max(0.65, Math.min(1.15, baseDim / 1400))
+        addLog('Merender watermark GPS Map Camera (tulisan diperbesar & tajam)...', 'info')
 
         const margin = Math.round(width * 0.02)
-        const cardW = Math.min(width - margin * 2, Math.round(width * 0.94))
-        const cardX = Math.round((width - cardW) / 2)
+        const cardW = Math.min(width - margin * 2, Math.round(width * 0.90))
+        const cardX = margin
 
-        // Card height capped at ~18% of photo height
-        const cardH = Math.max(130, Math.min(Math.round(height * 0.20), Math.round(180 * scale)))
+        const padX = Math.round(18 * (width / 1440))
+        const padY = Math.round(14 * (width / 1440))
+
+        // Large legible fonts
+        const titleSize = Math.max(18, Math.round(width * 0.016))
+        const bodySize = Math.max(13, Math.round(width * 0.0112))
+        const metaSize = Math.max(13, Math.round(width * 0.0108))
+        const badgeSize = Math.max(11, Math.round(width * 0.0095))
+
+        const titleLineH = Math.round(titleSize * 1.3)
+        const bodyLineH = Math.round(bodySize * 1.35)
+        const metaLineH = Math.round(metaSize * 1.35)
+
+        // Measure text content
+        ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
+        const approxMapSize = Math.max(130, Math.round(width * 0.13))
+        const textAreaW = cardW - approxMapSize - padX * 3
+
+        const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
+        const textContentH = titleLineH + addressLines.length * bodyLineH + metaLineH * 2 + 10
+
+        const mapSize = Math.max(approxMapSize, Math.round(textContentH * 0.95))
+        const cardH = Math.max(mapSize, textContentH) + padY * 2
         const cardY = height - cardH - margin
-
-        const padX = Math.round(14 * scale)
-        const padY = Math.round(10 * scale)
-
-        // Map Box: compact square fitting inside cardH
-        const mapSize = Math.round((cardH - padY * 2) * 0.94)
-
-        // Font sizes
-        const titleSize = Math.max(13, Math.round(17 * scale))
-        const bodySize = Math.max(10, Math.round(11.5 * scale))
-        const metaSize = Math.max(10, Math.round(11.5 * scale))
-        const badgeSize = Math.max(9, Math.round(10.5 * scale))
 
         // Draw Card Background
         ctx.save()
         ctx.fillStyle = 'rgba(22, 22, 24, 0.88)'
-        const radius = Math.round(10 * scale)
+        const radius = Math.round(12 * (width / 1440))
         ctx.beginPath()
         ctx.moveTo(cardX + radius, cardY)
         ctx.lineTo(cardX + cardW - radius, cardY)
@@ -465,7 +486,7 @@ async function stampGpsMapCamera(
         // Draw Map Box (Left column)
         const mapX = cardX + padX
         const mapY = cardY + (cardH - mapSize) / 2
-        const mapRadius = Math.round(8 * scale)
+        const mapRadius = Math.round(10 * (width / 1440))
 
         ctx.save()
         ctx.beginPath()
@@ -488,10 +509,10 @@ async function stampGpsMapCamera(
         }
 
         // Draw Red Google Map Pin in center
-        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2 + Math.round(6 * scale), Math.round(mapSize * 0.22))
+        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2 + Math.round(mapSize * 0.05), Math.round(mapSize * 0.22))
 
         // Google watermark at bottom of map
-        ctx.font = `bold ${Math.max(9, Math.round(10.5 * scale))}px system-ui, sans-serif`
+        ctx.font = `bold ${Math.max(10, Math.round(12 * (width / 1440)))}px system-ui, sans-serif`
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
         ctx.fillText('Google', mapX + 6, mapY + mapSize - 5)
         ctx.fillStyle = '#ffffff'
@@ -500,37 +521,39 @@ async function stampGpsMapCamera(
 
         // Draw Text Block (Right column)
         const textX = mapX + mapSize + padX
-        const textAreaW = cardX + cardW - textX - padX
         let textY = cardY + padY
 
-        // 1. Title Header
+        // 1. Title Header + Indonesian Flag
         ctx.save()
         ctx.font = `bold ${titleSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#ffffff'
         ctx.textBaseline = 'top'
         ctx.fillText(titleText, textX, textY)
-        textY += Math.round(titleSize * 1.25) + 2
+        const titleW = ctx.measureText(titleText).width
+        const flagW = Math.round(titleSize * 1.05)
+        const flagH = Math.round(titleSize * 0.7)
+        drawIndonesianFlag(ctx, textX + titleW + 8, textY + Math.round((titleSize - flagH) / 2), flagW, flagH)
+        textY += titleLineH + 4
 
         // 2. Full Detailed Address (wrapped 1-2 lines)
         ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#d1d5db'
-        const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
+        ctx.fillStyle = '#e2e8f0'
         for (const line of addressLines) {
           ctx.fillText(line, textX, textY)
-          textY += Math.round(bodySize * 1.3)
+          textY += bodyLineH
         }
-        textY += 2
+        textY += 3
 
         // 3. Coordinates
         ctx.font = `600 ${metaSize}px ui-monospace, SFMono-Regular, monospace`
         ctx.fillStyle = '#ffffff'
         ctx.fillText(`Lat ${geoCoords.lat.toFixed(6)}° Long ${geoCoords.lng.toFixed(6)}°`, textX, textY)
-        textY += Math.round(metaSize * 1.3)
+        textY += metaLineH
 
         // 4. Timestamp
         const dateStr = formatGpsDate(new Date())
         ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#9ca3af'
+        ctx.fillStyle = '#cbd5e1'
         ctx.fillText(dateStr, textX, textY)
         ctx.restore()
 
