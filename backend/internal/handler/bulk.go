@@ -13,10 +13,11 @@ import (
 
 type BulkHandler struct {
 	pool *pgxpool.Pool
+	tg   TelegramNotifier
 }
 
-func NewBulkHandler(pool *pgxpool.Pool) *BulkHandler {
-	return &BulkHandler{pool: pool}
+func NewBulkHandler(pool *pgxpool.Pool, tg TelegramNotifier) *BulkHandler {
+	return &BulkHandler{pool: pool, tg: tg}
 }
 
 // POST /api/adjust/bulk (multipart: file CSV with sku,fisik)
@@ -92,6 +93,10 @@ func (h *BulkHandler) adjustSingle(ctx context.Context, sku string, actual int32
 	h.pool.Exec(ctx, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes)
 		VALUES ($1, (SELECT id FROM inventory_items WHERE sku=$2), $2, $3, $4, $5, $6, $7, $8, $9)`,
 		txType, sku, name, absDiff, unit, current, actual, nullableS(person), nullableS("Opname massal"))
+
+	if h.tg != nil {
+		go h.tg.NotifyMovement(context.Background(), txType, sku, name, absDiff, unit, current, actual, person, "Opname massal")
+	}
 	return nil
 }
 

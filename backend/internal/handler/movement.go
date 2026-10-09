@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,10 +12,11 @@ import (
 
 type MovementHandler struct {
 	pool *pgxpool.Pool
+	tg   TelegramNotifier
 }
 
-func NewMovementHandler(pool *pgxpool.Pool) *MovementHandler {
-	return &MovementHandler{pool: pool}
+func NewMovementHandler(pool *pgxpool.Pool, tg TelegramNotifier) *MovementHandler {
+	return &MovementHandler{pool: pool, tg: tg}
 }
 
 type movementReq struct {
@@ -83,6 +85,10 @@ func (h *MovementHandler) doMovement(c *gin.Context, txType string) {
 
 	tx.Commit(c)
 
+	if h.tg != nil {
+		go h.tg.NotifyMovement(context.Background(), txType, txSKU, name, req.Quantity, unit, prev, next, req.Person, req.Notes)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"sku": txSKU, "name": name, "unit": unit, "previous": prev, "new": next})
 }
 
@@ -124,6 +130,10 @@ func (h *MovementHandler) Adjust(c *gin.Context) {
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		txType, req.ItemID, sku, name, absDiff, unit, current, req.Quantity,
 		nullableS(req.Person), nullableS("Opname: "+req.Notes), nullableS(req.PhotoURL))
+
+	if h.tg != nil {
+		go h.tg.NotifyMovement(context.Background(), txType, sku, name, absDiff, unit, current, req.Quantity, req.Person, "Opname: "+req.Notes)
+	}
 
 	c.JSON(http.StatusOK, gin.H{"sku": sku, "name": name, "previous": current, "new": req.Quantity})
 }

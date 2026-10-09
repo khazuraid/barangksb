@@ -108,16 +108,20 @@ func main() {
 	// RBAC middleware applied after AuthMiddleware for all authenticated routes.
 	// Public routes (login, scan, barcode) skip auth entirely so never reach RBAC.
 
+	// Telegram bot (loads from env or DB app_settings)
+	tgBot := telegram.NewBot(cfg.TgToken, cfg.TgChats, pool)
+	tgBot.Start(context.Background())
+
 	authH := handler.NewAuthHandler(pool, cfg)
 	itemH := handler.NewItemHandler(pool)
-	mvH := handler.NewMovementHandler(pool)
+	mvH := handler.NewMovementHandler(pool, tgBot)
 	userH := handler.NewUserHandler(pool)
 	bcH := handler.NewBarcodeHandler(pool)
 	expH := handler.NewExportHandler(pool)
 	upH := handler.NewUploadHandler(pool, cfg.MinIOEndp, cfg.MinIOUser, cfg.MinIOPass, cfg.MinIOBucket)
 	rptH := handler.NewReportHandler(pool)
-	bulkH := handler.NewBulkHandler(pool)
-	setH := handler.NewSettingHandler(pool)
+	bulkH := handler.NewBulkHandler(pool, tgBot)
+	setH := handler.NewSettingHandler(pool, tgBot)
 	importH := handler.NewImportHandler(pool, itemH)
 	maintH := handler.NewMaintenanceHandler(pool)
 
@@ -206,6 +210,7 @@ func main() {
 	api.POST("/settings/telegram/commands", setH.CreateCommand)
 	api.PUT("/settings/telegram/commands/:id", setH.UpdateCommand)
 	api.DELETE("/settings/telegram/commands/:id", setH.DeleteCommand)
+	api.POST("/settings/telegram/sync", setH.SyncTelegram)
 
 	// Serve uploaded files (MinIO or disk fallback)
 	r.GET("/api/uploads/:name", upH.Serve)
@@ -252,10 +257,6 @@ func main() {
 		c.Header("Expires", "0")
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
 	})
-
-	// Telegram bot (loads from env or DB app_settings)
-	tgBot := telegram.NewBot(cfg.TgToken, cfg.TgChats, pool)
-	tgBot.Start(context.Background())
 
 	slog.Info("server starting", "port", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {

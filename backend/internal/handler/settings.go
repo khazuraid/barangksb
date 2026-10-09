@@ -16,12 +16,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type SettingHandler struct {
-	pool *pgxpool.Pool
+type TelegramNotifier interface {
+	NotifyMovement(ctx context.Context, txType, sku, name string, qty int32, unit string, prev, next int32, person, notes string)
+	SyncBotCommands(ctx context.Context) error
 }
 
-func NewSettingHandler(pool *pgxpool.Pool) *SettingHandler {
-	return &SettingHandler{pool: pool}
+type SettingHandler struct {
+	pool *pgxpool.Pool
+	tg   TelegramNotifier
+}
+
+func NewSettingHandler(pool *pgxpool.Pool, tg TelegramNotifier) *SettingHandler {
+	return &SettingHandler{pool: pool, tg: tg}
 }
 
 func newTelegramBot(token, apiURL string) (*bot.Bot, error) {
@@ -173,6 +179,13 @@ func (h *SettingHandler) UpdateTelegram(c *gin.Context) {
 		}
 		h.pool.Exec(c, `INSERT INTO app_settings (key, value, updated_at) VALUES ($1,$2,now()) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=now()`, k, v)
 	}
+
+	if h.tg != nil {
+		go func() {
+			_ = h.tg.SyncBotCommands(context.Background())
+		}()
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "settings updated"})
 }
 
@@ -590,6 +603,9 @@ func (h *SettingHandler) CreateCommand(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if h.tg != nil {
+		go func() { _ = h.tg.SyncBotCommands(context.Background()) }()
+	}
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
@@ -613,6 +629,9 @@ func (h *SettingHandler) UpdateCommand(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if h.tg != nil {
+		go func() { _ = h.tg.SyncBotCommands(context.Background()) }()
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
 }
 
@@ -624,7 +643,24 @@ func (h *SettingHandler) DeleteCommand(c *gin.Context) {
 		return
 	}
 	h.pool.Exec(c, `DELETE FROM telegram_commands WHERE id=$1`, id)
+	if h.tg != nil {
+		go func() { _ = h.tg.SyncBotCommands(context.Background()) }()
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+}
+
+// POST /api/settings/telegram/sync — triggers full sync of commands and WebApp button to Telegram
+func (h *SettingHandler) SyncTelegram(c *gin.Context) {
+	if h.tg == nil {
+		c.JSON(http.StatusOK, gin.H{"error": "Bot belum berjalan"})
+		return
+	}
+	err := h.tg.SyncBotCommands(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal sinkron ke Telegram API: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Berhasil sinkronkan menu perintah dan Web App ke Telegram"})
 }
 
 // GetMenuCommands returns commands that show in the inline menu (is_menu=true, active=true)
