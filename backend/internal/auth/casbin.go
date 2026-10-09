@@ -36,6 +36,7 @@ p, petugas, /api/items, POST
 p, petugas, /api/items/template*, GET
 p, petugas, /api/items/import, POST
 p, petugas, /api/items/:id, PUT
+p, petugas, /api/items/:id, DELETE
 p, petugas, /api/items/:id/maintenance*, *
 p, petugas, /api/maintenance/*, GET
 p, petugas, /api/categories, GET

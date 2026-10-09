@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -51,9 +52,12 @@ func (b *Bot) Start(ctx context.Context) {
 
 	var apiURL string
 	b.pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='telegram_api_url'`).Scan(&apiURL)
+	if apiURL == "" {
+		apiURL = os.Getenv("TELEGRAM_API_URL")
+	}
 
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -61,13 +65,19 @@ func (b *Bot) Start(ctx context.Context) {
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 15 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}
 	opts := []bot.Option{
 		bot.WithSkipGetMe(),
 		bot.WithHTTPClient(30*time.Second, httpClient),
+		bot.WithErrorsHandler(func(err error) {
+			if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline") {
+				slog.Debug("telegram polling timeout", "err", err)
+				return
+			}
+			slog.Warn("telegram bot error", "err", err)
+		}),
 	}
 	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
 	if apiURL != "" {
@@ -97,7 +107,26 @@ func (b *Bot) Start(ctx context.Context) {
 	go botInst.Start(ctx)
 }
 
-func (b *Bot) allowed(chatID int64) bool { return b.chatIDs[chatID] }
+func (b *Bot) allowed(chatID int64) bool {
+	if b.chatIDs[chatID] {
+		return true
+	}
+	var exists bool
+	_ = b.pool.QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM telegram_subscribers WHERE chat_id=$1 AND active=TRUE)`,
+		chatID).Scan(&exists)
+	if exists {
+		return true
+	}
+	if len(b.chatIDs) == 0 {
+		var count int
+		_ = b.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM telegram_subscribers WHERE active=TRUE`).Scan(&count)
+		if count == 0 {
+			return true
+		}
+	}
+	return false
+}
 
 // ---- inline keyboard builder ----
 
@@ -141,10 +170,27 @@ func (b *Bot) buildBackKeyboard() models.InlineKeyboardMarkup {
 // ---- handlers ----
 
 func (b *Bot) handleStart(ctx context.Context, bt *bot.Bot, u *models.Update) {
-	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
+	if u.Message == nil {
 		return
 	}
-	b.showMenu(ctx, bt, u.Message.Chat.ID, u.Message.ID)
+	chatID := u.Message.Chat.ID
+	if !b.allowed(chatID) {
+		name := u.Message.Chat.FirstName
+		if name == "" {
+			name = u.Message.Chat.Title
+		}
+		if name == "" {
+			name = "Pengguna"
+		}
+		text := fmt.Sprintf("👋 *Halo, %s!*\n\n🆔 *Chat ID Anda:* `%d`\n\nAkun Anda belum terdaftar sebagai subscriber aktif di sistem Inventaris Puskesmas.\n\nSilakan salin Chat ID di atas dan tambahkan pada menu *Administrasi > Telegram* di web panel untuk mendapatkan notifikasi dan akses menu bot.", name, chatID)
+		_, _ = bt.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    chatID,
+			Text:      text,
+			ParseMode: models.ParseModeMarkdown,
+		})
+		return
+	}
+	b.showMenu(ctx, bt, chatID, u.Message.ID)
 }
 
 // showMenu sends a new message with loading → edits to menu

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -24,8 +25,11 @@ func NewSettingHandler(pool *pgxpool.Pool) *SettingHandler {
 }
 
 func newTelegramBot(token, apiURL string) (*bot.Bot, error) {
+	if apiURL == "" {
+		apiURL = os.Getenv("TELEGRAM_API_URL")
+	}
 	httpClient := &http.Client{
-		Timeout: 20 * time.Second,
+		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -33,7 +37,6 @@ func newTelegramBot(token, apiURL string) (*bot.Bot, error) {
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 15 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}

@@ -102,9 +102,13 @@ function remove(item: any) {
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
     accept: async () => {
-      await api.delete(`/items/${item.id}`)
-      toast.add({ severity: 'success', summary: 'Barang dihapus', detail: item.name, life: 2500 })
-      fetchItems()
+      try {
+        await api.delete(`/items/${item.id}`)
+        toast.add({ severity: 'success', summary: 'Barang dihapus', detail: item.name, life: 2500 })
+        fetchItems()
+      } catch (err: any) {
+        toast.add({ severity: 'error', summary: 'Gagal menghapus barang', detail: err.response?.data?.error || err.message, life: 3500 })
+      }
     },
   })
 }
@@ -349,11 +353,22 @@ async function deleteMaintRecord(mId: string) {
             <span class="truncate flex items-center gap-1" style="color: var(--txt-dim)">
               <i class="pi pi-map-marker text-[10px]" /> {{ it.location }}
             </span>
-            <div class="text-right shrink-0">
-              <span class="font-bold text-[14px]" :class="it.current_stock <= it.min_stock ? 'text-rose-500' : 'text-emerald-500'">
-                {{ it.current_stock }}
-              </span>
-              <span class="text-[11px] ml-1" style="color: var(--txt-dim)">{{ it.unit }}</span>
+            <div class="flex items-center gap-2">
+              <div class="text-right shrink-0">
+                <span class="font-bold text-[14px]" :class="it.current_stock <= it.min_stock ? 'text-rose-500' : 'text-emerald-500'">
+                  {{ it.current_stock }}
+                </span>
+                <span class="text-[11px] ml-1" style="color: var(--txt-dim)">{{ it.unit }}</span>
+              </div>
+              <Button
+                icon="pi pi-trash"
+                text
+                rounded
+                size="small"
+                severity="danger"
+                v-tooltip.top="'Hapus Barang'"
+                @click.stop="remove(it)"
+              />
             </div>
           </div>
         </div>
@@ -367,7 +382,7 @@ async function deleteMaintRecord(mId: string) {
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[220px]" style="color: var(--txt-dim)">Kategori &amp; Ruangan</th>
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px] text-right" style="color: var(--txt-dim)">Stok</th>
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px]" style="color: var(--txt-dim)">Kondisi</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[90px] text-center" style="color: var(--txt-dim)">Detail</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px] text-center" style="color: var(--txt-dim)">Aksi</th>
             </tr>
           </thead>
           <tbody class="divide-y" style="border-color: var(--line)">
@@ -429,18 +444,38 @@ async function deleteMaintRecord(mId: string) {
                 <StatusChip :kind="it.condition_status" />
               </td>
 
-              <!-- 5. Aksi / Panah Detail -->
-              <td class="px-4 py-3 text-center">
-                <Button
-                  icon="pi pi-chevron-right"
-                  text
-                  rounded
-                  size="small"
-                  severity="secondary"
-                  class="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all"
-                  v-tooltip.top="'Lihat Detail Lengkap'"
-                  @click.stop="router.push('/items/' + it.id)"
-                />
+              <!-- 5. Aksi / Hapus / Detail -->
+              <td class="px-4 py-3 text-center whitespace-nowrap">
+                <div class="flex items-center justify-center gap-1" @click.stop>
+                  <Button
+                    icon="pi pi-pencil"
+                    text
+                    rounded
+                    size="small"
+                    severity="secondary"
+                    v-tooltip.top="'Ubah Barang'"
+                    @click="router.push('/items/' + it.id + '/edit')"
+                  />
+                  <Button
+                    icon="pi pi-trash"
+                    text
+                    rounded
+                    size="small"
+                    severity="danger"
+                    v-tooltip.top="'Hapus Barang'"
+                    @click="remove(it)"
+                  />
+                  <Button
+                    icon="pi pi-chevron-right"
+                    text
+                    rounded
+                    size="small"
+                    severity="secondary"
+                    class="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all"
+                    v-tooltip.top="'Lihat Detail Lengkap'"
+                    @click="router.push('/items/' + it.id)"
+                  />
+                </div>
               </td>
             </tr>
           </tbody>

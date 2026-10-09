@@ -179,19 +179,18 @@ func (h *ItemHandler) Update(c *gin.Context) {
 }
 
 func (h *ItemHandler) Delete(c *gin.Context) {
-	role := c.GetString("role")
-	if role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "hanya admin"})
-		return
-	}
 	id := c.Param("id")
 
 	// Delete related transactions, maintenance records, and the item
-	_, _ = h.pool.Exec(c, `DELETE FROM stock_transactions WHERE item_id::text=$1`, id)
+	_, _ = h.pool.Exec(c, `DELETE FROM stock_transactions WHERE item_id::text=$1 OR item_sku IN (SELECT sku FROM inventory_items WHERE id::text=$1)`, id)
 	_, _ = h.pool.Exec(c, `DELETE FROM item_maintenances WHERE item_id::text=$1`, id)
-	_, err := h.pool.Exec(c, `DELETE FROM inventory_items WHERE id::text=$1`, id)
+	tag, err := h.pool.Exec(c, `DELETE FROM inventory_items WHERE id::text=$1`, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "barang tidak ditemukan"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
