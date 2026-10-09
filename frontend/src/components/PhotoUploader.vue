@@ -414,44 +414,45 @@ async function stampGpsMapCamera(
         currentStepText.value = 'Mengecap watermark GPS Map Camera...'
         addLog('Merender watermark GPS Map Camera (tulisan besar & tajam)...', 'info')
 
-        // Adaptive scaling based on minimum dimension (ensures landscape & portrait both look balanced)
+        // Dynamic proportional scaling matching real GPS Map Camera apps
+        // Sized relative to minimum dimension so text is large, bold, and crisp on all photo resolutions
         const isLandscape = width > height
         const minDim = Math.min(width, height)
-        const scale = Math.max(0.68, Math.min(1.35, minDim / 950))
+
+        // Baseline ratio ~ minDim / 720 (no artificial ceiling clamp: 1080p, 2K, 4K photos have big, legible text)
+        const scale = Math.max(0.85, minDim / 720)
 
         // Flush bottom banner edge-to-edge
         const cardX = 0
         const cardW = width
 
-        const padX = Math.round(18 * scale)
-        const padY = Math.round(14 * scale)
+        const padX = Math.round(22 * scale)
+        const padY = Math.round(18 * scale)
 
-        // Clear, crisp font sizes adapted to photo aspect ratio
-        const titleSize = Math.max(20, Math.round(22 * scale))
-        const bodySize = Math.max(13, Math.round(14 * scale))
-        const metaSize = Math.max(13, Math.round(14 * scale))
-        const badgeSize = Math.max(12, Math.round(13 * scale))
+        // Big, bold font sizes directly matching real GPS Map Camera overlay
+        const titleSize = Math.max(28, Math.round(30 * scale))
+        const bodySize = Math.max(16, Math.round(18 * scale))
+        const metaSize = Math.max(15, Math.round(17 * scale))
+        const badgeSize = Math.max(14, Math.round(15 * scale))
 
         const titleLineH = Math.round(titleSize * 1.25)
-        const bodyLineH = Math.round(bodySize * 1.32)
-        const metaLineH = Math.round(metaSize * 1.32)
+        const bodyLineH = Math.round(bodySize * 1.34)
+        const metaLineH = Math.round(metaSize * 1.35)
 
         // Measure Top-Right Badge: [📷 GPS Map Camera]
         ctx.font = `600 ${badgeSize}px system-ui, -apple-system, sans-serif`
         const badgeText = 'GPS Map Camera'
         const badgeTextW = ctx.measureText(badgeText).width
         const badgeIconSize = Math.round(badgeSize * 1.3)
-        const badgeTotalW = badgeIconSize + badgeTextW + 10
+        const badgeTotalW = badgeIconSize + badgeTextW + Math.round(10 * scale)
 
-        // Determine left map box dimension
-        const approxMapSize = isLandscape
-          ? Math.round(minDim * 0.20)
-          : Math.round(minDim * 0.23)
+        // Determine left map box dimension (generous square preview)
+        const approxMapSize = Math.round(minDim * (isLandscape ? 0.22 : 0.25))
 
         // Available width for right-side text column
         const textX = padX + approxMapSize + padX
         // Title area width guarantees zero overlap with top-right badge
-        const titleAreaW = cardW - textX - badgeTotalW - padX - 16
+        const titleAreaW = cardW - textX - badgeTotalW - padX - Math.round(16 * scale)
         // Full text width for address, coords, and timestamp
         const textAreaW = cardW - textX - padX
 
@@ -463,7 +464,7 @@ async function stampGpsMapCamera(
 
         const titleBlockH = titleLines.length * titleLineH
         const addressBlockH = addressLines.length * bodyLineH
-        const textContentH = titleBlockH + 4 + addressBlockH + 4 + metaLineH * 2 + 4
+        const textContentH = titleBlockH + Math.round(6 * scale) + addressBlockH + Math.round(6 * scale) + metaLineH * 2 + Math.round(6 * scale)
 
         const mapSize = Math.max(approxMapSize, textContentH)
         const cardH = mapSize + padY * 2
@@ -475,7 +476,7 @@ async function stampGpsMapCamera(
         ctx.fillStyle = 'rgba(15, 18, 22, 0.88)'
         ctx.fillRect(cardX, cardY, cardW, cardH)
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)'
-        ctx.lineWidth = 1
+        ctx.lineWidth = Math.max(1, Math.round(scale))
         ctx.beginPath()
         ctx.moveTo(cardX, cardY)
         ctx.lineTo(cardX + cardW, cardY)
@@ -503,13 +504,13 @@ async function stampGpsMapCamera(
         ctx.font = `600 ${badgeSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#f8fafc'
         ctx.textBaseline = 'top'
-        ctx.fillText(badgeText, badgeX + badgeIconSize + 6, badgeY)
+        ctx.fillText(badgeText, badgeX + badgeIconSize + Math.round(6 * scale), badgeY)
         ctx.restore()
 
         // Draw Map Box (Left column)
         const mapX = padX
         const mapY = cardY + padY
-        const mapRadius = Math.round(8 * scale)
+        const mapRadius = Math.round(10 * scale)
 
         ctx.save()
         ctx.beginPath()
@@ -535,15 +536,16 @@ async function stampGpsMapCamera(
         drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2 + Math.round(mapSize * 0.05), Math.round(mapSize * 0.22))
 
         // Google watermark at bottom of map
-        ctx.font = `bold ${Math.max(12, Math.round(13 * scale))}px system-ui, sans-serif`
+        ctx.font = `bold ${Math.max(13, Math.round(15 * scale))}px system-ui, sans-serif`
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
         ctx.fillText('Google', mapX + 8, mapY + mapSize - 6)
         ctx.fillStyle = '#ffffff'
         ctx.fillText('Google', mapX + 7, mapY + mapSize - 7)
         ctx.restore()
 
-        // Draw Text Block (Right column)
-        let textY = cardY + padY
+        // Draw Text Block (Right column, vertically centered with map)
+        const textYOffset = Math.max(0, Math.floor((mapSize - textContentH) / 2))
+        let textY = cardY + padY + textYOffset
 
         // 1. Title Header + Indonesian Flag
         ctx.save()
@@ -555,13 +557,13 @@ async function stampGpsMapCamera(
           ctx.fillText(line, textX, textY)
           if (i === titleLines.length - 1) {
             const lw = ctx.measureText(line).width
-            const flagW = Math.round(titleSize * 1.1)
-            const flagH = Math.round(titleSize * 0.72)
-            drawIndonesianFlag(ctx, textX + lw + 10, textY + Math.round((titleSize - flagH) / 2), flagW, flagH)
+            const flagW = Math.round(titleSize * 1.15)
+            const flagH = Math.round(titleSize * 0.75)
+            drawIndonesianFlag(ctx, textX + lw + Math.round(12 * scale), textY + Math.round((titleSize - flagH) / 2), flagW, flagH)
           }
           textY += titleLineH
         }
-        textY += 4
+        textY += Math.round(6 * scale)
 
         // 2. Full Detailed Address (wrapped 1-2 lines)
         ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
@@ -570,13 +572,13 @@ async function stampGpsMapCamera(
           ctx.fillText(line, textX, textY)
           textY += bodyLineH
         }
-        textY += 4
+        textY += Math.round(6 * scale)
 
         // 3. Coordinates (Crisp Monospace)
         ctx.font = `600 ${metaSize}px ui-monospace, SFMono-Regular, system-ui, monospace`
         ctx.fillStyle = '#ffffff'
         ctx.fillText(`Lat ${geoCoords.lat.toFixed(6)}°  Long ${geoCoords.lng.toFixed(6)}°`, textX, textY)
-        textY += metaLineH + 4
+        textY += metaLineH + Math.round(6 * scale)
 
         // 4. Timestamp (Single, crisp, clean)
         const dateStr = formatGpsDate(new Date())
