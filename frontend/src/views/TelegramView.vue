@@ -36,7 +36,9 @@ const logsPerPage = ref(15)
 
 const newChatID = ref('')
 const newChatTitle = ref('')
+const testCustomChatID = ref('')
 const testMsg = ref('')
+const clearingLogs = ref(false)
 
 // ---- computed ----
 const tokenConfigured = computed(() => !!settings.value.telegram_bot_token)
@@ -237,6 +239,43 @@ async function sendAlertNow() {
   }
 }
 
+function openUrl(url: string) {
+  if (typeof window !== 'undefined' && url) {
+    window.open(url, '_blank')
+  }
+}
+
+async function testCustom() {
+  const cid = parseInt(testCustomChatID.value)
+  if (!cid) {
+    toast.add({ severity: 'warn', summary: 'Chat ID tidak valid', detail: 'Masukkan angka Chat ID tujuan uji coba', life: 2500 })
+    return
+  }
+  await testOne(cid)
+}
+
+async function clearLogs() {
+  confirm.require({
+    message: 'Apakah Anda yakin ingin menghapus semua riwayat log pesan Telegram?',
+    header: 'Konfirmasi Bersihkan Log',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      clearingLogs.value = true
+      try {
+        await api.delete('/settings/telegram/logs')
+        toast.add({ severity: 'success', summary: 'Log Dibersihkan', detail: 'Semua log pesan berhasil dihapus', life: 2500 })
+        logsPage.value = 0
+        await fetchLogs()
+      } catch (e: any) {
+        toast.add({ severity: 'error', summary: 'Gagal Bersihkan Log', detail: e.response?.data?.error || 'Terjadi kesalahan', life: 4000 })
+      } finally {
+        clearingLogs.value = false
+      }
+    }
+  })
+}
+
 function copyText(txt: string) {
   navigator.clipboard.writeText(txt)
   toast.add({ severity: 'info', summary: 'Tersalin ke Clipboard', detail: txt, life: 2000 })
@@ -356,7 +395,7 @@ function removeCmd(c: any) {
                              class="w-full t-mono text-[12px]" fluid />
                   <Button icon="pi pi-external-link" text size="small" severity="secondary"
                           v-tooltip.top="'Buka URL'"
-                          @click="window.open(settings.telegram_webapp_url || 'https://barang.kesling.biz.id', '_blank')" />
+                          @click="openUrl(settings.telegram_webapp_url || 'https://barang.kesling.biz.id')" />
                 </div>
               </Field>
 
@@ -467,15 +506,24 @@ function removeCmd(c: any) {
 
           <!-- Test & Broadcast Panel -->
           <Panel title="Uji Notifikasi & Broadcast Alert" icon="pi pi-bell">
-            <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-3.5">
+              <div class="grid sm:grid-cols-[1fr_auto] gap-2 items-end">
+                <Field label="Uji Chat ID Tertentu (Langsung)" hint="Masukkan Chat ID langsung tanpa perlu terdaftar sebagai subscriber terlebih dahulu.">
+                  <InputText v-model="testCustomChatID" placeholder="mis. 123456789 atau -100..." class="w-full t-mono text-[12px]" fluid />
+                </Field>
+                <Button label="Uji Chat ID Ini" icon="pi pi-send" size="small" severity="info"
+                        :loading="testing" :disabled="!testCustomChatID || !tokenConfigured" @click="testCustom" />
+              </div>
+
               <Field label="Pesan Uji Coba (Opsional)">
                 <InputText v-model="testMsg" placeholder="Default: pesan test bawaan sistem inventaris" class="w-full" fluid />
               </Field>
-              <div class="flex flex-wrap gap-2.5">
+
+              <div class="flex flex-wrap gap-2.5 pt-1">
                 <Button label="Test Semua Subscriber" icon="pi pi-send" size="small"
-                        :loading="testingAll" :disabled="!subscribers.length" @click="testAll" />
+                        :loading="testingAll" :disabled="!tokenConfigured" @click="testAll" />
                 <Button label="Broadcast Alert Stok Kritis" icon="pi pi-exclamation-triangle" size="small" severity="warn"
-                        :loading="sendingAlertNow" :disabled="!activeSubscribersCount || !botConnected" @click="sendAlertNow" />
+                        :loading="sendingAlertNow" :disabled="!tokenConfigured" @click="sendAlertNow" />
                 <Button label="Segarkan Log" icon="pi pi-sync" size="small" text severity="secondary"
                         @click="fetchLogs" />
               </div>
@@ -485,7 +533,11 @@ function removeCmd(c: any) {
           <!-- Logs Table -->
           <Panel title="Riwayat Log Notifikasi Terkirim" icon="pi pi-history" dense>
             <template #actions>
-              <Tag severity="secondary" :value="logsTotal + ' log pesan'" class="!text-[11px]" />
+              <div class="flex items-center gap-2">
+                <Tag severity="secondary" :value="logsTotal + ' log pesan'" class="!text-[11px]" />
+                <Button v-if="logs.length" label="Bersihkan Log" icon="pi pi-trash" size="small" severity="danger" text
+                        :loading="clearingLogs" @click="clearLogs" />
+              </div>
             </template>
 
             <EmptyState v-if="!logs.length" icon="pi pi-history" title="Belum ada riwayat pesan"
@@ -591,7 +643,7 @@ function removeCmd(c: any) {
 
               <div class="pt-2">
                 <Button label="Buka Bot di Telegram" icon="pi pi-external-link" size="small" class="w-full" outlined
-                        @click="window.open(`https://t.me/${botInfo.username}`, '_blank')" />
+                        @click="openUrl('https://t.me/' + botInfo.username)" />
               </div>
             </div>
             <div v-else class="text-center py-4">

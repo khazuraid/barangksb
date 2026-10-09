@@ -458,11 +458,8 @@ func (b *Bot) handleBatal(ctx context.Context, bt *bot.Bot, u *models.Update) {
 	})
 }
 
-func (b *Bot) handleBantu(ctx context.Context, bt *bot.Bot, u *models.Update) {
-	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
-		return
-	}
-	text := "💡 *Daftar Perintah & Fitur Cerdas Bot:* \n\n" +
+func (b *Bot) getBantuText() string {
+	return "💡 *Daftar Perintah & Fitur Cerdas Bot:* \n\n" +
 		"📦 *Manajemen Barang:*\n" +
 		"• `/tambah` — Wizard interaktif pendaftaran barang baru\n" +
 		"• `/tambah Nama | Kat | Ruang | Stok | Satuan` — Input cepat\n" +
@@ -483,6 +480,13 @@ func (b *Bot) handleBantu(ctx context.Context, bt *bot.Bot, u *models.Update) {
 		"• `/rekap` — Unduh file CSV seluruh data barang\n" +
 		"• `/rekap_mutasi` — Unduh file CSV mutasi 30 hari terakhir\n" +
 		"• `/batal` — Batalkan proses wizard aktif"
+}
+
+func (b *Bot) handleBantu(ctx context.Context, bt *bot.Bot, u *models.Update) {
+	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
+		return
+	}
+	text := b.getBantuText()
 	bt.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      u.Message.Chat.ID,
 		Text:        text,
@@ -857,6 +861,9 @@ func (b *Bot) sendItemCard(ctx context.Context, bt *bot.Bot, chatID int64, sku, 
 			{
 				{Text: "🏷️ Stiker Label QR", CallbackData: fmt.Sprintf("cmd:label:%s", sku)},
 				{Text: "🗑️ Hapus", CallbackData: fmt.Sprintf("cmd:del:%s", sku)},
+			},
+			{
+				{Text: "‹ Kembali ke Menu", CallbackData: "cmd:start"},
 			},
 		},
 	}
@@ -1503,13 +1510,7 @@ func generateQRImage(data string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// handlePrediksi predicts stock run-out based on 30-day burn rate
-func (b *Bot) handlePrediksi(ctx context.Context, bt *bot.Bot, u *models.Update) {
-	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
-		return
-	}
-	chatID := u.Message.Chat.ID
-
+func (b *Bot) getPrediksiText(ctx context.Context) string {
 	rows, err := b.pool.Query(ctx, `
 		SELECT
 			i.sku,
@@ -1529,8 +1530,7 @@ func (b *Bot) handlePrediksi(ctx context.Context, bt *bot.Bot, u *models.Update)
 		LIMIT 10
 	`)
 	if err != nil {
-		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal menganalisis riwayat mutasi stok."})
-		return
+		return "⚠️ Gagal menganalisis riwayat mutasi stok."
 	}
 	defer rows.Close()
 
@@ -1561,27 +1561,30 @@ func (b *Bot) handlePrediksi(ctx context.Context, bt *bot.Bot, u *models.Update)
 	if count == 0 {
 		sb.WriteString("✅ Belum ada pengeluaran signifikan dalam 30 hari terakhir. Semua stok aman.")
 	}
+	return sb.String()
+}
+
+// handlePrediksi predicts stock run-out based on 30-day burn rate
+func (b *Bot) handlePrediksi(ctx context.Context, bt *bot.Bot, u *models.Update) {
+	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
+		return
+	}
+	chatID := u.Message.Chat.ID
+	text := b.getPrediksiText(ctx)
 
 	bt.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
-		Text:        sb.String(),
+		Text:        text,
 		ParseMode:   models.ParseModeMarkdown,
 		ReplyMarkup: b.buildBackKeyboard(),
 	})
 }
 
-// handleRusak displays damaged items
-func (b *Bot) handleRusak(ctx context.Context, bt *bot.Bot, u *models.Update) {
-	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
-		return
-	}
-	chatID := u.Message.Chat.ID
-
+func (b *Bot) getRusakText(ctx context.Context) string {
 	rows, err := b.pool.Query(ctx,
 		`SELECT sku, name, location, condition_status FROM inventory_items WHERE condition_status != 'Berfungsi' ORDER BY location LIMIT 20`)
 	if err != nil {
-		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal memuat data barang rusak."})
-		return
+		return "⚠️ Gagal memuat data barang rusak."
 	}
 	defer rows.Close()
 
@@ -1602,10 +1605,20 @@ func (b *Bot) handleRusak(ctx context.Context, bt *bot.Bot, u *models.Update) {
 	if count == 0 {
 		sb.WriteString("✅ Seluruh aset dalam kondisi *Berfungsi* dengan baik.")
 	}
+	return sb.String()
+}
+
+// handleRusak displays damaged items
+func (b *Bot) handleRusak(ctx context.Context, bt *bot.Bot, u *models.Update) {
+	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
+		return
+	}
+	chatID := u.Message.Chat.ID
+	text := b.getRusakText(ctx)
 
 	bt.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
-		Text:        sb.String(),
+		Text:        text,
 		ParseMode:   models.ParseModeMarkdown,
 		ReplyMarkup: b.buildBackKeyboard(),
 	})
@@ -1837,31 +1850,45 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 		b.setWizard(chatID, &wizardState{Step: "name"})
 		text := "📝 *Tambah Barang Baru (Langkah 1/4)*\n\n" +
 			"Silakan ketik *Nama Barang* yang ingin didaftarkan pada chat:\n" +
-			"(Ketik `/batal` kapan saja untuk membatalkan)"
-		bt.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:    chatID,
-			Text:      text,
-			ParseMode: models.ParseModeMarkdown,
-		})
+			"(Atau klik Batalkan di bawah)"
+		kb := models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{
+				{{Text: "❌ Batalkan", CallbackData: "cmd:batal"}},
+			},
+		}
+		b.editMessage(ctx, bt, chatID, msgID, text, kb)
 
 	case action == "stok":
 		text := b.getLowStockText(ctx)
 		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
 
 	case action == "rusak":
-		go b.handleRusak(ctx, bt, &models.Update{Message: &models.Message{Chat: models.Chat{ID: chatID}}})
+		text := b.getRusakText(ctx)
+		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
 
 	case action == "prediksi":
-		go b.handlePrediksi(ctx, bt, &models.Update{Message: &models.Message{Chat: models.Chat{ID: chatID}}})
+		text := b.getPrediksiText(ctx)
+		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
 
 	case action == "rekap":
-		go b.handleRekap(ctx, bt, &models.Update{Message: &models.Message{Chat: models.Chat{ID: chatID}}})
+		b.editMessage(ctx, bt, chatID, msgID, "⏳ Menyiapkan dan mengirimkan berkas Rekap CSV...", b.buildBackKeyboard())
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+			b.handleRekap(bgCtx, bt, &models.Update{Message: &models.Message{Chat: models.Chat{ID: chatID}}})
+		}()
 
 	case action == "rekap_mutasi":
-		go b.handleRekapMutasi(ctx, bt, &models.Update{Message: &models.Message{Chat: models.Chat{ID: chatID}}})
+		b.editMessage(ctx, bt, chatID, msgID, "⏳ Menyiapkan dan mengirimkan berkas Rekap Mutasi CSV...", b.buildBackKeyboard())
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+			b.handleRekapMutasi(bgCtx, bt, &models.Update{Message: &models.Message{Chat: models.Chat{ID: chatID}}})
+		}()
 
 	case action == "bantu":
-		go b.handleBantu(ctx, bt, &models.Update{Message: &models.Message{Chat: models.Chat{ID: chatID}}})
+		text := b.getBantuText()
+		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
 
 	case action == "kategori_list":
 		rows, err := b.pool.Query(ctx, `SELECT category, count(*) FROM inventory_items GROUP BY category ORDER BY category LIMIT 14`)

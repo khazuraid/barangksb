@@ -498,6 +498,16 @@ func (h *SettingHandler) TelegramLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, paginatedResp{Data: logs, Total: total, Page: page, PerPage: perPage, Pages: pages})
 }
 
+// DELETE /api/settings/telegram/logs
+func (h *SettingHandler) ClearTelegramLogs(c *gin.Context) {
+	_, err := h.pool.Exec(c, `DELETE FROM telegram_message_log`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "log berhasil dibersihkan"})
+}
+
 // ---- helper ----
 
 func (h *SettingHandler) getSetting(c context.Context, key string) string {

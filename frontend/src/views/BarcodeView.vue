@@ -6,9 +6,10 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
-import PageHeader from '@/components/PageHeader.vue'
-import EmptyState from '@/components/EmptyState.vue'
 import Tag from 'primevue/tag'
+import PageHeader from '@/components/PageHeader.vue'
+import StatCard from '@/components/StatCard.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
 const toast = useToast()
 const items = ref<any[]>([])
@@ -92,7 +93,9 @@ function print() {
     })
     return
   }
-  window.open(`/api/barcode/sheet?ids=${selected.value.join(',')}`, '_blank')
+  if (typeof window !== 'undefined') {
+    window.open(`/api/barcode/sheet?ids=${selected.value.join(',')}`, '_blank')
+  }
 }
 
 function downloadOne(item: any) {
@@ -108,7 +111,7 @@ function downloadOne(item: any) {
     <PageHeader
       crumb="Perangkat"
       title="Generator Label QR / Barcode"
-      sub="Pilih barang, atur format barcode, lalu cetak lembar label siap tempel"
+      sub="Pilih barang inventaris, atur format barcode, lalu cetak lembar label siap tempel"
     >
       <template #actions>
         <Button
@@ -121,53 +124,68 @@ function downloadOne(item: any) {
       </template>
     </PageHeader>
 
-    <!-- Toolbar Filter -->
-    <div
-      class="panel p-3.5 mb-4 flex flex-wrap gap-3 items-end rounded-xl border"
-      style="border-color: var(--line); background: var(--paper-1)"
-    >
-      <label class="flex flex-col gap-1.5 flex-1 min-w-[200px]">
-        <span class="text-[11.5px] font-semibold text-ink-400">Cari Barang</span>
-        <InputText
-          v-model="q"
-          placeholder="Nama atau SKU…"
-          class="w-full !text-[12px] !py-1.5"
-          @keyup.enter="fetchItems(true)"
-        />
-      </label>
+    <!-- KPI Metric Strip -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+      <StatCard
+        label="Total Master Barang"
+        :value="total"
+        icon="pi pi-box"
+        tone="neutral"
+        hint="Barang inventaris tercatat"
+      />
+      <StatCard
+        label="Label Dipilih"
+        :value="selected.length"
+        icon="pi pi-check-square"
+        tone="accent"
+        :hint="selected.length ? 'Siap dicetak di lembar' : 'Belum ada barang dicentang'"
+      />
+      <StatCard
+        label="Format Label Aktif"
+        :value="fmt === 'qr' ? 'QR Code' : 'Barcode 128'"
+        icon="pi pi-qrcode"
+        tone="info"
+        hint="Resolusi tajam siap tempel"
+      />
+    </div>
 
-      <label class="flex flex-col gap-1.5 min-w-[150px]">
-        <span class="text-[11.5px] font-semibold text-ink-400">Kategori</span>
+    <!-- Clean Unified Toolbar -->
+    <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
+      <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+        <div class="relative flex-1 min-w-[190px] max-w-sm">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
+          <InputText
+            v-model="q"
+            placeholder="Cari nama atau SKU…"
+            class="w-full !pl-8 !text-[12px] !py-1.5"
+            @keyup.enter="fetchItems(true)"
+          />
+        </div>
+
         <Select
           v-model="categoryFilter"
           :options="categoriesRaw"
           optionLabel="name"
           optionValue="name"
           showClear
-          placeholder="Semua"
-          class="!text-[12px]"
+          placeholder="Semua Kategori"
+          class="!text-[12px] !py-0.5 w-[160px]"
           @change="fetchItems(true)"
           filter
         />
-      </label>
 
-      <label class="flex flex-col gap-1.5 min-w-[150px]">
-        <span class="text-[11.5px] font-semibold text-ink-400">Lokasi</span>
         <Select
           v-model="locationFilter"
           :options="locationsRaw"
           optionLabel="name"
           optionValue="name"
           showClear
-          placeholder="Semua"
-          class="!text-[12px]"
+          placeholder="Semua Lokasi"
+          class="!text-[12px] !py-0.5 w-[160px]"
           @change="fetchItems(true)"
           filter
         />
-      </label>
 
-      <label class="flex flex-col gap-1.5 min-w-[130px]">
-        <span class="text-[11.5px] font-semibold text-ink-400">Format</span>
         <Select
           v-model="fmt"
           :options="[
@@ -176,12 +194,29 @@ function downloadOne(item: any) {
           ]"
           optionLabel="label"
           optionValue="value"
-          class="!text-[12px]"
+          class="!text-[12px] !py-0.5 w-[140px]"
         />
-      </label>
 
-      <div class="flex items-center gap-2 pb-0.5">
-        <Button icon="pi pi-search" size="small" @click="fetchItems(true)" />
+        <Button
+          icon="pi pi-search"
+          size="small"
+          severity="secondary"
+          outlined
+          @click="fetchItems(true)"
+        />
+
+        <Button
+          v-if="q || categoryFilter || locationFilter"
+          label="Reset"
+          icon="pi pi-times"
+          text
+          size="small"
+          severity="secondary"
+          @click="q = ''; categoryFilter = ''; locationFilter = ''; fetchItems(true)"
+        />
+      </div>
+
+      <div class="flex items-center gap-2">
         <Button
           :label="isAllOnPageSelected ? 'Batal pilih hal. ini' : 'Pilih semua di hal. ini'"
           icon="pi pi-check-square"
@@ -190,7 +225,7 @@ function downloadOne(item: any) {
           severity="secondary"
           @click="toggleAllOnPage"
         />
-        <Tag :value="selected.length + ' dipilih'" severity="warn" />
+        <Tag :value="selected.length + ' dipilih'" severity="warn" class="!text-[11px]" />
       </div>
     </div>
 
@@ -204,11 +239,11 @@ function downloadOne(item: any) {
 
     <!-- Items Barcode Grid -->
     <div v-else class="flex flex-col gap-4">
-      <div class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(185px, 1fr))">
+      <div class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(190px, 1fr))">
         <div
           v-for="it in items"
           :key="it.id"
-          class="panel relative overflow-hidden transition-all cursor-pointer rounded-xl border flex flex-col justify-between"
+          class="panel relative overflow-hidden transition-all cursor-pointer rounded-xl border flex flex-col justify-between hover:shadow-md"
           :class="selected.includes(it.id) ? 'ring-2 ring-acc-500 border-acc-500' : 'hover:border-ink-400'"
           style="background: var(--paper-1); border-color: var(--line)"
           @click="selected.includes(it.id) ? selected.splice(selected.indexOf(it.id), 1) : selected.push(it.id)"
@@ -238,7 +273,7 @@ function downloadOne(item: any) {
 
           <div class="px-3 pb-3 text-center">
             <div
-              class="grid place-items-center rounded-lg border p-2 mb-2 bg-white"
+              class="grid place-items-center rounded-lg border p-2.5 mb-2.5 bg-white shadow-sm"
               style="border-color: var(--line-soft)"
             >
               <img
@@ -249,10 +284,10 @@ function downloadOne(item: any) {
                 :alt="it.sku"
               />
             </div>
-            <div class="text-[12.5px] font-semibold truncate" :title="it.name">{{ it.name }}</div>
-            <div class="t-mono text-[11px] text-ink-400 mt-0.5">{{ it.sku }}</div>
-            <div class="mt-1.5 flex items-center justify-center gap-1 flex-wrap">
-              <Tag severity="secondary" :value="it.location" class="!text-[10px]" />
+            <div class="text-[12.5px] font-semibold truncate" :title="it.name" style="color: var(--txt)">{{ it.name }}</div>
+            <div class="t-mono text-[11px] mt-0.5" style="color: var(--txt-dim)">{{ it.sku }}</div>
+            <div class="mt-2 flex items-center justify-center gap-1 flex-wrap">
+              <Tag severity="secondary" :value="it.location || 'Tanpa Lokasi'" class="!text-[10px]" />
             </div>
           </div>
         </div>
@@ -263,7 +298,7 @@ function downloadOne(item: any) {
         class="panel p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-[12px]"
         style="background: var(--paper-1); border-color: var(--line)"
       >
-        <span class="text-ink-400">{{ range }}</span>
+        <span style="color: var(--txt-dim)">{{ range }}</span>
         <div class="flex items-center gap-2">
           <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-0.5 w-[95px]" />
           <Button
@@ -274,7 +309,7 @@ function downloadOne(item: any) {
             :disabled="page === 0"
             @click="page--"
           />
-          <span class="t-num font-semibold px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+          <span class="t-num font-semibold px-1" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
           <Button
             icon="pi pi-angle-right"
             size="small"

@@ -3,8 +3,10 @@ import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
+import StatCard from '@/components/StatCard.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -50,7 +52,7 @@ watch([page, perPage], () => fetchAudit())
 
 const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
 const range = computed(() => {
-  if (!total.value) return '0'
+  if (!total.value) return '0 catatan'
   const from = page.value * perPage.value + 1
   const to = Math.min(total.value, (page.value + 1) * perPage.value)
   return `${from}–${to} dari ${total.value}`
@@ -88,7 +90,7 @@ function prettyJSON(raw: any) {
 </script>
 
 <template>
-  <div class="pb-16 max-w-6xl mx-auto">
+  <div class="pb-16 max-w-7xl mx-auto">
     <PageHeader
       crumb="Administrasi"
       title="Audit Log &amp; Keamanan"
@@ -108,42 +110,78 @@ function prettyJSON(raw: any) {
     </PageHeader>
 
     <!-- Audit KPI Summary Strip -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-      <div
-        v-for="c in [
-          { k: 'TOTAL LOG', v: counts.total, icon: 'pi pi-database', color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
-          { k: 'INSERT (TAMBAH)', v: counts.ins, icon: 'pi pi-plus', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
-          { k: 'UPDATE (UBAH)', v: counts.upd, icon: 'pi pi-sync', color: 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800' },
-          { k: 'DELETE (HAPUS)', v: counts.del, icon: 'pi pi-trash', color: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800' },
-        ]"
-        :key="c.k"
-        class="panel p-3.5 flex items-center justify-between"
-      >
-        <div>
-          <div class="text-[10.5px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">{{ c.k }}</div>
-          <div class="t-num text-[22px] font-bold mt-0.5" style="color: var(--txt)">{{ c.v }}</div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <StatCard
+        label="Total Log Aktivitas"
+        :value="counts.total"
+        icon="pi pi-shield"
+        tone="accent"
+        hint="Jejak mutasi database"
+      />
+      <StatCard
+        label="Insert (Tambah)"
+        :value="counts.ins"
+        icon="pi pi-plus"
+        tone="ok"
+        hint="Data baru ditambahkan"
+      />
+      <StatCard
+        label="Update (Ubah)"
+        :value="counts.upd"
+        icon="pi pi-sync"
+        tone="info"
+        hint="Modifikasi rekaman"
+      />
+      <StatCard
+        label="Delete (Hapus)"
+        :value="counts.del"
+        icon="pi pi-trash"
+        tone="bad"
+        hint="Data dihapus dari sistem"
+      />
+    </div>
+
+    <!-- Clean Unified Toolbar -->
+    <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
+      <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+        <div class="relative flex-1 min-w-[220px] max-w-md">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
+          <InputText
+            v-model="q"
+            placeholder="Cari tabel, row ID, atau aksi…"
+            class="w-full !pl-8 !text-[12px] !py-1.5"
+          />
         </div>
-        <div class="w-8 h-8 rounded-lg grid place-items-center border text-xs" :class="c.color">
-          <i :class="c.icon" />
-        </div>
+
+        <Select
+          v-model="opFilter"
+          :options="opOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Semua Aksi"
+          class="!text-[12px] !py-0.5 w-[180px]"
+        />
+
+        <Button
+          v-if="q || opFilter"
+          label="Reset"
+          icon="pi pi-times"
+          text
+          size="small"
+          severity="secondary"
+          @click="q = ''; opFilter = ''"
+        />
+      </div>
+
+      <div class="flex items-center gap-2">
+        <Tag :value="filtered.length + ' ditampilkan'" severity="secondary" class="!text-[11px]" />
       </div>
     </div>
 
     <!-- Audit Table Panel with Pagination -->
     <Panel title="Jejak Mutasi Database &amp; Keamanan" icon="pi pi-shield" dense>
       <template #actions>
-        <InputText
-          v-model="q"
-          placeholder="Cari tabel / row id…"
-          class="!text-[12.5px] !py-1.5 w-[200px]"
-        />
-        <Select
-          v-model="opFilter"
-          :options="opOptions"
-          optionLabel="label"
-          optionValue="value"
-          class="!text-[12.5px] w-[160px]"
-        />
+        <Tag :value="total + ' total log'" severity="secondary" class="!text-[11px]" />
       </template>
 
       <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat audit log…" />
@@ -160,7 +198,7 @@ function prettyJSON(raw: any) {
             <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">Waktu</th>
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[170px]" style="color: var(--txt-dim)">Tabel Target</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[110px]" style="color: var(--txt-dim)">Aksi</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[120px]" style="color: var(--txt-dim)">Aksi</th>
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Row ID / Kunci</th>
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[80px] text-right" style="color: var(--txt-dim)">Detail</th>
             </tr>
@@ -171,9 +209,11 @@ function prettyJSON(raw: any) {
                 class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                 @click="expanded = expanded === l.row_id + i ? null : l.row_id + i"
               >
-                <td class="px-4 py-3 whitespace-nowrap" style="color: var(--txt-dim)">{{ l.at }}</td>
+                <td class="px-4 py-3 whitespace-nowrap text-[12px]" style="color: var(--txt-dim)">{{ l.at }}</td>
                 <td class="px-4 py-3">
-                  <span class="t-mono font-semibold text-indigo-600 dark:text-indigo-400">{{ l.table_name }}</span>
+                  <span class="t-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 px-2 py-0.5 rounded">
+                    {{ l.table_name }}
+                  </span>
                 </td>
                 <td class="px-4 py-3"><StatusChip :kind="l.op" /></td>
                 <td class="px-4 py-3">
@@ -193,12 +233,18 @@ function prettyJSON(raw: any) {
                 <td colspan="5" class="px-4 py-3.5" style="background: var(--panel-2)">
                   <div class="grid md:grid-cols-2 gap-3 pt-1">
                     <div class="flex flex-col gap-1.5">
-                      <div class="text-[11px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Data Sebelumnya (Old Data)</div>
-                      <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: var(--panel); border-color: var(--line)">{{ prettyJSON(l.old_data) }}</pre>
+                      <div class="text-[11px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="pi pi-minus-circle text-[10px]" />
+                        Data Sebelumnya (Old Data)
+                      </div>
+                      <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: #172033; border-color: #27354a; color: #f8fafc">{{ prettyJSON(l.old_data) }}</pre>
                     </div>
                     <div class="flex flex-col gap-1.5">
-                      <div class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Data Baru (New Data)</div>
-                      <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: var(--panel); border-color: var(--line)">{{ prettyJSON(l.new_data) }}</pre>
+                      <div class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="pi pi-plus-circle text-[10px]" />
+                        Data Baru (New Data)
+                      </div>
+                      <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: #172033; border-color: #27354a; color: #f8fafc">{{ prettyJSON(l.new_data) }}</pre>
                     </div>
                   </div>
                 </td>
@@ -221,7 +267,7 @@ function prettyJSON(raw: any) {
               :disabled="page === 0"
               @click="page--"
             />
-            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <span class="t-num text-[12px] px-1 font-semibold" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
             <Button
               icon="pi pi-angle-right"
               size="small"

@@ -49,11 +49,7 @@ p, petugas, /api/export/*, GET
 p, petugas, /api/report*, GET
 p, petugas, /api/adjust/bulk, POST
 p, petugas, /api/audit, GET
-p, petugas, /api/settings/telegram, GET
-p, petugas, /api/settings/telegram/bot, GET
-p, petugas, /api/settings/telegram/subscribers, GET
-p, petugas, /api/settings/telegram/logs, GET
-p, petugas, /api/settings/telegram/commands, GET
+p, petugas, /api/settings/telegram*, *
 `
 
 func NewEnforcer() (*casbin.Enforcer, error) {

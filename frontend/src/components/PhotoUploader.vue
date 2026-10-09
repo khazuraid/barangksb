@@ -327,6 +327,7 @@ function drawProceduralMap(ctx: CanvasRenderingContext2D, x: number, y: number, 
 
 function drawIndonesianFlag(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
   ctx.save()
+  ctx.shadowColor = 'transparent'
   // Top red half
   ctx.fillStyle = '#dc2626'
   ctx.fillRect(x, y, w, h / 2)
@@ -360,8 +361,8 @@ async function stampGpsMapCamera(
         let width = img.width
         let height = img.height
 
-        // Compress resolution: max 1440px
-        const maxDim = 1440
+        // Compress resolution: max 1920px (Full HD clarity for crisp text & map details)
+        const maxDim = 1920
         if (width > maxDim || height > maxDim) {
           if (width > height) {
             height = Math.round((height * maxDim) / width)
@@ -414,26 +415,31 @@ async function stampGpsMapCamera(
         currentStepText.value = 'Mengecap watermark GPS Map Camera...'
         addLog('Merender watermark GPS Map Camera (tulisan besar & tajam)...', 'info')
 
-        // Dynamic proportional scaling matching real GPS Map Camera apps
-        // Sized relative to minimum dimension so text is large, bold, and crisp on all photo resolutions
-        const isLandscape = width > height
-        const minDim = Math.min(width, height)
+        // Dynamic ratio-adaptive scaling matching real GPS Map Camera apps
+        // Automatically adapts proportions, typography, and card height based on aspect ratio (portrait, landscape, square)
+        const aspectRatio = width / height
+        const isLandscape = aspectRatio > 1.05
+        const isPortrait = aspectRatio < 0.95
 
-        // Baseline ratio ~ minDim / 720 (no artificial ceiling clamp: 1080p, 2K, 4K photos have big, legible text)
-        const scale = Math.max(0.85, minDim / 720)
+        // Base dimension tailored to orientation so watermark never overwhelms the subject photo
+        // In landscape: height is the limiting dimension (e.g. 1080 in 1920x1080)
+        // In portrait: width is the limiting dimension (e.g. 1080 in 1080x1920)
+        const baseDim = isLandscape ? height : width
+        const scale = Math.max(0.9, baseDim / 720)
 
         // Flush bottom banner edge-to-edge
         const cardX = 0
         const cardW = width
 
-        const padX = Math.round(22 * scale)
-        const padY = Math.round(18 * scale)
+        // Ratio-adapted paddings
+        const padX = Math.round(isPortrait ? 18 * scale : 24 * scale)
+        const padY = Math.round(16 * scale)
 
-        // Big, bold font sizes directly matching real GPS Map Camera overlay
-        const titleSize = Math.max(28, Math.round(30 * scale))
-        const bodySize = Math.max(16, Math.round(18 * scale))
-        const metaSize = Math.max(15, Math.round(17 * scale))
-        const badgeSize = Math.max(14, Math.round(15 * scale))
+        // Dynamic font sizes strictly proportional to the active ratio base dimension
+        const titleSize = Math.max(26, Math.round(baseDim * (isLandscape ? 0.046 : 0.044)))
+        const bodySize = Math.max(18, Math.round(baseDim * (isLandscape ? 0.030 : 0.028)))
+        const metaSize = Math.max(16, Math.round(baseDim * (isLandscape ? 0.026 : 0.024)))
+        const badgeSize = Math.max(15, Math.round(baseDim * (isLandscape ? 0.024 : 0.022)))
 
         const titleLineH = Math.round(titleSize * 1.25)
         const bodyLineH = Math.round(bodySize * 1.34)
@@ -446,13 +452,15 @@ async function stampGpsMapCamera(
         const badgeIconSize = Math.round(badgeSize * 1.3)
         const badgeTotalW = badgeIconSize + badgeTextW + Math.round(10 * scale)
 
-        // Determine left map box dimension (generous square preview)
-        const approxMapSize = Math.round(minDim * (isLandscape ? 0.22 : 0.25))
+        // Map thumbnail dimensions dynamically adapted to aspect ratio
+        // In landscape: ~22% of photo height
+        // In portrait: ~23% of photo width so text column has maximum horizontal clearance
+        const approxMapSize = Math.round(isLandscape ? height * 0.22 : width * 0.23)
 
         // Available width for right-side text column
         const textX = padX + approxMapSize + padX
         // Title area width guarantees zero overlap with top-right badge
-        const titleAreaW = cardW - textX - badgeTotalW - padX - Math.round(16 * scale)
+        const titleAreaW = cardW - textX - badgeTotalW - padX - Math.round(14 * scale)
         // Full text width for address, coords, and timestamp
         const textAreaW = cardW - textX - padX
 
@@ -549,6 +557,10 @@ async function stampGpsMapCamera(
 
         // 1. Title Header + Indonesian Flag
         ctx.save()
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.95)'
+        ctx.shadowBlur = Math.round(4 * scale)
+        ctx.shadowOffsetX = 0
+        ctx.shadowOffsetY = Math.round(2 * scale)
         ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#ffffff'
         ctx.textBaseline = 'top'

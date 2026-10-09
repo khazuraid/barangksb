@@ -206,6 +206,7 @@ func main() {
 	api.DELETE("/settings/telegram/subscribers/:chatId", setH.DeleteSubscriber)
 	api.POST("/settings/telegram/test", setH.TestTelegram)
 	api.GET("/settings/telegram/logs", setH.TelegramLogs)
+	api.DELETE("/settings/telegram/logs", setH.ClearTelegramLogs)
 	api.GET("/settings/telegram/commands", setH.ListCommands)
 	api.POST("/settings/telegram/commands", setH.CreateCommand)
 	api.PUT("/settings/telegram/commands/:id", setH.UpdateCommand)

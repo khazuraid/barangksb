@@ -6,8 +6,10 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Dialog from 'primevue/dialog'
+import Tag from 'primevue/tag'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
+import StatCard from '@/components/StatCard.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
@@ -26,10 +28,10 @@ const lightboxUrl = ref('')
 
 const typeOptions = [
   { label: 'Semua jenis mutasi', value: '' },
-  { label: 'Barang Masuk', value: 'IN' },
-  { label: 'Barang Keluar', value: 'OUT' },
-  { label: 'Opname (+)', value: 'ADJUST+' },
-  { label: 'Opname (−)', value: 'ADJUST-' },
+  { label: 'Barang Masuk (IN)', value: 'IN' },
+  { label: 'Barang Keluar (OUT)', value: 'OUT' },
+  { label: 'Opname Bertambah (ADJUST+)', value: 'ADJUST+' },
+  { label: 'Opname Berkurang (ADJUST-)', value: 'ADJUST-' },
 ]
 const perPageOptions = [25, 50, 100]
 
@@ -56,7 +58,7 @@ watch([page, perPage], () => fetchTx())
 
 const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
 const range = computed(() => {
-  if (!total.value) return '0'
+  if (!total.value) return '0 transaksi'
   const from = page.value * perPage.value + 1
   const to = Math.min(total.value, (page.value + 1) * perPage.value)
   return `${from}–${to} dari ${total.value}`
@@ -65,6 +67,7 @@ const range = computed(() => {
 const summary = computed(() => {
   const safeList = Array.isArray(txs.value) ? txs.value : []
   return {
+    total: total.value,
     in: safeList.filter((t) => t.type === 'IN').reduce((a, t) => a + (t.quantity || 0), 0),
     out: safeList.filter((t) => t.type === 'OUT').reduce((a, t) => a + (t.quantity || 0), 0),
     adj: safeList.filter((t) => (t.type || '').startsWith('ADJUST')).length,
@@ -73,7 +76,9 @@ const summary = computed(() => {
 
 function exportAs(kind: 'csv' | 'xlsx' | 'pdf') {
   const url = kind === 'csv' ? '/api/export/tx.csv' : kind === 'xlsx' ? '/api/export/items.xlsx' : '/api/report.pdf'
-  window.open(url, '_blank')
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank')
+  }
 }
 
 function exportFiltered() {
@@ -103,15 +108,15 @@ function exportFiltered() {
 </script>
 
 <template>
-  <div class="pb-16 max-w-6xl mx-auto">
+  <div class="pb-16 max-w-7xl mx-auto">
     <PageHeader
       crumb="Operasional"
       title="Log &amp; Riwayat Mutasi"
-      sub="Rekaman transaksi pergerakan stok barang masuk, keluar, dan opname fisik"
+      sub="Rekaman transaksi pergerakan stok barang masuk, keluar, dan opname fisik inventaris"
     >
       <template #actions>
         <Button
-          label="Halaman ini (CSV)"
+          label="Ekspor Halaman (CSV)"
           icon="pi pi-file"
           size="small"
           severity="secondary"
@@ -120,68 +125,104 @@ function exportFiltered() {
           @click="exportFiltered"
         />
         <Button
-          label="Ekspor Semua"
+          label="Ekspor Semua (CSV)"
           icon="pi pi-download"
           size="small"
+          severity="secondary"
+          outlined
           :disabled="!txs.length"
           @click="exportAs('csv')"
+        />
+        <Button
+          label="Cetak Laporan PDF"
+          icon="pi pi-file-pdf"
+          size="small"
+          @click="exportAs('pdf')"
         />
       </template>
     </PageHeader>
 
-    <!-- Quick Metric KPI Strip -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 max-w-2xl">
-      <div class="panel p-3.5 flex items-center justify-between">
-        <div>
-          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Unit Masuk</div>
-          <div class="t-num text-[22px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">+{{ summary.in }}</div>
-        </div>
-        <div class="w-8 h-8 rounded-lg grid place-items-center bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs">
-          <i class="pi pi-arrow-down-left" />
-        </div>
-      </div>
-
-      <div class="panel p-3.5 flex items-center justify-between">
-        <div>
-          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Unit Keluar</div>
-          <div class="t-num text-[22px] font-bold text-rose-600 dark:text-rose-400 mt-0.5">−{{ summary.out }}</div>
-        </div>
-        <div class="w-8 h-8 rounded-lg grid place-items-center bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs">
-          <i class="pi pi-arrow-up-right" />
-        </div>
-      </div>
-
-      <div class="panel p-3.5 flex items-center justify-between">
-        <div>
-          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Baris Opname</div>
-          <div class="t-num text-[22px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{{ summary.adj }}</div>
-        </div>
-        <div class="w-8 h-8 rounded-lg grid place-items-center bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 text-xs">
-          <i class="pi pi-sliders-h" />
-        </div>
-      </div>
+    <!-- Unified KPI Metric Strip -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <StatCard
+        label="Total Mutasi"
+        :value="summary.total"
+        icon="pi pi-history"
+        tone="accent"
+        hint="Transaksi tercatat"
+      />
+      <StatCard
+        label="Unit Masuk (Hal. Ini)"
+        :value="`+${summary.in}`"
+        icon="pi pi-arrow-down-left"
+        tone="ok"
+        hint="Stok bertambah"
+      />
+      <StatCard
+        label="Unit Keluar (Hal. Ini)"
+        :value="`−${summary.out}`"
+        icon="pi pi-arrow-up-right"
+        tone="bad"
+        hint="Stok berkurang"
+      />
+      <StatCard
+        label="Baris Opname (Hal. Ini)"
+        :value="summary.adj"
+        icon="pi pi-sliders-h"
+        tone="info"
+        hint="Koreksi fisik stok"
+      />
     </div>
 
-    <!-- Transaction List Panel -->
-    <Panel title="Jejak Mutasi Barang" icon="pi pi-history" dense>
-      <template #actions>
-        <InputText
-          v-model="sku"
-          placeholder="Cari SKU / nama…"
-          class="!text-[12.5px] !py-1.5 w-[180px]"
-          @keyup.enter="fetchTx(true)"
-        />
+    <!-- Clean Unified Toolbar -->
+    <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
+      <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+        <div class="relative flex-1 min-w-[220px] max-w-md">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
+          <InputText
+            v-model="sku"
+            placeholder="Cari SKU, nama barang, atau petugas…"
+            class="w-full !pl-8 !text-[12px] !py-1.5"
+            @keyup.enter="fetchTx(true)"
+          />
+        </div>
+
         <Select
           v-model="type"
           :options="typeOptions"
           optionLabel="label"
           optionValue="value"
-          class="!text-[12.5px] w-[180px]"
+          placeholder="Semua Mutasi"
+          class="!text-[12px] !py-0.5 w-[190px]"
           @change="fetchTx(true)"
         />
-        <Button icon="pi pi-search" size="small" severity="secondary" outlined @click="fetchTx(true)" />
-      </template>
 
+        <Button
+          icon="pi pi-search"
+          size="small"
+          severity="secondary"
+          outlined
+          @click="fetchTx(true)"
+        />
+
+        <Button
+          v-if="sku || type"
+          label="Reset"
+          icon="pi pi-times"
+          text
+          size="small"
+          severity="secondary"
+          @click="sku = ''; type = ''; fetchTx(true)"
+        />
+      </div>
+
+      <div class="flex items-center gap-2">
+        <Tag :value="total + ' transaksi'" severity="secondary" class="!text-[11px]" />
+      </div>
+    </div>
+
+    <!-- Transaction List Panel -->
+    <Panel title="Daftar Mutasi &amp; Riwayat Transaksi" icon="pi pi-history" dense>
       <EmptyState v-if="loadingTx" icon="pi pi-spin pi-spinner" title="Memuat riwayat perubahan…" />
       <EmptyState
         v-else-if="!txs.length"
@@ -199,9 +240,10 @@ function exportFiltered() {
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[170px]" style="color: var(--txt-dim)">Waktu</th>
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[120px]" style="color: var(--txt-dim)">Jenis</th>
               <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Barang</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[120px] text-right" style="color: var(--txt-dim)">Perubahan</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px] text-right" style="color: var(--txt-dim)">Stok</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[60px]" style="color: var(--txt-dim)"></th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px] text-right" style="color: var(--txt-dim)">Perubahan</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px] text-right" style="color: var(--txt-dim)">Stok</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px]" style="color: var(--txt-dim)">Petugas</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[50px] text-right" style="color: var(--txt-dim)"></th>
             </tr>
           </thead>
           <tbody class="divide-y" style="border-color: var(--line)">
@@ -210,34 +252,44 @@ function exportFiltered() {
                 class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                 @click="expandedTx = expandedTx === t.id ? null : t.id"
               >
-                <td class="px-4 py-3 whitespace-nowrap" style="color: var(--txt-dim)">{{ t.timestamp }}</td>
-                <td class="px-4 py-3"><StatusChip :kind="t.type" /></td>
+                <td class="px-4 py-3 whitespace-nowrap text-[12px]" style="color: var(--txt-dim)">
+                  {{ t.timestamp }}
+                </td>
                 <td class="px-4 py-3">
-                  <div class="flex items-center gap-2 font-semibold">
-                    <span style="color: var(--txt)">{{ t.item_name }}</span>
+                  <StatusChip :kind="t.type" />
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold" style="color: var(--txt)">{{ t.item_name }}</span>
                     <button
                       v-if="t.photo_url"
-                      class="inline-flex text-indigo-600 dark:text-indigo-400 hover:opacity-80 cursor-pointer"
+                      class="inline-flex items-center justify-center w-6 h-6 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:opacity-80 cursor-pointer"
                       title="Lihat foto bukti geotag"
                       @click.stop="lightboxUrl = t.photo_url; photoLightbox = true"
                     >
-                      <i class="pi pi-camera text-[12px]" />
+                      <i class="pi pi-camera text-[11px]" />
                     </button>
                   </div>
                   <div class="t-mono text-[11px] mt-0.5" style="color: var(--txt-dim)">{{ t.item_sku }}</div>
                 </td>
                 <td class="px-4 py-3 text-right whitespace-nowrap">
                   <span
-                    class="t-num font-bold"
-                    :class="t.type === 'IN' || t.type === 'ADJUST+' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
+                    class="t-num font-bold px-2 py-0.5 rounded"
+                    :class="t.type === 'IN' || t.type === 'ADJUST+'
+                      ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
+                      : 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30'"
                   >
                     {{ t.type === 'IN' || t.type === 'ADJUST+' ? '+' : '−' }}{{ t.quantity }} {{ t.unit }}
                   </span>
                 </td>
                 <td class="px-4 py-3 text-right t-num whitespace-nowrap" style="color: var(--txt-dim)">
-                  {{ t.previous_stock }}
-                  <i class="pi pi-arrow-right text-[9px] mx-1" />
+                  <span>{{ t.previous_stock }}</span>
+                  <i class="pi pi-arrow-right text-[9px] mx-1.5 opacity-60" />
                   <span class="font-bold" style="color: var(--txt)">{{ t.new_stock }}</span>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-[12px]" style="color: var(--txt-dim)">
+                  <span v-if="t.received_by" class="font-medium text-ink-300">{{ t.received_by }}</span>
+                  <span v-else class="opacity-50">—</span>
                 </td>
                 <td class="px-4 py-3 text-right">
                   <i
@@ -250,11 +302,11 @@ function exportFiltered() {
 
               <!-- Expanded Details -->
               <tr v-if="expandedTx === t.id">
-                <td colspan="6" class="px-4 py-3.5" style="background: var(--panel-2)">
+                <td colspan="7" class="px-4 py-3.5" style="background: var(--panel-2)">
                   <div class="flex flex-wrap sm:flex-nowrap gap-4 items-center">
                     <div
                       v-if="t.photo_url"
-                      class="relative group w-28 h-20 shrink-0 rounded-lg overflow-hidden border bg-black/40 cursor-pointer"
+                      class="relative group w-32 h-24 shrink-0 rounded-lg overflow-hidden border bg-black/40 cursor-pointer"
                       style="border-color: var(--line)"
                       @click="lightboxUrl = t.photo_url; photoLightbox = true"
                     >
@@ -299,7 +351,7 @@ function exportFiltered() {
               :disabled="page === 0"
               @click="page--"
             />
-            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <span class="t-num text-[12px] px-1 font-semibold">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
             <Button
               icon="pi pi-angle-right"
               size="small"
@@ -314,8 +366,8 @@ function exportFiltered() {
     </Panel>
 
     <!-- Modal Lightbox Foto Geotag -->
-    <Dialog v-model:visible="photoLightbox" modal header="Foto Bukti Geotag Transaksi" :style="{ width: '640px' }" class="p-fluid">
-      <div v-if="lightboxUrl" class="p-2 bg-black rounded-lg flex items-center justify-center">
+    <Dialog v-model:visible="photoLightbox" modal header="Foto Bukti Geotag Transaksi" :style="{ width: '680px' }" class="p-fluid">
+      <div v-if="lightboxUrl" class="p-2 bg-black/80 rounded-lg flex items-center justify-center">
         <img :src="lightboxUrl" alt="Foto Geotag Transaksi" class="max-h-[75vh] object-contain rounded" />
       </div>
     </Dialog>

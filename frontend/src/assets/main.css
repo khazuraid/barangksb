@@ -108,6 +108,29 @@ body.dark, html.dark {
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+
+  /* PrimeVue native CSS tokens bridge for dark mode */
+  --p-form-field-background: #172033;
+  --p-form-field-border-color: #27354a;
+  --p-form-field-color: #f8fafc;
+  --p-form-field-placeholder-color: #64748b;
+  --p-form-field-focus-border-color: #f5a524;
+  --p-inputtext-background: #172033;
+  --p-inputtext-border-color: #27354a;
+  --p-inputtext-color: #f8fafc;
+  --p-inputtext-placeholder-color: #64748b;
+  --p-inputtext-focus-border-color: #f5a524;
+  --p-select-background: #172033;
+  --p-select-border-color: #27354a;
+  --p-select-color: #f8fafc;
+  --p-select-placeholder-color: #64748b;
+  --p-select-focus-border-color: #f5a524;
+  --p-select-dropdown-color: #94a3b8;
+  --p-textarea-background: #172033;
+  --p-textarea-border-color: #27354a;
+  --p-textarea-color: #f8fafc;
+  --p-textarea-placeholder-color: #64748b;
+  --p-textarea-focus-border-color: #f5a524;
 }
 
 /* ---------- type helpers ---------- */
@@ -144,6 +167,74 @@ body {
   background: var(--ink-950);
   color: var(--txt);
   min-height: 100vh;
+}
+
+/* ---------- PrimeVue Form Controls Dark Theme Alignment ---------- */
+body.dark .p-inputtext,
+body.dark .p-select,
+body.dark .p-textarea,
+body.dark .p-inputnumber-input,
+body.dark .p-multiselect,
+body.dark .p-password-input {
+  background-color: #172033 !important;
+  color: #f8fafc !important;
+  border-color: #27354a !important;
+}
+
+body.dark .p-inputtext:hover,
+body.dark .p-select:hover,
+body.dark .p-textarea:hover,
+body.dark .p-inputnumber-input:hover,
+body.dark .p-multiselect:hover {
+  border-color: #3d4d68 !important;
+}
+
+body.dark .p-inputtext:focus,
+body.dark .p-select:focus,
+body.dark .p-textarea:focus,
+body.dark .p-inputnumber-input:focus,
+body.dark .p-multiselect:focus,
+body.dark .p-select:focus-within {
+  border-color: #f5a524 !important;
+  box-shadow: 0 0 0 1px rgba(245, 165, 36, 0.35) !important;
+}
+
+body.dark .p-inputtext::placeholder,
+body.dark .p-textarea::placeholder,
+body.dark .p-inputnumber-input::placeholder,
+body.dark .p-select-label.p-placeholder {
+  color: #64748b !important;
+}
+
+body.dark .p-select-label {
+  color: #f8fafc !important;
+}
+
+body.dark .p-select-dropdown {
+  color: #94a3b8 !important;
+}
+
+body.dark .p-select-overlay,
+body.dark .p-popover,
+body.dark .p-dialog,
+body.dark .p-autocomplete-overlay {
+  background: #172033 !important;
+  border-color: #27354a !important;
+  color: #f8fafc !important;
+}
+
+body.dark .p-select-option {
+  color: #f8fafc !important;
+}
+
+body.dark .p-select-option:not(.p-select-option-selected):not(.p-disabled).p-focus {
+  background: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body.dark .p-select-option.p-select-option-selected {
+  background: rgba(245, 165, 36, 0.15) !important;
+  color: #f5a524 !important;
 }
 .tabular { font-variant-numeric: tabular-nums; }
 @media print { .no-print { display: none !important; } }
