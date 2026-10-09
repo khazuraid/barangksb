@@ -12,6 +12,9 @@ import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import StatusChip from '@/components/StatusChip.vue'
+import StatCard from '@/components/StatCard.vue'
+import Panel from '@/components/Panel.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import PhotoUploader from '@/components/PhotoUploader.vue'
 
 const route = useRoute()
@@ -131,6 +134,18 @@ const googleMapsUrl = computed(() => {
   if (!hasCoords.value) return ''
   return `https://www.google.com/maps?q=${item.value.geo_lat},${item.value.geo_lng}`
 })
+
+const totalAssetValue = computed(() => {
+  if (!item.value) return 0
+  const qty = item.value.track_stock !== false ? (item.value.current_stock || 0) : 1
+  const price = Number(item.value.price_per_unit) || 0
+  return qty * price
+})
+
+function formatRupiah(val: number) {
+  if (!val) return '—'
+  return 'Rp ' + Number(val).toLocaleString('id-ID')
+}
 
 async function downloadImage(url: string, filename = 'foto_geotag.jpg') {
   if (!url) return
@@ -258,25 +273,55 @@ async function deleteMaintRecord(mId: string) {
 </script>
 
 <template>
-  <div class="py-2 pb-16 max-w-5xl mx-auto flex flex-col gap-4">
-    <!-- Top Action Navigation Bar -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <button
-        class="text-[12.5px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer py-1.5 px-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/50"
-        style="color: var(--txt-dim)"
+  <div class="py-2 pb-16 max-w-6xl mx-auto flex flex-col gap-4">
+    <!-- Clean Unified Action Toolbar -->
+    <div class="panel p-3 flex flex-wrap items-center justify-between gap-2.5">
+      <Button
+        label="Daftar Barang"
+        icon="pi pi-arrow-left"
+        size="small"
+        text
+        severity="secondary"
         @click="router.push('/items')"
-      >
-        <i class="pi pi-arrow-left text-[11px]" />
-        <span>Kembali ke Daftar Barang</span>
-      </button>
+      />
 
       <!-- Action buttons -->
       <div v-if="item" class="flex items-center gap-2 flex-wrap">
+        <!-- Stock buttons for consumable -->
+        <template v-if="item.track_stock !== false">
+          <Button
+            label="+ Stok Masuk"
+            icon="pi pi-arrow-down-left"
+            size="small"
+            severity="success"
+            @click="openStockModal('IN')"
+          />
+          <Button
+            label="− Stok Keluar"
+            icon="pi pi-arrow-up-right"
+            size="small"
+            severity="danger"
+            :disabled="item.current_stock <= 0"
+            @click="openStockModal('OUT')"
+          />
+        </template>
+
+        <!-- Service button for fixed asset -->
+        <Button
+          v-else
+          label="Catat Servis"
+          icon="pi pi-wrench"
+          size="small"
+          severity="warn"
+          @click="showMaintModal = true"
+        />
+
         <Button
           label="Edit Data"
           icon="pi pi-pencil"
           size="small"
           severity="secondary"
+          outlined
           @click="router.push('/items/' + route.params.id + '/edit')"
         />
         <Button
@@ -288,11 +333,11 @@ async function deleteMaintRecord(mId: string) {
           @click="router.push('/barcode')"
         />
         <Button
-          label="Hapus Barang"
+          label="Hapus"
           icon="pi pi-trash"
           size="small"
           severity="danger"
-          outlined
+          text
           :loading="deleting"
           @click="remove"
         />
@@ -301,26 +346,25 @@ async function deleteMaintRecord(mId: string) {
 
     <!-- Loading State -->
     <div v-if="loading" class="panel p-16 grid place-items-center">
-      <i class="pi pi-spin pi-spinner text-2xl text-acc-500" />
+      <div class="flex flex-col items-center gap-3">
+        <i class="pi pi-spin pi-spinner text-3xl text-indigo-500" />
+        <span class="text-[12.5px]" style="color: var(--txt-dim)">Memuat rincian inventaris...</span>
+      </div>
     </div>
 
     <!-- Main Detail Content -->
     <div v-else-if="item" class="flex flex-col gap-4">
-      <!-- 1. Header Banner Card -->
-      <div
-        class="panel p-5 rounded-xl border flex flex-col gap-2.5 shadow-xs"
-        style="background: var(--panel); border-color: var(--line)"
-      >
+      <!-- 1. Header Hero Card -->
+      <div class="panel p-5 flex flex-col gap-3">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="t-mono text-[12px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
             {{ item.sku }}
           </span>
-          <span
-            class="px-2.5 py-0.5 rounded text-[11px] font-bold border"
-            :class="item.track_stock !== false ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'"
-          >
-            {{ item.track_stock !== false ? 'Barang Stok / Konsumabel' : 'Aset Tetap / Unit Mandiri' }}
-          </span>
+          <Tag
+            :severity="item.track_stock !== false ? 'warn' : 'info'"
+            :value="item.track_stock !== false ? 'BARANG KONSUMABEL' : 'ASET TETAP'"
+            class="!text-[10px]"
+          />
           <StatusChip :kind="item.condition_status" />
           <Tag v-if="item.is_available" severity="success" value="TERSEDIA" class="!text-[10px]" />
           <Tag v-else severity="danger" value="TIDAK TERSEDIA" class="!text-[10px]" />
@@ -330,48 +374,86 @@ async function deleteMaintRecord(mId: string) {
           {{ item.name }}
         </h1>
 
-        <div class="text-[12.5px] flex items-center gap-3 flex-wrap pt-1" style="color: var(--txt-dim)">
+        <div class="text-[12.5px] flex items-center gap-3 flex-wrap pt-1 border-t" style="border-color: var(--line); color: var(--txt-dim)">
           <span>Kategori: <strong style="color: var(--txt)">{{ item.category }}</strong></span>
           <span>·</span>
-          <span class="flex items-center gap-1">
-            <i class="pi pi-map-marker text-indigo-600 dark:text-indigo-400 text-xs" />
+          <span class="flex items-center gap-1.5">
+            <i class="pi pi-map-marker text-indigo-500 text-xs" />
             Ruangan: <strong style="color: var(--txt)">{{ item.location }}</strong>
           </span>
+          <span v-if="item.merk">·</span>
+          <span v-if="item.merk">Merk: <strong style="color: var(--txt)">{{ item.merk }}</strong></span>
         </div>
       </div>
 
-      <!-- 2. Hero Photo Card with Geotag -->
-      <div
-        v-if="item.photo_url"
-        class="panel rounded-xl overflow-hidden border bg-black/40 flex flex-col shadow-md"
-        style="border-color: var(--line)"
-      >
-        <div
-          class="relative w-full max-h-[380px] sm:max-h-[460px] bg-black/80 flex items-center justify-center cursor-pointer group p-2"
-          @click="lightboxUrl = item.photo_url; photoLightbox = true"
-        >
-          <img
-            :src="item.photo_url"
-            :alt="item.name"
-            class="max-h-[360px] sm:max-h-[440px] w-full object-contain rounded group-hover:scale-[1.01] transition-transform"
-          />
-          <div class="absolute bottom-3 left-3 bg-black/85 px-3 py-1 rounded-md text-[11px] text-white flex items-center gap-1.5 border border-white/10">
-            <i class="pi pi-map-marker text-sig-ok text-[11px]" /> Foto Berstempel GPS Map Camera
-          </div>
-          <div class="absolute top-3 right-3 bg-black/80 px-2.5 py-1 rounded text-[11px] text-white flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <i class="pi pi-search-plus text-[10px]" /> Perbesar Foto
-          </div>
-        </div>
+      <!-- 2. KPI Metrics Strip with StatCard -->
+      <!-- Case A: Consumable Stock Item -->
+      <div v-if="item.track_stock !== false" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="Stok Tersedia"
+          :value="`${item.current_stock} ${item.unit}`"
+          icon="pi pi-box"
+          :tone="item.current_stock <= item.min_stock ? 'bad' : 'ok'"
+          :hint="item.current_stock <= item.min_stock ? '⚠️ Di bawah batas minimum' : 'Stok dalam batas aman'"
+        />
+        <StatCard
+          label="Batas Minimum"
+          :value="`${item.min_stock} ${item.unit}`"
+          icon="pi pi-bell"
+          tone="warn"
+          hint="Peringatan bot otomatis"
+        />
+        <StatCard
+          label="Harga Satuan"
+          :value="formatRupiah(item.price_per_unit)"
+          icon="pi pi-tag"
+          tone="neutral"
+          hint="Estimasi harga pengadaan"
+        />
+        <StatCard
+          label="Total Nilai Fisik"
+          :value="formatRupiah(totalAssetValue)"
+          icon="pi pi-wallet"
+          tone="accent"
+          hint="Akumulasi nilai stok fisik"
+        />
+      </div>
 
-        <div v-if="hasCoords || item.photo_url" class="px-4 py-2.5 border-t flex items-center justify-between text-[11.5px] flex-wrap gap-2"
-             style="border-color: var(--line); background: var(--paper-2)">
-          <div v-if="hasCoords" class="t-mono text-sig-ok font-semibold flex items-center gap-1.5">
-            <i class="pi pi-compass text-[11px]" />
-            <span>GPS: {{ item.geo_lat.toFixed(5) }}, {{ item.geo_lng.toFixed(5) }}</span>
-            <span v-if="item.geo_acc" class="text-ink-400 font-normal">(±{{ Math.round(item.geo_acc) }}m)</span>
-          </div>
-          <div v-else></div>
+      <!-- Case B: Fixed Asset Item -->
+      <div v-else class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="Kondisi Fisik"
+          :value="item.condition_status"
+          icon="pi pi-check-circle"
+          :tone="item.condition_status === 'Berfungsi' ? 'ok' : 'bad'"
+          hint="Kelaikan operasional unit"
+        />
+        <StatCard
+          label="Tipe Pengelolaan"
+          value="Unit Mandiri"
+          icon="pi pi-desktop"
+          tone="info"
+          hint="Aset tidak habis pakai"
+        />
+        <StatCard
+          label="Tahun Pengadaan"
+          :value="item.procurement_year || '—'"
+          icon="pi pi-calendar"
+          tone="neutral"
+          hint="Tahun perolehan barang"
+        />
+        <StatCard
+          label="Nilai Perolehan"
+          :value="formatRupiah(item.price_per_unit)"
+          icon="pi pi-wallet"
+          tone="accent"
+          hint="Estimasi nilai aset"
+        />
+      </div>
 
+      <!-- 3. Photo & Geotag Banner Card -->
+      <Panel v-if="item.photo_url" title="Dokumentasi Fisik &amp; Stempel Geotag" icon="pi pi-camera" dense>
+        <template #actions>
           <div class="flex items-center gap-2">
             <Button
               label="Unduh Foto (JPG)"
@@ -386,103 +468,69 @@ async function deleteMaintRecord(mId: string) {
               :href="googleMapsUrl"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-acc-500 hover:underline flex items-center gap-1 font-semibold"
+              class="text-xs font-semibold text-indigo-500 hover:underline flex items-center gap-1 px-2 py-1 rounded"
+              style="background: var(--panel)"
             >
               <i class="pi pi-external-link text-[10px]" /> Google Maps
             </a>
           </div>
-        </div>
-      </div>
+        </template>
 
-      <!-- 3. Stock Management Card (Konsumabel / Pensil) -->
-      <div v-if="item.track_stock !== false" class="panel p-5 rounded-xl border flex flex-col gap-4 shadow-md"
-           style="background: var(--paper-1); border-color: var(--line)">
-        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b" style="border-color: var(--line)">
-          <div>
-            <div class="text-[11px] font-bold text-ink-400 uppercase tracking-wider">Kondisi Stok Barang</div>
-            <div class="flex items-baseline gap-2 mt-1">
-              <span class="t-num text-3xl sm:text-4xl font-black"
-                    :class="item.current_stock <= item.min_stock ? 'text-rose-400' : 'text-emerald-400'">
-                {{ item.current_stock }}
-              </span>
-              <span class="text-sm font-semibold text-ink-300">{{ item.unit }}</span>
-              <span v-if="item.current_stock <= item.min_stock" class="text-[11px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded ml-2">
-                Stok Menipis (min {{ item.min_stock }})
-              </span>
+        <div
+          class="relative w-full max-h-[420px] sm:max-h-[500px] flex items-center justify-center cursor-pointer group p-3"
+          style="background: #090d16"
+          @click="lightboxUrl = item.photo_url; photoLightbox = true"
+        >
+          <img
+            :src="item.photo_url"
+            :alt="item.name"
+            class="max-h-[400px] sm:max-h-[480px] w-full object-contain rounded-lg group-hover:scale-[1.008] transition-transform shadow-md"
+          />
+          <div class="absolute bottom-5 left-5 bg-black/85 backdrop-blur-xs px-3 py-1.5 rounded-lg text-[11px] text-white flex items-center gap-2 border border-white/10 shadow-lg">
+            <i class="pi pi-map-marker text-emerald-400 text-xs" />
+            <span>Foto Berstempel GPS Map Camera</span>
+          </div>
+          <div class="absolute top-5 right-5 bg-black/80 backdrop-blur-xs px-3 py-1.5 rounded-lg text-[11px] text-white flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity border border-white/10 shadow-lg">
+            <i class="pi pi-search-plus text-xs" />
+            <span>Perbesar Foto</span>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex items-center justify-between text-[11.5px] flex-wrap gap-2" style="color: var(--txt-dim)">
+            <div v-if="hasCoords" class="t-mono font-semibold flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              <i class="pi pi-compass text-xs" />
+              <span>GPS: {{ item.geo_lat.toFixed(6) }}, {{ item.geo_lng.toFixed(6) }}</span>
+              <span v-if="item.geo_acc" class="font-normal opacity-80">(akurasi ±{{ Math.round(item.geo_acc) }}m)</span>
+            </div>
+            <div v-else class="text-[11.5px]">Tidak ada data koordinat GPS</div>
+
+            <div v-if="item.geo_name" class="truncate max-w-md font-medium" style="color: var(--txt)">
+              <i class="pi pi-building text-[10px] mr-1 text-indigo-500" />
+              {{ item.geo_name }}
             </div>
           </div>
+        </template>
+      </Panel>
 
-          <!-- Prominent Stock Action Buttons -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <Button
-              label="+ Tambah Stok Masuk"
-              icon="pi pi-arrow-down"
-              size="small"
-              severity="success"
-              @click="openStockModal('IN')"
-            />
-            <Button
-              label="− Catat Stok Keluar"
-              icon="pi pi-arrow-up"
-              size="small"
-              severity="danger"
-              :disabled="item.current_stock <= 0"
-              @click="openStockModal('OUT')"
-            />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3 text-center text-[12px]">
-          <div class="p-3 rounded-lg border bg-paper-2 border-line">
-            <div class="text-[11px] text-ink-400">Batas Minimum Peringatan</div>
-            <div class="t-num font-bold text-[15px] mt-0.5">{{ item.min_stock }} {{ item.unit }}</div>
-          </div>
-          <div class="p-3 rounded-lg border bg-paper-2 border-line">
-            <div class="text-[11px] text-ink-400">Estimasi Nilai per Unit</div>
-            <div class="t-num font-bold text-[15px] text-acc-400 mt-0.5">
-              {{ item.price_per_unit ? 'Rp ' + Number(item.price_per_unit).toLocaleString('id-ID') : '—' }}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 3B. Fixed Asset Card (Laptop / Aset Tetap) -->
-      <div v-else class="panel p-5 rounded-xl border flex items-center justify-between gap-3 shadow-md"
-           style="background: var(--paper-1); border-color: var(--line)">
-        <div>
-          <div class="text-[11px] font-bold text-ink-400 uppercase tracking-wider">Status Aset Tetap</div>
-          <div class="text-[15px] font-bold mt-1 text-ink-100 flex items-center gap-2">
-            <i class="pi pi-desktop text-acc-500" />
-            <span>Unit Mandiri (Stok Tetap: 1 {{ item.unit }})</span>
-          </div>
-          <div class="text-[12px] text-ink-400 mt-0.5">
-            Unit aset ini teridentifikasi unik berdasarkan nomor seri dan ruangan penempatan.
-          </div>
-        </div>
-
-        <Button
-          label="Catat Servis"
-          icon="pi pi-wrench"
-          size="small"
-          severity="warn"
-          @click="showMaintModal = true"
-        />
-      </div>
-
-      <!-- 4. Segment Tabs: Riwayat Mutasi vs Spesifikasi vs Servis -->
-      <div class="panel rounded-xl overflow-hidden border shadow-md"
-           style="background: var(--paper-1); border-color: var(--line)">
-        <div class="flex border-b text-[12.5px] font-bold overflow-x-auto" style="border-color: var(--line); background: var(--paper-2)">
-          <!-- Tab 1: Riwayat Mutasi Stok (Hanya barang stok) -->
+      <!-- 4. Segmented Tabs: Riwayat Mutasi / Spesifikasi / Pemeliharaan -->
+      <div class="panel overflow-hidden shadow-xs">
+        <!-- Tab Navigation Bar -->
+        <div class="flex border-b text-[12.5px] font-bold overflow-x-auto" style="border-color: var(--line); background: var(--panel-2)">
+          <!-- Tab 1: Riwayat Mutasi Stok (Hanya barang konsumabel) -->
           <button
             v-if="item.track_stock !== false"
             class="py-3 px-4 flex items-center justify-center gap-2 transition-colors cursor-pointer border-b-2 whitespace-nowrap"
-            :class="activeTab === 'stock_history' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
+            :class="activeTab === 'stock_history'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent hover:text-slate-900 dark:hover:text-slate-100'"
+            :style="activeTab === 'stock_history' ? { background: 'var(--panel)' } : { color: 'var(--txt-dim)' }"
             @click="activeTab = 'stock_history'"
           >
             <i class="pi pi-history text-xs" />
             <span>Riwayat Mutasi Stok</span>
-            <span v-if="stockTransactions.length" class="text-[10px] px-2 py-0.2 rounded-full bg-acc-500 text-ink-950 font-bold">
+            <span v-if="stockTransactions.length"
+                  class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
               {{ stockTransactions.length }}
             </span>
           </button>
@@ -490,148 +538,172 @@ async function deleteMaintRecord(mId: string) {
           <!-- Tab 2: Spesifikasi Lengkap -->
           <button
             class="py-3 px-4 flex items-center justify-center gap-2 transition-colors cursor-pointer border-b-2 whitespace-nowrap"
-            :class="activeTab === 'spec' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
+            :class="activeTab === 'spec'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent hover:text-slate-900 dark:hover:text-slate-100'"
+            :style="activeTab === 'spec' ? { background: 'var(--panel)' } : { color: 'var(--txt-dim)' }"
             @click="activeTab = 'spec'"
           >
             <i class="pi pi-list text-xs" />
-            <span>Spesifikasi Lengkap</span>
+            <span>Spesifikasi &amp; Pengadaan</span>
           </button>
 
           <!-- Tab 3: Riwayat Servis & Kalibrasi -->
           <button
             class="py-3 px-4 flex items-center justify-center gap-2 transition-colors cursor-pointer border-b-2 whitespace-nowrap"
-            :class="activeTab === 'maintenance' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
+            :class="activeTab === 'maintenance'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent hover:text-slate-900 dark:hover:text-slate-100'"
+            :style="activeTab === 'maintenance' ? { background: 'var(--panel)' } : { color: 'var(--txt-dim)' }"
             @click="activeTab = 'maintenance'"
           >
             <i class="pi pi-wrench text-xs" />
-            <span>Riwayat Servis &amp; Kalibrasi</span>
-            <span v-if="maintenanceList.length" class="text-[10px] px-2 py-0.2 rounded-full bg-acc-500 text-ink-950 font-bold">
+            <span>Riwayat Pemeliharaan &amp; Servis</span>
+            <span v-if="maintenanceList.length"
+                  class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
               {{ maintenanceList.length }}
             </span>
           </button>
         </div>
 
-        <!-- Content Tab 1: Riwayat Mutasi Stok Lengkap dengan Foto Geotag -->
+        <!-- CONTENT TAB 1: Riwayat Mutasi Stok dengan Bukti Foto Geotag -->
         <div v-if="activeTab === 'stock_history'" class="p-5 flex flex-col gap-4">
-          <div class="flex items-center justify-between">
-            <span class="font-bold text-[13px]">Jejak Keluar / Masuk Stok</span>
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div class="font-bold text-[13px]" style="color: var(--txt)">Log Transaksi Masuk &amp; Keluar</div>
+              <div class="text-[11.5px]" style="color: var(--txt-dim)">Setiap pergerakan fisik tercatat lengkap dengan bukti foto geotag</div>
+            </div>
             <div class="flex gap-2">
-              <Button label="+ Masuk" size="small" severity="success" text @click="openStockModal('IN')" />
-              <Button label="− Keluar" size="small" severity="danger" text :disabled="item.current_stock <= 0" @click="openStockModal('OUT')" />
+              <Button label="+ Stok Masuk" size="small" severity="success" outlined @click="openStockModal('IN')" />
+              <Button label="− Stok Keluar" size="small" severity="danger" outlined :disabled="item.current_stock <= 0" @click="openStockModal('OUT')" />
             </div>
           </div>
 
-          <div v-if="loadingStockHistory" class="py-12 text-center text-ink-400">
-            <i class="pi pi-spin pi-spinner text-xl text-acc-500" />
+          <div v-if="loadingStockHistory" class="py-12 text-center">
+            <i class="pi pi-spin pi-spinner text-xl text-indigo-500" />
           </div>
 
-          <div v-else-if="!stockTransactions.length" class="text-center py-10 border rounded-lg text-ink-400 flex flex-col items-center gap-2"
-               style="border-color: var(--line); background: var(--paper-2)">
-            <i class="pi pi-history text-3xl text-ink-500" />
-            <span class="text-[12.5px]">Belum ada catatan mutasi stok untuk barang ini.</span>
-            <Button label="Catat Stok Masuk Pertama" icon="pi pi-plus" size="small" outlined class="mt-1" @click="openStockModal('IN')" />
-          </div>
+          <EmptyState
+            v-else-if="!stockTransactions.length"
+            icon="pi pi-history"
+            title="Belum ada riwayat mutasi stok"
+            sub="Catat penerimaan barang pertama kali untuk menambah saldo stok fisik."
+          >
+            <Button label="Catat Stok Masuk Pertama" icon="pi pi-arrow-down-left" size="small" severity="success" class="mt-2" @click="openStockModal('IN')" />
+          </EmptyState>
 
           <div v-else class="flex flex-col gap-3">
             <div
               v-for="tx in stockTransactions"
               :key="tx.id"
-              class="p-4 rounded-xl border flex flex-col gap-2.5 shadow-xs transition-colors hover:border-acc-500/40"
-              style="background: var(--paper-2); border-color: var(--line)"
+              class="p-4 rounded-xl border flex flex-col gap-2.5 transition-colors"
+              style="background: var(--panel-2); border-color: var(--line)"
             >
               <div class="flex items-start justify-between gap-3 flex-wrap">
-                <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center gap-2.5 flex-wrap">
                   <span
-                    class="px-2 py-0.5 rounded text-[11px] font-bold border"
-                    :class="tx.type === 'IN' || tx.type === 'ADJUST+' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border-rose-500/30'"
+                    class="px-2.5 py-0.5 rounded text-[11px] font-bold border"
+                    :class="tx.type === 'IN' || tx.type === 'ADJUST+'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800'"
                   >
                     {{ tx.type === 'IN' ? 'Stok Masuk' : tx.type === 'OUT' ? 'Stok Keluar' : 'Penyesuaian' }}
                   </span>
-                  <span class="font-bold text-[14px]"
-                        :class="tx.type === 'IN' || tx.type === 'ADJUST+' ? 'text-emerald-400' : 'text-rose-400'">
+
+                  <span
+                    class="font-bold text-[14px]"
+                    :class="tx.type === 'IN' || tx.type === 'ADJUST+' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
+                  >
                     {{ tx.type === 'IN' || tx.type === 'ADJUST+' ? '+' : '−' }}{{ tx.quantity }} {{ tx.unit }}
                   </span>
-                  <span class="text-ink-400 text-[11.5px] t-mono">({{ tx.previous_stock }} ➔ {{ tx.new_stock }})</span>
+
+                  <span class="text-[11.5px] t-mono" style="color: var(--txt-dim)">
+                    ({{ tx.previous_stock }} ➔ {{ tx.new_stock }})
+                  </span>
                 </div>
-                <span class="text-[11.5px] text-ink-400 font-medium">{{ tx.timestamp }}</span>
+
+                <span class="text-[11.5px] font-medium" style="color: var(--txt-dim)">{{ tx.timestamp }}</span>
               </div>
 
-              <div class="flex items-center gap-3 text-[12px] text-ink-300 flex-wrap">
+              <div class="flex items-center gap-3 text-[12px] flex-wrap" style="color: var(--txt-dim)">
                 <span v-if="tx.received_by">
-                  Petugas / Penerima: <strong class="text-ink-100">{{ tx.received_by }}</strong>
+                  Petugas / Penerima: <strong style="color: var(--txt)">{{ tx.received_by }}</strong>
                 </span>
-                <span v-if="tx.notes" class="text-ink-400 italic">
+                <span v-if="tx.notes" class="italic" style="color: var(--txt)">
                   "{{ tx.notes }}"
                 </span>
               </div>
 
               <!-- Foto Bukti Geotag Transaksi -->
-              <div v-if="tx.photo_url" class="mt-1 pt-2 border-t border-line-soft flex items-center justify-between">
+              <div v-if="tx.photo_url" class="mt-1 pt-2 border-t flex items-center justify-between" style="border-color: var(--line)">
                 <button
-                  class="text-[11px] text-acc-500 hover:underline flex items-center gap-1.5 cursor-pointer font-medium"
+                  class="text-[11.5px] font-semibold text-indigo-500 hover:underline flex items-center gap-1.5 cursor-pointer"
                   @click="lightboxUrl = tx.photo_url; photoLightbox = true"
                 >
                   <i class="pi pi-camera text-xs" />
-                  <span>Lihat Foto Bukti Berstempel Geotag</span>
+                  <span>Lihat Foto Bukti Geotag</span>
                 </button>
-                <span class="text-[10px] text-sig-ok flex items-center gap-1">
-                  <i class="pi pi-check text-[9px]" /> Bukti GPS Tervalidasi
+                <span class="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                  <i class="pi pi-check-circle text-[10px]" /> Bukti GPS Tervalidasi
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Content Tab 2: Spesifikasi Lengkap -->
+        <!-- CONTENT TAB 2: Spesifikasi & Detail Pengadaan -->
         <div v-if="activeTab === 'spec'" class="p-5">
-          <div class="grid sm:grid-cols-2 gap-4 text-[12.5px]">
-            <div class="p-3 rounded-lg border flex flex-col gap-1" style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Merk / Pabrikan</span>
-              <span class="font-bold text-[13px]">{{ item.merk || '—' }}</span>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-[12.5px]">
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Merk / Pabrikan</span>
+              <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.merk || '—' }}</span>
             </div>
 
-            <div class="p-3 rounded-lg border flex flex-col gap-1" style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Model / Tipe</span>
-              <span class="font-bold text-[13px]">{{ item.type_model || '—' }}</span>
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Model / Tipe</span>
+              <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.type_model || '—' }}</span>
             </div>
 
-            <div class="p-3 rounded-lg border flex flex-col gap-1" style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Nomor Seri</span>
-              <span class="t-mono font-bold text-[13px]">{{ item.serial_number || '—' }}</span>
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Nomor Seri (Serial Number)</span>
+              <span class="t-mono font-bold text-[13px] text-indigo-500 dark:text-indigo-400">{{ item.serial_number || '—' }}</span>
             </div>
 
-            <div class="p-3 rounded-lg border flex flex-col gap-1" style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Tahun Pengadaan</span>
-              <span class="font-bold text-[13px]">{{ item.procurement_year || '—' }}</span>
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Tahun Pengadaan</span>
+              <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.procurement_year || '—' }}</span>
             </div>
 
-            <div class="p-3 rounded-lg border flex flex-col gap-1" style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Sumber Dana</span>
-              <span class="font-semibold">{{ item.funding_source || '—' }}</span>
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Sumber Dana</span>
+              <span class="font-semibold" style="color: var(--txt)">{{ item.funding_source || '—' }}</span>
             </div>
 
-            <div class="p-3 rounded-lg border flex flex-col gap-1" style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Distributor / Vendor</span>
-              <span class="font-semibold">{{ item.distributor || '—' }}</span>
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Distributor / Rekanan</span>
+              <span class="font-semibold" style="color: var(--txt)">{{ item.distributor || '—' }}</span>
             </div>
 
-            <div class="p-3 rounded-lg border flex flex-col gap-1 sm:col-span-2" style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Izin Edar AKL / AKD</span>
-              <span class="t-mono font-semibold text-[13px]">{{ item.akl_akd || '—' }}</span>
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1 sm:col-span-2 lg:col-span-3" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Izin Edar AKL / AKD</span>
+              <span class="t-mono font-semibold text-[13px]" style="color: var(--txt)">{{ item.akl_akd || '—' }}</span>
             </div>
 
-            <div v-if="item.description" class="p-3 rounded-lg border flex flex-col gap-1 sm:col-span-2"
-                 style="background: var(--paper-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold text-ink-400">Keterangan Tambahan</span>
-              <p class="text-ink-200 leading-relaxed">{{ item.description }}</p>
+            <div v-if="item.description" class="p-3.5 rounded-lg border flex flex-col gap-1 sm:col-span-2 lg:col-span-3"
+                 style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Catatan &amp; Keterangan Tambahan</span>
+              <p class="leading-relaxed text-[12px]" style="color: var(--txt)">{{ item.description }}</p>
             </div>
           </div>
         </div>
 
-        <!-- Content Tab 3: Riwayat Servis & Kalibrasi -->
+        <!-- CONTENT TAB 3: Riwayat Pemeliharaan & Servis -->
         <div v-if="activeTab === 'maintenance'" class="p-5 flex flex-col gap-4">
-          <div class="flex items-center justify-between">
-            <span class="font-bold text-[13px]">Catatan Pemeliharaan Aset</span>
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div class="font-bold text-[13px]" style="color: var(--txt)">Jadwal &amp; Log Servis Aset</div>
+              <div class="text-[11.5px]" style="color: var(--txt-dim)">Catatan perbaikan, servis berkala, dan masa kalibrasi alat</div>
+            </div>
             <Button
               label="+ Catat Servis / Kalibrasi"
               icon="pi pi-plus"
@@ -641,35 +713,41 @@ async function deleteMaintRecord(mId: string) {
             />
           </div>
 
-          <div v-if="loadingMaint" class="py-12 text-center text-ink-400">
-            <i class="pi pi-spin pi-spinner text-xl text-acc-500" />
+          <div v-if="loadingMaint" class="py-12 text-center">
+            <i class="pi pi-spin pi-spinner text-xl text-indigo-500" />
           </div>
 
-          <div v-else-if="!maintenanceList.length" class="text-center py-10 border rounded-lg text-ink-400 flex flex-col items-center gap-2"
-               style="border-color: var(--line); background: var(--paper-2)">
-            <i class="pi pi-wrench text-3xl text-ink-500" />
-            <span class="text-[12.5px]">Belum ada riwayat servis atau kalibrasi untuk barang ini.</span>
-            <Button label="Catat Sekarang" size="small" outlined class="mt-1" @click="showMaintModal = true" />
-          </div>
+          <EmptyState
+            v-else-if="!maintenanceList.length"
+            icon="pi pi-wrench"
+            title="Belum ada riwayat servis"
+            sub="Catat kegiatan pemeliharaan atau kalibrasi untuk memantau kondisi fisik aset."
+          >
+            <Button label="Catat Servis Pertama" icon="pi pi-plus" size="small" outlined class="mt-2" @click="showMaintModal = true" />
+          </EmptyState>
 
           <div v-else class="flex flex-col gap-3">
             <div
               v-for="m in maintenanceList"
               :key="m.id"
-              class="p-4 rounded-xl border flex flex-col gap-2 shadow-xs"
-              style="background: var(--paper-2); border-color: var(--line)"
+              class="p-4 rounded-xl border flex flex-col gap-2.5 shadow-xs"
+              style="background: var(--panel-2); border-color: var(--line)"
             >
               <div class="flex items-start justify-between gap-2 flex-wrap">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span class="px-2 py-0.5 rounded text-[11px] font-bold"
-                        :class="m.service_type === 'Kalibrasi' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' : 'bg-acc-500/20 text-acc-400 border border-acc-500/40'">
+                <div class="flex items-center gap-2.5 flex-wrap">
+                  <span class="px-2.5 py-0.5 rounded text-[11px] font-bold border"
+                        :class="m.service_type === 'Kalibrasi'
+                          ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800'
+                          : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800'">
                     {{ m.service_type }}
                   </span>
-                  <span class="font-bold text-[13px]">{{ m.service_date }}</span>
-                  <span v-if="m.vendor_or_technician" class="text-ink-400 text-[12px]">· Oleh: {{ m.vendor_or_technician }}</span>
+                  <span class="font-bold text-[13px]" style="color: var(--txt)">{{ m.service_date }}</span>
+                  <span v-if="m.vendor_or_technician" class="text-[12px]" style="color: var(--txt-dim)">
+                    · Oleh: <strong style="color: var(--txt)">{{ m.vendor_or_technician }}</strong>
+                  </span>
                 </div>
                 <div class="flex items-center gap-2">
-                  <span v-if="m.cost" class="t-num font-bold text-emerald-400 text-[12px]">
+                  <span v-if="m.cost" class="t-num font-bold text-emerald-600 dark:text-emerald-400 text-[12px]">
                     Rp {{ Number(m.cost).toLocaleString('id-ID') }}
                   </span>
                   <Button icon="pi pi-trash" text rounded size="small" severity="danger" v-tooltip.top="'Hapus'"
@@ -677,23 +755,23 @@ async function deleteMaintRecord(mId: string) {
                 </div>
               </div>
 
-              <p v-if="m.description" class="text-ink-200 text-[12px] leading-relaxed">
+              <p v-if="m.description" class="text-[12px] leading-relaxed" style="color: var(--txt)">
                 {{ m.description }}
               </p>
 
-              <div class="flex items-center justify-between text-[11px] pt-1.5 border-t" style="border-color: var(--line-soft)">
-                <div v-if="m.next_service_date" class="flex items-center gap-1.5 font-bold text-sig-ok">
-                  <i class="pi pi-calendar text-[10px]" />
+              <div class="flex items-center justify-between text-[11.5px] pt-2 border-t" style="border-color: var(--line)">
+                <div v-if="m.next_service_date" class="flex items-center gap-1.5 font-bold text-emerald-600 dark:text-emerald-400">
+                  <i class="pi pi-calendar text-[11px]" />
                   <span>Jatuh Tempo Berikutnya: {{ m.next_service_date }}</span>
                 </div>
                 <div v-else></div>
 
                 <button
                   v-if="m.photo_url"
-                  class="text-acc-500 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                  class="text-indigo-500 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                   @click="lightboxUrl = m.photo_url; photoLightbox = true"
                 >
-                  <i class="pi pi-image text-[10px]" /> Bukti Nota
+                  <i class="pi pi-image text-[11px]" /> Bukti Nota / Sertifikat
                 </button>
               </div>
             </div>
@@ -716,18 +794,18 @@ async function deleteMaintRecord(mId: string) {
         <div class="p-3 rounded-lg border text-[12px] flex items-center justify-between"
              :style="{ background: stockModalType === 'IN' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)', borderColor: 'var(--line)' }">
           <div>
-            <div class="text-[11px] text-ink-400">Barang:</div>
-            <div class="font-bold text-[13px]">{{ item?.name }}</div>
+            <div class="text-[11px]" style="color: var(--txt-dim)">Nama Barang:</div>
+            <div class="font-bold text-[13px]" style="color: var(--txt)">{{ item?.name }}</div>
           </div>
           <div class="text-right">
-            <div class="text-[11px] text-ink-400">Stok Saat Ini:</div>
-            <div class="font-bold text-[14px] text-acc-400">{{ item?.current_stock }} {{ item?.unit }}</div>
+            <div class="text-[11px]" style="color: var(--txt-dim)">Stok Saat Ini:</div>
+            <div class="font-bold text-[14px] text-indigo-500">{{ item?.current_stock }} {{ item?.unit }}</div>
           </div>
         </div>
 
         <div class="grid sm:grid-cols-2 gap-3">
           <label class="flex flex-col gap-1">
-            <span class="text-[11.5px] font-semibold text-ink-300">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
               Jumlah {{ stockModalType === 'IN' ? 'Masuk' : 'Keluar' }} ({{ item?.unit }}) *
             </span>
             <InputNumber
@@ -735,30 +813,30 @@ async function deleteMaintRecord(mId: string) {
               :min="1"
               :max="stockModalType === 'OUT' ? item?.current_stock : 999999"
               showButtons
-              class="w-full"
+              class="w-full !text-[12px]"
             />
           </label>
 
           <label class="flex flex-col gap-1">
-            <span class="text-[11.5px] font-semibold text-ink-300">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
               {{ stockModalType === 'IN' ? 'Petugas / Penerima' : 'Diberikan Kepada / Pemohon' }}
             </span>
             <InputText
               v-model="stockForm.received_by"
-              :placeholder="stockModalType === 'IN' ? 'Nama penerima barang' : 'Nama orang / ruangan pemakai'"
+              :placeholder="stockModalType === 'IN' ? 'Nama penerima barang' : 'Nama orang / ruangan pemohon'"
               class="w-full !text-[12px]"
             />
           </label>
 
           <label class="flex flex-col gap-1 sm:col-span-2">
-            <span class="text-[11.5px] font-semibold text-ink-300">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
               {{ stockModalType === 'IN' ? 'Sumber / Catatan Pengadaan' : 'Keperluan / Catatan Pemakaian' }}
             </span>
             <Textarea
               v-model="stockForm.notes"
               rows="2"
               autoResize
-              :placeholder="stockModalType === 'IN' ? 'Nomor invoice, sumber dana, atau keterangan tambahan' : 'Keperluan kegiatan, peruntukan ruangan, dll.'"
+              :placeholder="stockModalType === 'IN' ? 'Nomor invoice, sumber pengadaan, atau keterangan penerimaan...' : 'Keperluan kegiatan, peruntukan ruangan, dll...'"
               class="w-full !text-[12px]"
             />
           </label>
@@ -782,7 +860,7 @@ async function deleteMaintRecord(mId: string) {
           <Button label="Batal" size="small" severity="secondary" text @click="stockModalType = null" />
           <Button
             :label="stockModalType === 'IN' ? 'Simpan Stok Masuk' : 'Simpan Stok Keluar'"
-            :icon="stockModalType === 'IN' ? 'pi pi-check' : 'pi pi-check'"
+            icon="pi pi-check"
             size="small"
             :severity="stockModalType === 'IN' ? 'success' : 'danger'"
             :loading="submittingStock"
@@ -793,36 +871,36 @@ async function deleteMaintRecord(mId: string) {
     </Dialog>
 
     <!-- Modal Form: Catat Servis & Kalibrasi -->
-    <Dialog v-model:visible="showMaintModal" modal header="Catat Servis / Kalibrasi Aset" :style="{ width: '560px' }" class="p-fluid">
+    <Dialog v-model:visible="showMaintModal" modal header="Catat Pemeliharaan / Kalibrasi Aset" :style="{ width: '560px' }" class="p-fluid">
       <div class="flex flex-col gap-3 text-[12.5px] pt-1">
         <div class="grid sm:grid-cols-2 gap-3">
           <label class="flex flex-col gap-1">
-            <span class="text-[11px] font-semibold text-ink-400">Jenis Tindakan</span>
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Jenis Tindakan</span>
             <Select v-model="maintForm.service_type" :options="serviceTypeOptions" class="w-full !text-[12px]" />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-[11px] font-semibold text-ink-400">Tanggal Servis / Kalibrasi</span>
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Tanggal Servis</span>
             <InputText v-model="maintForm.service_date" type="date" class="w-full !text-[12px]" />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-[11px] font-semibold text-ink-400">Teknisi / Vendor</span>
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Teknisi / Vendor</span>
             <InputText v-model="maintForm.vendor_or_technician" placeholder="mis. PT Medika Solusi" class="w-full !text-[12px]" />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-[11px] font-semibold text-ink-400">Biaya (Rp)</span>
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Biaya (Rp)</span>
             <InputNumber v-model="maintForm.cost" :min="0" mode="currency" currency="IDR" locale="id-ID" class="w-full !text-[12px]" />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-[11px] font-semibold text-ink-400">Jadwal Kalibrasi Berikutnya</span>
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Jadwal Servis / Kalibrasi Berikutnya</span>
             <InputText v-model="maintForm.next_service_date" type="date" class="w-full !text-[12px]" />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-[11px] font-semibold text-ink-400">Update Kondisi Barang</span>
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Update Kondisi Fisik</span>
             <Select v-model="maintForm.update_condition" :options="conditionOptions" class="w-full !text-[12px]" />
           </label>
           <label class="flex flex-col gap-1 sm:col-span-2">
-            <span class="text-[11px] font-semibold text-ink-400">Keterangan / Hasil Pemeriksaan</span>
-            <Textarea v-model="maintForm.description" rows="2" placeholder="Nomor sertifikat kalibrasi atau rincian perbaikan" class="w-full !text-[12px]" />
+            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Keterangan / Hasil Pemeriksaan</span>
+            <Textarea v-model="maintForm.description" rows="2" placeholder="Nomor sertifikat kalibrasi atau rincian perbaikan..." class="w-full !text-[12px]" />
           </label>
           <div class="sm:col-span-2">
             <PhotoUploader
@@ -843,13 +921,13 @@ async function deleteMaintRecord(mId: string) {
     </Dialog>
 
     <!-- Modal Lightbox Foto -->
-    <Dialog v-model:visible="photoLightbox" modal header="Pratinjau Foto Berstempel Geotag" :style="{ width: '680px' }" class="p-fluid">
+    <Dialog v-model:visible="photoLightbox" modal header="Pratinjau Foto Berstempel Geotag" :style="{ width: '700px' }" class="p-fluid">
       <div v-if="lightboxUrl" class="flex flex-col gap-3">
         <div class="p-2 bg-black rounded-lg flex items-center justify-center">
           <img :src="lightboxUrl" alt="Foto Geotag" class="max-h-[75vh] object-contain rounded" />
         </div>
-        <div class="flex items-center justify-between pt-2 border-t border-line">
-          <span class="text-xs text-ink-400">Berkas gambar berstempel GPS Map Camera</span>
+        <div class="flex items-center justify-between pt-2 border-t" style="border-color: var(--line)">
+          <span class="text-xs" style="color: var(--txt-dim)">Berkas gambar berstempel GPS Map Camera</span>
           <div class="flex gap-2">
             <Button
               label="Unduh Foto (JPG)"
