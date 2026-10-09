@@ -1746,7 +1746,7 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 		chatID = cb.Message.Message.Chat.ID
 		msgID = cb.Message.Message.ID
 	}
-	if chatID == 0 && cb.From != nil {
+	if chatID == 0 && cb.From.ID != 0 {
 		chatID = cb.From.ID
 	}
 	if chatID == 0 {
@@ -1757,7 +1757,11 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 	if cb.Message.Message != nil {
 		chatObj = &cb.Message.Message.Chat
 	}
-	b.autoRegisterSubscriber(ctx, chatObj, &cb.From)
+	var fromObj *models.User
+	if cb.From.ID != 0 {
+		fromObj = &cb.From
+	}
+	b.autoRegisterSubscriber(ctx, chatObj, fromObj)
 
 	if !b.allowed(chatID) {
 		b.editMessage(ctx, bt, chatID, msgID, "⚠️ Akun Anda belum terdaftar sebagai subscriber aktif.", b.buildBackKeyboard())
