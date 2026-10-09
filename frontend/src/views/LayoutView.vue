@@ -33,6 +33,7 @@ const NAV: { section: string; items: Nav[] }[] = [
   ]},
   { section: 'Administrasi', items: [
     { label: 'Pengguna', icon: 'pi pi-users', to: '/users', admin: true },
+    { label: 'Kelola Foto', icon: 'pi pi-images', to: '/photos', admin: true },
     { label: 'Audit Log', icon: 'pi pi-shield', to: '/audit', admin: true },
     { label: 'Telegram', icon: 'pi pi-send', to: '/telegram', admin: true },
   ]},
@@ -53,6 +54,7 @@ const TITLES: Record<string, [string, string]> = {
   '/barcode': ['QR Generator', 'Cetak label QR untuk barang'],
   '/adjust/bulk': ['Opname Massal', 'Sesuaikan stok banyak barang via CSV'],
   '/users': ['Pengguna', 'Akun dan hak akses sistem'],
+  '/photos': ['Kelola Foto', 'Deteksi foto yatim dan audit ruang penyimpanan foto'],
   '/audit': ['Audit Log', 'Jejak perubahan data oleh trigger basis data'],
   '/telegram': ['Telegram', 'Konfigurasi bot notifikasi Telegram'],
   '/password': ['Ganti Password', 'Perbarui kredensial akun Anda'],

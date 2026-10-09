@@ -194,6 +194,9 @@ func main() {
 	api.GET("/report.pdf", rptH.PDF)
 
 	api.POST("/upload", upH.Upload)
+	api.GET("/photos", upH.ListPhotos)
+	api.DELETE("/photos/:filename", upH.DeletePhoto)
+	api.POST("/photos/clean-orphaned", upH.CleanOrphaned)
 	api.POST("/adjust/bulk", bulkH.BulkAdjust)
 
 	// Telegram settings (admin only)

@@ -22,6 +22,7 @@ const router = createRouter({
         { path: 'barcode', name: 'barcode', component: () => import('@/views/BarcodeView.vue') },
         { path: 'adjust/bulk', name: 'adjust-bulk', component: () => import('@/views/AdjustBulkView.vue') },
         { path: 'users', name: 'users', component: () => import('@/views/UsersView.vue'), meta: { admin: true } },
+        { path: 'photos', name: 'photos', component: () => import('@/views/PhotosView.vue'), meta: { admin: true } },
         { path: 'audit', name: 'audit', component: () => import('@/views/AuditView.vue'), meta: { admin: true } },
         { path: 'telegram', name: 'telegram', component: () => import('@/views/TelegramView.vue'), meta: { admin: true } },
         { path: 'password', name: 'password', component: () => import('@/views/PasswordView.vue') },

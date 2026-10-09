@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/disintegration/imaging"
@@ -227,6 +229,326 @@ func DeleteUploadedPhoto(photoURL string) {
 	_ = os.Remove(filepath.Join(dir, name))
 	_ = os.Remove(filepath.Join("uploads", name))
 	slog.Info("deleted uploaded photo file", "name", name)
+}
+
+type PhotoReference struct {
+	Type  string `json:"type"` // "item", "transaction", "maintenance"
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Sub   string `json:"sub"`
+}
+
+type PhotoItem struct {
+	Filename   string           `json:"filename"`
+	URL        string           `json:"url"`
+	Size       int64            `json:"size"`
+	ModTime    time.Time        `json:"mod_time"`
+	IsOrphan   bool             `json:"is_orphan"`
+	References []PhotoReference `json:"references"`
+}
+
+type PhotoStats struct {
+	TotalFiles  int   `json:"total_files"`
+	TotalSize   int64 `json:"total_size"`
+	UsedFiles   int   `json:"used_files"`
+	UsedSize    int64 `json:"used_size"`
+	OrphanFiles int   `json:"orphan_files"`
+	OrphanSize  int64 `json:"orphan_size"`
+}
+
+type diskFileInfo struct {
+	name    string
+	size    int64
+	modTime time.Time
+}
+
+func (h *UploadHandler) getPhysicalFiles(ctx context.Context) map[string]diskFileInfo {
+	result := make(map[string]diskFileInfo)
+
+	dirs := []string{getUploadDir(), "uploads"}
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			result[e.Name()] = diskFileInfo{
+				name:    e.Name(),
+				size:    info.Size(),
+				modTime: info.ModTime(),
+			}
+		}
+	}
+
+	if !h.useDisk && h.minio != nil {
+		objCh := h.minio.ListObjects(ctx, h.bucket, minio.ListObjectsOptions{Recursive: true})
+		for obj := range objCh {
+			if obj.Err != nil {
+				continue
+			}
+			name := filepath.Base(obj.Key)
+			if name == "" || name == "." {
+				continue
+			}
+			result[name] = diskFileInfo{
+				name:    name,
+				size:    obj.Size,
+				modTime: obj.LastModified,
+			}
+		}
+	}
+
+	return result
+}
+
+func (h *UploadHandler) getDBReferences(ctx context.Context) map[string][]PhotoReference {
+	refMap := make(map[string][]PhotoReference)
+
+	// 1. inventory_items
+	rows1, err1 := h.pool.Query(ctx, `
+		SELECT id::text, name, COALESCE(sku, ''), photo_url
+		FROM inventory_items
+		WHERE photo_url IS NOT NULL AND photo_url != ''
+	`)
+	if err1 == nil {
+		defer rows1.Close()
+		for rows1.Next() {
+			var id, name, sku, photoURL string
+			if err := rows1.Scan(&id, &name, &sku, &photoURL); err == nil {
+				base := filepath.Base(photoURL)
+				if base != "" && base != "." {
+					refMap[base] = append(refMap[base], PhotoReference{
+						Type:  "item",
+						ID:    id,
+						Title: name,
+						Sub:   "Barang · SKU: " + sku,
+					})
+				}
+			}
+		}
+	}
+
+	// 2. stock_transactions
+	rows2, err2 := h.pool.Query(ctx, `
+		SELECT t.id::text, COALESCE(i.name, 'Barang'), COALESCE(t.type, 'Mutasi'), t.photo_url
+		FROM stock_transactions t
+		LEFT JOIN inventory_items i ON t.item_id = i.id
+		WHERE t.photo_url IS NOT NULL AND t.photo_url != ''
+	`)
+	if err2 == nil {
+		defer rows2.Close()
+		for rows2.Next() {
+			var id, itemName, txType, photoURL string
+			if err := rows2.Scan(&id, &itemName, &txType, &photoURL); err == nil {
+				base := filepath.Base(photoURL)
+				if base != "" && base != "." {
+					refMap[base] = append(refMap[base], PhotoReference{
+						Type:  "transaction",
+						ID:    id,
+						Title: itemName,
+						Sub:   "Riwayat Stok: " + txType,
+					})
+				}
+			}
+		}
+	}
+
+	// 3. item_maintenances
+	rows3, err3 := h.pool.Query(ctx, `
+		SELECT m.id::text, COALESCE(i.name, 'Aset'), m.service_type, m.photo_url
+		FROM item_maintenances m
+		LEFT JOIN inventory_items i ON m.item_id = i.id
+		WHERE m.photo_url IS NOT NULL AND m.photo_url != ''
+	`)
+	if err3 == nil {
+		defer rows3.Close()
+		for rows3.Next() {
+			var id, itemName, sType, photoURL string
+			if err := rows3.Scan(&id, &itemName, &sType, &photoURL); err == nil {
+				base := filepath.Base(photoURL)
+				if base != "" && base != "." {
+					refMap[base] = append(refMap[base], PhotoReference{
+						Type:  "maintenance",
+						ID:    id,
+						Title: itemName,
+						Sub:   "Pemeliharaan: " + sType,
+					})
+				}
+			}
+		}
+	}
+
+	return refMap
+}
+
+func (h *UploadHandler) ListPhotos(c *gin.Context) {
+	ctx := c.Request.Context()
+	files := h.getPhysicalFiles(ctx)
+	refMap := h.getDBReferences(ctx)
+
+	var allPhotos []PhotoItem
+	var stats PhotoStats
+	stats.TotalFiles = len(files)
+
+	for _, f := range files {
+		stats.TotalSize += f.size
+		refs := refMap[f.name]
+		isOrphan := len(refs) == 0
+
+		if isOrphan {
+			stats.OrphanFiles++
+			stats.OrphanSize += f.size
+		} else {
+			stats.UsedFiles++
+			stats.UsedSize += f.size
+		}
+
+		allPhotos = append(allPhotos, PhotoItem{
+			Filename:   f.name,
+			URL:        "/api/uploads/" + f.name,
+			Size:       f.size,
+			ModTime:    f.modTime,
+			IsOrphan:   isOrphan,
+			References: refs,
+		})
+	}
+
+	sort.Slice(allPhotos, func(i, j int) bool {
+		return allPhotos[i].ModTime.After(allPhotos[j].ModTime)
+	})
+
+	q := strings.ToLower(strings.TrimSpace(c.Query("q")))
+	status := c.DefaultQuery("status", "all")
+
+	var filtered []PhotoItem
+	for _, p := range allPhotos {
+		if status == "orphan" && !p.IsOrphan {
+			continue
+		}
+		if status == "used" && p.IsOrphan {
+			continue
+		}
+		if q != "" {
+			match := strings.Contains(strings.ToLower(p.Filename), q)
+			if !match {
+				for _, r := range p.References {
+					if strings.Contains(strings.ToLower(r.Title), q) || strings.Contains(strings.ToLower(r.Sub), q) {
+						match = true
+						break
+					}
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		filtered = append(filtered, p)
+	}
+
+	total := len(filtered)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "24"))
+	if perPage < 1 {
+		perPage = 24
+	}
+
+	start := (page - 1) * perPage
+	end := start + perPage
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	paged := filtered[start:end]
+	if paged == nil {
+		paged = []PhotoItem{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"stats":    stats,
+		"data":     paged,
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+	})
+}
+
+func (h *UploadHandler) DeletePhoto(c *gin.Context) {
+	name := filepath.Base(c.Param("filename"))
+	if name == "" || name == "." || name == "/" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "nama file tidak valid"})
+		return
+	}
+
+	dir := getUploadDir()
+	_ = os.Remove(filepath.Join(dir, name))
+	_ = os.Remove(filepath.Join("uploads", name))
+
+	if !h.useDisk && h.minio != nil {
+		_ = h.minio.RemoveObject(c.Request.Context(), h.bucket, name, minio.RemoveObjectOptions{})
+	}
+
+	slog.Info("photo explicitly deleted by user", "filename", name)
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Foto berhasil dihapus dari penyimpanan"})
+}
+
+func (h *UploadHandler) CleanOrphaned(c *gin.Context) {
+	ctx := c.Request.Context()
+	files := h.getPhysicalFiles(ctx)
+	refMap := h.getDBReferences(ctx)
+
+	var deletedCount int
+	var freedBytes int64
+
+	dir := getUploadDir()
+	for _, f := range files {
+		if len(refMap[f.name]) == 0 {
+			_ = os.Remove(filepath.Join(dir, f.name))
+			_ = os.Remove(filepath.Join("uploads", f.name))
+			if !h.useDisk && h.minio != nil {
+				_ = h.minio.RemoveObject(ctx, h.bucket, f.name, minio.RemoveObjectOptions{})
+			}
+			deletedCount++
+			freedBytes += f.size
+		}
+	}
+
+	slog.Info("cleaned orphaned photos", "count", deletedCount, "freed_bytes", freedBytes)
+	c.JSON(http.StatusOK, gin.H{
+		"success":       true,
+		"deleted_count": deletedCount,
+		"freed_bytes":   freedBytes,
+		"message":       fmt.Sprintf("%d foto tidak terpakai (%s) berhasil dibersihkan", deletedCount, formatBytes(freedBytes)),
+	})
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string, clientStamped bool) ([]byte, error) {
