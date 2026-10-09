@@ -289,11 +289,11 @@ func stampGeoCard(base *image.NRGBA, geo GeoTag, petugas string) *image.NRGBA {
 		ty += lh
 	}
 
-	scale := b.Dx() / 450
-	if scale < 1 {
-		scale = 1
-	} else if scale > 3 {
-		scale = 3
+	scale := b.Dx() / 320
+	if scale < 2 {
+		scale = 2
+	} else if scale > 4 {
+		scale = 4
 	}
 
 	scaledCard := card

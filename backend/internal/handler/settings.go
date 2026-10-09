@@ -39,7 +39,7 @@ func newTelegramBot(token, apiURL string) (*bot.Bot, error) {
 	}
 	opts := []bot.Option{
 		bot.WithSkipGetMe(),
-		bot.WithHTTPClient(httpClient),
+		bot.WithHTTPClient(20*time.Second, httpClient),
 	}
 	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
 	if apiURL != "" {

@@ -410,43 +410,49 @@ async function stampGpsMapCamera(
         addLog('Mengunduh thumbnail peta OSM...', 'info')
         const tileImg = await loadTileBlobImage(geoCoords.lat, geoCoords.lng)
 
-        // Large, bold, highly legible GPS Map Camera fonts
+        // Large, bold, highly legible GPS Map Camera fonts (matches real GPS Map Camera overlay)
         currentStepText.value = 'Mengecap watermark GPS Map Camera...'
-        addLog('Merender watermark GPS Map Camera (tulisan tebal & terbaca jelas)...', 'info')
+        addLog('Merender watermark GPS Map Camera (tulisan besar & tajam)...', 'info')
 
-        const margin = Math.round(width * 0.02)
-        const cardW = Math.min(width - margin * 2, Math.round(width * 0.94))
-        const cardX = Math.round((width - cardW) / 2)
+        const margin = Math.round(width * 0.015)
+        const cardW = width - margin * 2
+        const cardX = margin
 
-        const padX = Math.round(22 * (width / 1440))
+        const padX = Math.round(20 * (width / 1440))
         const padY = Math.round(18 * (width / 1440))
 
-        // Large legible fonts matching real GPS Map Camera banner
-        const titleSize = Math.max(26, Math.round(width * 0.026))
-        const bodySize = Math.max(17, Math.round(width * 0.0165))
-        const metaSize = Math.max(17, Math.round(width * 0.0165))
-        const badgeSize = Math.max(15, Math.round(width * 0.014))
+        // High-impact font sizes matching GPS Map Camera app
+        const titleSize = Math.max(32, Math.round(width * 0.038))
+        const bodySize = Math.max(18, Math.round(width * 0.0195))
+        const metaSize = Math.max(18, Math.round(width * 0.0195))
+        const badgeSize = Math.max(16, Math.round(width * 0.016))
 
-        const titleLineH = Math.round(titleSize * 1.3)
-        const bodyLineH = Math.round(bodySize * 1.38)
-        const metaLineH = Math.round(metaSize * 1.38)
+        const titleLineH = Math.round(titleSize * 1.25)
+        const bodyLineH = Math.round(bodySize * 1.34)
+        const metaLineH = Math.round(metaSize * 1.35)
 
         // Measure text content
-        ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-        const approxMapSize = Math.max(160, Math.round(width * 0.17))
+        const approxMapSize = Math.max(180, Math.round(width * 0.22))
         const textAreaW = cardW - approxMapSize - padX * 3
 
-        const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
-        const textContentH = titleLineH + addressLines.length * bodyLineH + metaLineH * 2 + 14
+        ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
+        const titleLines = wrapText(ctx, titleText, textAreaW).slice(0, 2)
 
-        const mapSize = Math.max(approxMapSize, Math.round(textContentH * 0.94))
+        ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
+        const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 3)
+
+        const titleBlockH = titleLines.length * titleLineH
+        const addressBlockH = addressLines.length * bodyLineH
+        const textContentH = titleBlockH + 6 + addressBlockH + 6 + metaLineH * 2 + 6
+
+        const mapSize = Math.max(approxMapSize, Math.round(textContentH * 0.95))
         const cardH = Math.max(mapSize, textContentH) + padY * 2
         const cardY = height - cardH - margin
 
-        // Draw Card Background
+        // Draw Card Background (semi-translucent deep charcoal)
         ctx.save()
-        ctx.fillStyle = 'rgba(22, 22, 24, 0.90)'
-        const radius = Math.round(14 * (width / 1440))
+        ctx.fillStyle = 'rgba(18, 20, 24, 0.92)'
+        const radius = Math.round(12 * (width / 1440))
         ctx.beginPath()
         ctx.moveTo(cardX + radius, cardY)
         ctx.lineTo(cardX + cardW - radius, cardY)
@@ -466,21 +472,27 @@ async function stampGpsMapCamera(
         ctx.font = `600 ${badgeSize}px system-ui, -apple-system, sans-serif`
         const badgeText = 'GPS Map Camera'
         const badgeTextW = ctx.measureText(badgeText).width
-        const badgeIconSize = Math.round(badgeSize * 1.25)
+        const badgeIconSize = Math.round(badgeSize * 1.3)
         const badgeTotalW = badgeIconSize + badgeTextW + 8
         const badgeX = cardX + cardW - padX - badgeTotalW
-        const badgeY = cardY + padY * 0.7
+        const badgeY = cardY + padY * 0.75
 
-        // Cyan Camera Icon
-        ctx.fillStyle = '#06b6d4'
+        // Cyan camera icon background
+        ctx.fillStyle = '#0284c7'
         ctx.fillRect(badgeX, badgeY - 1, badgeIconSize, badgeIconSize)
+        ctx.fillStyle = '#38bdf8'
+        ctx.beginPath()
+        ctx.arc(badgeX + badgeIconSize / 2, badgeY - 1 + badgeIconSize / 2, badgeIconSize * 0.32, 0, Math.PI * 2)
+        ctx.fill()
         ctx.fillStyle = '#ffffff'
-        ctx.fillRect(badgeX + 2, badgeY + 1, badgeIconSize - 4, badgeIconSize - 4)
+        ctx.beginPath()
+        ctx.arc(badgeX + badgeIconSize / 2, badgeY - 1 + badgeIconSize / 2, badgeIconSize * 0.16, 0, Math.PI * 2)
+        ctx.fill()
 
         // Badge Text
-        ctx.fillStyle = '#f3f4f6'
+        ctx.fillStyle = '#ffffff'
         ctx.textBaseline = 'top'
-        ctx.fillText(badgeText, badgeX + badgeIconSize + 5, badgeY - 1)
+        ctx.fillText(badgeText, badgeX + badgeIconSize + 6, badgeY)
         ctx.restore()
 
         // Draw Map Box (Left column)
@@ -512,46 +524,56 @@ async function stampGpsMapCamera(
         drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2 + Math.round(mapSize * 0.05), Math.round(mapSize * 0.22))
 
         // Google watermark at bottom of map
-        ctx.font = `bold ${Math.max(10, Math.round(12 * (width / 1440)))}px system-ui, sans-serif`
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
-        ctx.fillText('Google', mapX + 6, mapY + mapSize - 5)
+        ctx.font = `bold ${Math.max(14, Math.round(16 * (width / 1440)))}px system-ui, sans-serif`
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+        ctx.fillText('Google', mapX + 8, mapY + mapSize - 6)
         ctx.fillStyle = '#ffffff'
-        ctx.fillText('Google', mapX + 5, mapY + mapSize - 6)
+        ctx.fillText('Google', mapX + 7, mapY + mapSize - 7)
         ctx.restore()
 
         // Draw Text Block (Right column)
         const textX = mapX + mapSize + padX
         let textY = cardY + padY
 
-        // 1. Title Header + Indonesian Flag
+        // 1. Title Header (Large & Bold) + Indonesian Flag
         ctx.save()
-        ctx.font = `bold ${titleSize}px system-ui, -apple-system, sans-serif`
+        ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#ffffff'
         ctx.textBaseline = 'top'
-        ctx.fillText(titleText, textX, textY)
-        const titleW = ctx.measureText(titleText).width
-        const flagW = Math.round(titleSize * 1.05)
-        const flagH = Math.round(titleSize * 0.7)
-        drawIndonesianFlag(ctx, textX + titleW + 8, textY + Math.round((titleSize - flagH) / 2), flagW, flagH)
-        textY += titleLineH + 4
+        for (let i = 0; i < titleLines.length; i++) {
+          const line = titleLines[i]
+          ctx.fillText(line, textX, textY)
+          if (i === titleLines.length - 1) {
+            const lw = ctx.measureText(line).width
+            const flagW = Math.round(titleSize * 1.1)
+            const flagH = Math.round(titleSize * 0.72)
+            drawIndonesianFlag(ctx, textX + lw + 10, textY + Math.round((titleSize - flagH) / 2), flagW, flagH)
+          }
+          textY += titleLineH
+        }
+        textY += 6
 
-        // 2. Full Detailed Address (wrapped 1-2 lines)
+        // 2. Full Detailed Address (wrapped 1-3 lines)
         ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#e2e8f0'
+        ctx.fillStyle = '#f1f5f9'
         for (const line of addressLines) {
           ctx.fillText(line, textX, textY)
           textY += bodyLineH
         }
-        textY += 3
+        textY += 6
 
-        // 3. Coordinates
-        ctx.font = `600 ${metaSize}px ui-monospace, SFMono-Regular, monospace`
+        // 3. Coordinates (Crisp Monospace)
+        ctx.font = `600 ${metaSize}px ui-monospace, SFMono-Regular, system-ui, monospace`
         ctx.fillStyle = '#ffffff'
         ctx.fillText(`Lat ${geoCoords.lat.toFixed(6)}° Long ${geoCoords.lng.toFixed(6)}°`, textX, textY)
         textY += metaLineH
 
         // 4. Timestamp
         const dateStr = formatGpsDate(new Date())
+        ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
+        ctx.fillStyle = '#e2e8f0'
+        ctx.fillText(dateStr, textX, textY)
+        ctx.restore()
         ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#cbd5e1'
         ctx.fillText(dateStr, textX, textY)

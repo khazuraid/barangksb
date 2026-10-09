@@ -67,7 +67,7 @@ func (b *Bot) Start(ctx context.Context) {
 	}
 	opts := []bot.Option{
 		bot.WithSkipGetMe(),
-		bot.WithHTTPClient(httpClient),
+		bot.WithHTTPClient(30*time.Second, httpClient),
 	}
 	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
 	if apiURL != "" {
