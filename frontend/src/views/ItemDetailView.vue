@@ -250,7 +250,8 @@ async function deleteMaintRecord(mId: string) {
     <!-- Top Action Navigation Bar -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <button
-        class="text-[12.5px] font-semibold text-ink-300 hover:text-ink-100 flex items-center gap-1.5 transition-colors cursor-pointer py-1.5 px-2 rounded-lg hover:bg-paper-2"
+        class="text-[12.5px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer py-1.5 px-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/50"
+        style="color: var(--txt-dim)"
         @click="router.push('/items')"
       >
         <i class="pi pi-arrow-left text-[11px]" />
@@ -295,16 +296,16 @@ async function deleteMaintRecord(mId: string) {
     <div v-else-if="item" class="flex flex-col gap-4">
       <!-- 1. Header Banner Card -->
       <div
-        class="panel p-5 rounded-xl border flex flex-col gap-2.5 shadow-md"
-        style="background: var(--paper-1); border-color: var(--line)"
+        class="panel p-5 rounded-xl border flex flex-col gap-2.5 shadow-xs"
+        style="background: var(--panel); border-color: var(--line)"
       >
         <div class="flex items-center gap-2 flex-wrap">
-          <span class="t-mono text-[12px] font-bold text-acc-500 bg-acc-500/10 px-2.5 py-0.5 rounded border border-acc-500/30">
+          <span class="t-mono text-[12px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
             {{ item.sku }}
           </span>
           <span
             class="px-2.5 py-0.5 rounded text-[11px] font-bold border"
-            :class="item.track_stock !== false ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' : 'bg-blue-500/10 text-blue-300 border-blue-500/30'"
+            :class="item.track_stock !== false ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'"
           >
             {{ item.track_stock !== false ? 'Barang Stok / Konsumabel' : 'Aset Tetap / Unit Mandiri' }}
           </span>
@@ -313,16 +314,16 @@ async function deleteMaintRecord(mId: string) {
           <Tag v-else severity="danger" value="TIDAK TERSEDIA" class="!text-[10px]" />
         </div>
 
-        <h1 class="text-2xl sm:text-3xl font-extrabold leading-tight tracking-tight break-words text-ink-100">
+        <h1 class="text-2xl sm:text-3xl font-extrabold leading-tight tracking-tight break-words" style="color: var(--txt)">
           {{ item.name }}
         </h1>
 
-        <div class="text-[12.5px] text-ink-400 flex items-center gap-3 flex-wrap pt-1">
-          <span>Kategori: <strong class="text-ink-200">{{ item.category }}</strong></span>
+        <div class="text-[12.5px] flex items-center gap-3 flex-wrap pt-1" style="color: var(--txt-dim)">
+          <span>Kategori: <strong style="color: var(--txt)">{{ item.category }}</strong></span>
           <span>·</span>
           <span class="flex items-center gap-1">
-            <i class="pi pi-map-marker text-acc-500 text-xs" />
-            Ruangan: <strong class="text-ink-200">{{ item.location }}</strong>
+            <i class="pi pi-map-marker text-indigo-600 dark:text-indigo-400 text-xs" />
+            Ruangan: <strong style="color: var(--txt)">{{ item.location }}</strong>
           </span>
         </div>
       </div>

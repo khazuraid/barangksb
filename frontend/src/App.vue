@@ -3,10 +3,10 @@ import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
+import { useThemeStore } from '@/stores/theme'
 
-// The app is dark-only: PrimeVue's darkModeSelector is body.dark, so the class
-// must exist before PrimeVue styles its overlays (dialogs, toasts, menus).
-onMounted(() => document.body.classList.add('dark'))
+const theme = useThemeStore()
+onMounted(() => theme.apply())
 </script>
 
 <template>

@@ -130,21 +130,35 @@ function exportFiltered() {
     </PageHeader>
 
     <!-- Quick Metric KPI Strip -->
-    <div
-      class="grid grid-cols-3 gap-px mb-4 rounded-xl overflow-hidden border max-w-xl shadow-xs"
-      style="border-color: var(--line); background: var(--line)"
-    >
-      <div class="px-4 py-3" style="background: var(--panel)">
-        <div class="t-label">Unit Masuk (hal. ini)</div>
-        <div class="t-num text-[22px] font-bold mt-1 text-sig-ok">+{{ summary.in }}</div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 max-w-2xl">
+      <div class="panel p-3.5 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Unit Masuk</div>
+          <div class="t-num text-[22px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">+{{ summary.in }}</div>
+        </div>
+        <div class="w-8 h-8 rounded-lg grid place-items-center bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs">
+          <i class="pi pi-arrow-down-left" />
+        </div>
       </div>
-      <div class="px-4 py-3" style="background: var(--panel)">
-        <div class="t-label">Unit Keluar (hal. ini)</div>
-        <div class="t-num text-[22px] font-bold mt-1 text-sig-bad">−{{ summary.out }}</div>
+
+      <div class="panel p-3.5 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Unit Keluar</div>
+          <div class="t-num text-[22px] font-bold text-rose-600 dark:text-rose-400 mt-0.5">−{{ summary.out }}</div>
+        </div>
+        <div class="w-8 h-8 rounded-lg grid place-items-center bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs">
+          <i class="pi pi-arrow-up-right" />
+        </div>
       </div>
-      <div class="px-4 py-3" style="background: var(--panel)">
-        <div class="t-label">Baris Opname</div>
-        <div class="t-num text-[22px] font-bold mt-1 text-acc-500">{{ summary.adj }}</div>
+
+      <div class="panel p-3.5 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Baris Opname</div>
+          <div class="t-num text-[22px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">{{ summary.adj }}</div>
+        </div>
+        <div class="w-8 h-8 rounded-lg grid place-items-center bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 text-xs">
+          <i class="pi pi-sliders-h" />
+        </div>
       </div>
     </div>
 
@@ -154,7 +168,7 @@ function exportFiltered() {
         <InputText
           v-model="sku"
           placeholder="Cari SKU / nama…"
-          class="!text-[12px] !py-1.5 w-[160px]"
+          class="!text-[12.5px] !py-1.5 w-[180px]"
           @keyup.enter="fetchTx(true)"
         />
         <Select
@@ -162,7 +176,7 @@ function exportFiltered() {
           :options="typeOptions"
           optionLabel="label"
           optionValue="value"
-          class="!text-[12px] w-[170px]"
+          class="!text-[12.5px] w-[180px]"
           @change="fetchTx(true)"
         />
         <Button icon="pi pi-search" size="small" severity="secondary" outlined @click="fetchTx(true)" />
@@ -181,53 +195,53 @@ function exportFiltered() {
       <div v-else class="overflow-x-auto">
         <table class="w-full text-[12.5px]">
           <thead>
-            <tr class="text-left" style="background: var(--paper-2)">
-              <th class="t-label px-4 py-2.5 w-[170px]">Waktu</th>
-              <th class="t-label px-4 py-2.5 w-[120px]">Jenis</th>
-              <th class="t-label px-4 py-2.5">Barang</th>
-              <th class="t-label px-4 py-2.5 w-[120px] text-right">Perubahan</th>
-              <th class="t-label px-4 py-2.5 w-[130px] text-right">Stok</th>
-              <th class="t-label px-4 py-2.5 w-[60px]"></th>
+            <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[170px]" style="color: var(--txt-dim)">Waktu</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[120px]" style="color: var(--txt-dim)">Jenis</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Barang</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[120px] text-right" style="color: var(--txt-dim)">Perubahan</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px] text-right" style="color: var(--txt-dim)">Stok</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[60px]" style="color: var(--txt-dim)"></th>
             </tr>
           </thead>
-          <tbody class="divide-y" style="border-color: var(--line-soft)">
+          <tbody class="divide-y" style="border-color: var(--line)">
             <template v-for="t in txs" :key="t.id">
               <tr
-                class="hover:bg-paper-2 transition-colors cursor-pointer"
+                class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                 @click="expandedTx = expandedTx === t.id ? null : t.id"
               >
-                <td class="px-4 py-2.5 whitespace-nowrap" style="color: var(--txt-dim)">{{ t.timestamp }}</td>
-                <td class="px-4 py-2.5"><StatusChip :kind="t.type" /></td>
-                <td class="px-4 py-2.5">
-                  <div class="flex items-center gap-1.5 font-semibold">
-                    <span>{{ t.item_name }}</span>
+                <td class="px-4 py-3 whitespace-nowrap" style="color: var(--txt-dim)">{{ t.timestamp }}</td>
+                <td class="px-4 py-3"><StatusChip :kind="t.type" /></td>
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-2 font-semibold">
+                    <span style="color: var(--txt)">{{ t.item_name }}</span>
                     <button
                       v-if="t.photo_url"
-                      class="inline-flex text-acc-500 hover:text-acc-400 cursor-pointer"
+                      class="inline-flex text-indigo-600 dark:text-indigo-400 hover:opacity-80 cursor-pointer"
                       title="Lihat foto bukti geotag"
                       @click.stop="lightboxUrl = t.photo_url; photoLightbox = true"
                     >
-                      <i class="pi pi-camera text-[11px]" />
+                      <i class="pi pi-camera text-[12px]" />
                     </button>
                   </div>
-                  <div class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ t.item_sku }}</div>
+                  <div class="t-mono text-[11px] mt-0.5" style="color: var(--txt-dim)">{{ t.item_sku }}</div>
                 </td>
-                <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                <td class="px-4 py-3 text-right whitespace-nowrap">
                   <span
                     class="t-num font-bold"
-                    :class="t.type === 'IN' || t.type === 'ADJUST+' ? 'text-sig-ok' : 'text-sig-bad'"
+                    :class="t.type === 'IN' || t.type === 'ADJUST+' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
                   >
                     {{ t.type === 'IN' || t.type === 'ADJUST+' ? '+' : '−' }}{{ t.quantity }} {{ t.unit }}
                   </span>
                 </td>
-                <td class="px-4 py-2.5 text-right t-num whitespace-nowrap" style="color: var(--txt-dim)">
+                <td class="px-4 py-3 text-right t-num whitespace-nowrap" style="color: var(--txt-dim)">
                   {{ t.previous_stock }}
-                  <i class="pi pi-arrow-right text-[9px] mx-0.5" />
-                  <span class="font-semibold" style="color: var(--txt)">{{ t.new_stock }}</span>
+                  <i class="pi pi-arrow-right text-[9px] mx-1" />
+                  <span class="font-bold" style="color: var(--txt)">{{ t.new_stock }}</span>
                 </td>
-                <td class="px-4 py-2.5 text-right">
+                <td class="px-4 py-3 text-right">
                   <i
-                    class="pi text-[10px]"
+                    class="pi text-[11px]"
                     :class="expandedTx === t.id ? 'pi-chevron-up' : 'pi-chevron-down'"
                     style="color: var(--txt-dim)"
                   />
@@ -236,32 +250,32 @@ function exportFiltered() {
 
               <!-- Expanded Details -->
               <tr v-if="expandedTx === t.id">
-                <td colspan="6" class="px-4 pb-3.5 pt-0" style="background: var(--paper-1)">
-                  <div class="flex flex-wrap sm:flex-nowrap gap-4 items-center pt-2">
+                <td colspan="6" class="px-4 py-3.5" style="background: var(--panel-2)">
+                  <div class="flex flex-wrap sm:flex-nowrap gap-4 items-center">
                     <div
                       v-if="t.photo_url"
-                      class="relative group w-28 h-20 shrink-0 rounded overflow-hidden border bg-black/40 cursor-pointer"
+                      class="relative group w-28 h-20 shrink-0 rounded-lg overflow-hidden border bg-black/40 cursor-pointer"
                       style="border-color: var(--line)"
                       @click="lightboxUrl = t.photo_url; photoLightbox = true"
                     >
                       <img :src="t.photo_url" alt="Bukti Transaksi" class="w-full h-full object-cover" />
                       <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                        <i class="pi pi-search-plus text-xs" />
+                        <i class="pi pi-search-plus text-sm" />
                       </div>
                     </div>
 
                     <div class="grid sm:grid-cols-3 gap-3 text-[12.5px] flex-1">
                       <div>
-                        <div class="t-label mb-1">Petugas / Penerima</div>
-                        <div class="font-medium">{{ t.received_by || '—' }}</div>
+                        <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--txt-dim)">Petugas / Penerima</div>
+                        <div class="font-semibold" style="color: var(--txt)">{{ t.received_by || '—' }}</div>
                       </div>
                       <div>
-                        <div class="t-label mb-1">Catatan Transaksi</div>
-                        <div class="text-ink-200">{{ t.notes || '—' }}</div>
+                        <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--txt-dim)">Catatan Transaksi</div>
+                        <div style="color: var(--txt)">{{ t.notes || '—' }}</div>
                       </div>
                       <div>
-                        <div class="t-label mb-1">ID Transaksi</div>
-                        <div class="t-mono text-[11px] text-ink-400">{{ t.id }}</div>
+                        <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--txt-dim)">ID Transaksi</div>
+                        <div class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ t.id }}</div>
                       </div>
                     </div>
                   </div>

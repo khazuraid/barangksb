@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -18,6 +19,26 @@ const newName = ref('')
 const busy = ref(false)
 const editingId = ref<string | null>(null)
 const editName = ref('')
+const q = ref('')
+
+const page = ref(0)
+const perPage = ref(18)
+const perPageOptions = [12, 18, 30, 60]
+
+const filtered = computed(() =>
+  rows.value.filter(r => !q.value || [r.name, r.id].join(' ').toLowerCase().includes(q.value.toLowerCase()))
+)
+const lastPage = computed(() => Math.max(0, Math.ceil(filtered.value.length / perPage.value) - 1))
+const range = computed(() => {
+  if (!filtered.value.length) return '0 lokasi'
+  const from = page.value * perPage.value + 1
+  const to = Math.min(filtered.value.length, (page.value + 1) * perPage.value)
+  return `${from}–${to} dari ${filtered.value.length} lokasi`
+})
+const pagedRows = computed(() =>
+  filtered.value.slice(page.value * perPage.value, (page.value + 1) * perPage.value)
+)
+watch([q, perPage], () => { page.value = 0 })
 
 async function load() {
   loading.value = true
@@ -96,20 +117,20 @@ function remove(r: any) {
     <div class="mt-4">
       <Panel title="Daftar Lokasi" icon="pi pi-map-marker" dense>
         <template #actions>
-          <Tag severity="secondary" value="{{ rows.length }} lokasi" />
+          <InputText v-model="q" placeholder="Cari lokasi…" class="!text-[12px] !py-1.5 w-[200px]" />
+          <Tag severity="secondary" :value="rows.length + ' lokasi'" />
         </template>
 
         <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat lokasi…" />
-        <EmptyState v-else-if="!rows.length" icon="pi pi-map-marker" title="Belum ada lokasi"
-                    sub="Tambahkan ruangan penyimpanan agar barang dapat dilacak posisinya." />
+        <EmptyState v-else-if="!filtered.length" icon="pi pi-map-marker" title="Tidak ada lokasi cocok"
+                    sub="Ubah kata kunci pencarian atau tambah lokasi baru." />
 
-        <div v-else class="grid sm:grid-cols-2 lg:grid-cols-3 gap-px" style="background: var(--line-soft)">
-          <div v-for="r in rows" :key="r.id"
-               class="px-4 py-3.5 flex items-start gap-3 hover:bg-paper-2 transition-colors"
-               style="background: var(--panel)">
-            <span class="w-8 h-8 shrink-0 grid place-items-center rounded-md border"
-                  style="border-color: var(--line); background: var(--paper-2)">
-              <i class="pi pi-map-marker text-[12px] text-acc-500" />
+        <div v-else class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 p-3">
+          <div v-for="r in pagedRows" :key="r.id"
+               class="p-3.5 rounded-xl border flex items-start gap-3 transition-all hover:shadow-xs"
+               style="border-color: var(--line); background: var(--panel)">
+            <span class="w-8 h-8 shrink-0 grid place-items-center rounded-lg border text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800">
+              <i class="pi pi-map-marker text-[13px]" />
             </span>
 
             <template v-if="editingId === r.id">
@@ -122,8 +143,8 @@ function remove(r: any) {
             </template>
             <template v-else>
               <div class="flex-1 min-w-0">
-                <div class="text-[13px] font-semibold truncate">{{ r.name }}</div>
-                <div class="t-mono truncate" style="color: var(--txt-dim)">{{ r.id }}</div>
+                <div class="text-[13px] font-semibold truncate" style="color: var(--txt)">{{ r.name }}</div>
+                <div class="t-mono text-[11px] truncate mt-0.5" style="color: var(--txt-dim)">{{ r.id }}</div>
               </div>
               <div class="flex gap-0.5 shrink-0">
                 <Button icon="pi pi-pencil" text rounded size="small" severity="secondary" @click="startEdit(r)" />
@@ -132,6 +153,20 @@ function remove(r: any) {
             </template>
           </div>
         </div>
+
+        <template v-if="filtered.length" #footer>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+            <div class="flex items-center gap-2">
+              <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
+              <Button icon="pi pi-angle-left" size="small" text severity="secondary"
+                      :disabled="page === 0" @click="page--" />
+              <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+              <Button icon="pi pi-angle-right" size="small" text severity="secondary"
+                      :disabled="page >= lastPage" @click="page++" />
+            </div>
+          </div>
+        </template>
       </Panel>
     </div>
   </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
@@ -41,6 +41,22 @@ onMounted(fetchUsers)
 const filtered = computed(() =>
   users.value.filter(u => !q.value || [u.name, u.email, u.role].join(' ').toLowerCase().includes(q.value.toLowerCase()))
 )
+
+const page = ref(0)
+const perPage = ref(25)
+const perPageOptions = [10, 25, 50, 100]
+
+const lastPage = computed(() => Math.max(0, Math.ceil(filtered.value.length / perPage.value) - 1))
+const range = computed(() => {
+  if (!filtered.value.length) return '0 akun'
+  const from = page.value * perPage.value + 1
+  const to = Math.min(filtered.value.length, (page.value + 1) * perPage.value)
+  return `${from}–${to} dari ${filtered.value.length} akun`
+})
+const pagedUsers = computed(() =>
+  filtered.value.slice(page.value * perPage.value, (page.value + 1) * perPage.value)
+)
+watch([q, perPage], () => { page.value = 0 })
 const stats = computed(() => ({
   total: users.value.length,
   admin: users.value.filter(u => u.role === 'admin').length,
@@ -107,21 +123,25 @@ function remove(u: any) {
     </PageHeader>
 
     <!-- summary -->
-    <div class="grid grid-cols-3 gap-px mb-4 rounded-lg overflow-hidden border max-w-lg"
-         style="border-color: var(--line); background: var(--line)">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 max-w-xl">
       <div v-for="c in [
-        { k: 'Total Akun', v: stats.total },
-        { k: 'Administrator', v: stats.admin },
-        { k: 'Petugas', v: stats.petugas },
-      ]" :key="c.k" class="px-4 py-3" style="background: var(--panel)">
-        <div class="t-label">{{ c.k }}</div>
-        <div class="t-num text-[20px] font-bold mt-1">{{ c.v }}</div>
+        { k: 'Total Akun', v: stats.total, icon: 'pi pi-users', color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
+        { k: 'Administrator', v: stats.admin, icon: 'pi pi-shield', color: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' },
+        { k: 'Petugas Gudang', v: stats.petugas, icon: 'pi pi-user', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
+      ]" :key="c.k" class="panel p-3.5 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">{{ c.k }}</div>
+          <div class="t-num text-[22px] font-bold mt-0.5" style="color: var(--txt)">{{ c.v }}</div>
+        </div>
+        <div class="w-8 h-8 rounded-lg grid place-items-center border text-xs" :class="c.color">
+          <i :class="c.icon" />
+        </div>
       </div>
     </div>
 
-    <Panel title="Daftar Akun" icon="pi pi-users" dense>
+    <Panel title="Daftar Akun Pengguna" icon="pi pi-users" dense>
       <template #actions>
-        <InputText v-model="q" placeholder="Cari nama atau email…" class="!text-[12px] !py-1.5 w-[220px]" />
+        <InputText v-model="q" placeholder="Cari nama atau email…" class="!text-[12.5px] !py-1.5 w-[220px]" />
       </template>
 
       <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat pengguna…" />
@@ -131,27 +151,27 @@ function remove(u: any) {
       <div v-else class="overflow-x-auto">
         <table class="w-full text-[12.5px]">
           <thead>
-            <tr class="text-left" style="background: var(--paper-2)">
-              <th class="t-label px-4 py-2.5">Nama</th>
-              <th class="t-label px-4 py-2.5">Email</th>
-              <th class="t-label px-4 py-2.5 w-[180px]">Role</th>
-              <th class="t-label px-4 py-2.5 w-[110px] text-right">Aksi</th>
+            <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Nama</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Email</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">Role</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[110px] text-right" style="color: var(--txt-dim)">Aksi</th>
             </tr>
           </thead>
-          <tbody class="divide-y" style="border-color: var(--line-soft)">
-            <tr v-for="u in filtered" :key="u.email" class="hover:bg-paper-2 transition-colors">
-              <td class="px-4 py-2.5">
+          <tbody class="divide-y" style="border-color: var(--line)">
+            <tr v-for="u in pagedUsers" :key="u.email" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+              <td class="px-4 py-3">
                 <div class="flex items-center gap-2.5">
-                  <div class="w-7 h-7 shrink-0 grid place-items-center rounded-md border t-num font-bold text-[11px]"
-                       style="border-color: var(--line); background: var(--paper-2)">
+                  <div class="w-7 h-7 shrink-0 grid place-items-center rounded-lg border t-num font-bold text-[11px]"
+                       style="border-color: var(--line); background: var(--panel-2); color: var(--txt)">
                     {{ u.name?.[0]?.toUpperCase() || '?' }}
                   </div>
-                  <span class="font-semibold">{{ u.name }}</span>
-                  <Tag v-if="u.email === auth.user?.email" severity="info" value="ANDA" />
+                  <span class="font-semibold" style="color: var(--txt)">{{ u.name }}</span>
+                  <Tag v-if="u.email === auth.user?.email" severity="info" value="ANDA" class="!text-[10px]" />
                 </div>
               </td>
-              <td class="px-4 py-2.5" style="color: var(--txt-dim)">{{ u.email }}</td>
-              <td class="px-4 py-2.5">
+              <td class="px-4 py-3" style="color: var(--txt-dim)">{{ u.email }}</td>
+              <td class="px-4 py-3">
                 <Select
                   :modelValue="u.role"
                   :options="roleOptions"
@@ -162,7 +182,7 @@ function remove(u: any) {
                   @update:modelValue="(v: any) => changeRole(u, v)"
                 />
               </td>
-              <td class="px-4 py-2.5 text-right">
+              <td class="px-4 py-3 text-right">
                 <Button icon="pi pi-trash" text rounded size="small" severity="danger"
                         v-tooltip.top="u.email === auth.user?.email ? 'Tidak dapat menghapus akun sendiri' : 'Hapus akun'"
                         :disabled="u.email === auth.user?.email"
@@ -172,6 +192,20 @@ function remove(u: any) {
           </tbody>
         </table>
       </div>
+
+      <template v-if="filtered.length" #footer>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+          <div class="flex items-center gap-2">
+            <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
+            <Button icon="pi pi-angle-left" size="small" text severity="secondary"
+                    :disabled="page === 0" @click="page--" />
+            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <Button icon="pi pi-angle-right" size="small" text severity="secondary"
+                    :disabled="page >= lastPage" @click="page++" />
+          </div>
+        </div>
+      </template>
     </Panel>
 
     <!-- create dialog -->

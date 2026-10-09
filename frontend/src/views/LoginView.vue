@@ -6,6 +6,7 @@ import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import { useToast } from 'primevue/usetoast'
+import AppLogo from '@/components/AppLogo.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -34,12 +35,8 @@ async function login() {
     <section class="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden">
       <div class="grid-bg absolute inset-0 opacity-[0.35]" style="--line-soft: #1b2130" />
 
-      <div class="relative flex items-center gap-3">
-        <div class="w-9 h-9 grid place-items-center rounded-md bg-acc-500 text-ink-950 font-extrabold text-[13px]">IK</div>
-        <div class="leading-tight">
-          <div class="text-[13px] font-bold tracking-wide">INVENTARIS KANTOR</div>
-          <div class="t-label !text-[9.5px]">Sistem Barcode &amp; Stok Real-Time</div>
-        </div>
+      <div class="relative flex items-center">
+        <AppLogo size="lg" />
       </div>
 
       <div class="relative max-w-lg">
@@ -74,12 +71,8 @@ async function login() {
     <!-- ============ RIGHT: form ============ -->
     <section class="flex items-center justify-center p-6 lg:p-12" style="background: var(--panel)">
       <div class="w-full max-w-[360px]">
-        <div class="lg:hidden flex items-center gap-3 mb-8">
-          <div class="w-9 h-9 grid place-items-center rounded-md bg-acc-500 text-ink-950 font-extrabold text-[13px]">IK</div>
-          <div class="leading-tight">
-            <div class="text-[13px] font-bold">INVENTARIS KANTOR</div>
-            <div class="t-label !text-[9.5px]">Barcode &amp; Stok</div>
-          </div>
+        <div class="lg:hidden flex items-center justify-center mb-8">
+          <AppLogo variant="stacked" size="lg" />
         </div>
 
         <div class="t-label mb-1.5">Autentikasi</div>
