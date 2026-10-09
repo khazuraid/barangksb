@@ -359,7 +359,19 @@ const isActive = (to: string) => to === '/' ? route.path === '/' : route.path.st
 }
 
 .app-body { flex: 1; overflow-y: auto; background: var(--ink-950); }
-.app-container { max-width: 1600px; padding: 24px 28px 40px; margin: 0 auto; }
+.app-container {
+  width: 100%;
+  max-width: 100%;
+  padding: 20px 24px 40px;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .app-container {
+    padding: 14px 12px 32px;
+  }
+}
 
 @media (min-width: 1024px) {
   .app-aside { transform: translateX(0); }

@@ -106,7 +106,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="pb-20 max-w-6xl mx-auto">
+  <div class="pb-20 w-full">
     <!-- Clean Page Header -->
     <PageHeader
       :crumb="isEdit ? 'Operasional · Edit Data' : 'Operasional · Registrasi Baru'"

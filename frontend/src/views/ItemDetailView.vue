@@ -273,7 +273,7 @@ async function deleteMaintRecord(mId: string) {
 </script>
 
 <template>
-  <div class="py-2 pb-16 max-w-6xl mx-auto flex flex-col gap-4">
+  <div class="py-2 pb-16 w-full flex flex-col gap-4">
     <!-- Clean Unified Action Toolbar -->
     <div class="panel p-3 flex flex-wrap items-center justify-between gap-2.5">
       <Button

@@ -123,7 +123,7 @@ function remove(u: any) {
     </PageHeader>
 
     <!-- summary -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 max-w-xl">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 w-full">
       <div v-for="c in [
         { k: 'Total Akun', v: stats.total, icon: 'pi pi-users', color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
         { k: 'Administrator', v: stats.admin, icon: 'pi pi-shield', color: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' },

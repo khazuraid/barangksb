@@ -42,10 +42,10 @@ async function submit() {
 </script>
 
 <template>
-  <div>
+  <div class="w-full">
     <PageHeader crumb="Akun" title="Ganti Password" sub="Perbarui kredensial akun Anda" />
 
-    <div class="grid lg:grid-cols-[1fr_300px] gap-4 items-start max-w-4xl">
+    <div class="grid lg:grid-cols-[1fr_360px] gap-4 items-start w-full">
       <Panel title="Kredensial" icon="pi pi-key">
         <form @submit.prevent="submit" class="flex flex-col gap-4">
           <Field label="Password Lama" required>

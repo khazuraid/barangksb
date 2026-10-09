@@ -107,7 +107,7 @@ function downloadOne(item: any) {
 </script>
 
 <template>
-  <div class="pb-16 max-w-7xl mx-auto">
+  <div class="pb-16 w-full">
     <PageHeader
       crumb="Perangkat"
       title="Generator Label QR / Barcode"

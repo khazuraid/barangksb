@@ -90,7 +90,7 @@ function prettyJSON(raw: any) {
 </script>
 
 <template>
-  <div class="pb-16 max-w-7xl mx-auto">
+  <div class="pb-16 w-full">
     <PageHeader
       crumb="Administrasi"
       title="Audit Log &amp; Keamanan"
