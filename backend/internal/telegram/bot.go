@@ -175,21 +175,85 @@ func (b *Bot) allowed(chatID int64) bool {
 	if b.chatIDs[chatID] {
 		return true
 	}
-	var exists bool
-	_ = b.pool.QueryRow(context.Background(),
-		`SELECT EXISTS(SELECT 1 FROM telegram_subscribers WHERE chat_id=$1 AND active=TRUE)`,
-		chatID).Scan(&exists)
-	if exists {
-		return true
+	var exists, active bool
+	err := b.pool.QueryRow(context.Background(),
+		`SELECT TRUE, active FROM telegram_subscribers WHERE chat_id=$1`,
+		chatID).Scan(&exists, &active)
+	if err == nil && exists {
+		return active
 	}
 	if len(b.chatIDs) == 0 {
-		var count int
-		_ = b.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM telegram_subscribers WHERE active=TRUE`).Scan(&count)
-		if count == 0 {
-			return true
-		}
+		return true
 	}
 	return false
+}
+
+func (b *Bot) autoRegisterSubscriber(ctx context.Context, chat *models.Chat, from *models.User) {
+	var chatID int64
+	chatType := "private"
+	chatTitle := ""
+	chatUsername := ""
+
+	if chat != nil {
+		chatID = chat.ID
+		chatType = string(chat.Type)
+		if chatType == "" {
+			chatType = "private"
+		}
+		chatTitle = chat.Title
+		if chatTitle == "" {
+			parts := []string{}
+			if chat.FirstName != "" {
+				parts = append(parts, chat.FirstName)
+			}
+			if chat.LastName != "" {
+				parts = append(parts, chat.LastName)
+			}
+			chatTitle = strings.TrimSpace(strings.Join(parts, " "))
+		}
+		chatUsername = chat.Username
+	}
+
+	if from != nil {
+		if chatID == 0 {
+			chatID = from.ID
+		}
+		if chatUsername == "" {
+			chatUsername = from.Username
+		}
+		if chatTitle == "" {
+			parts := []string{}
+			if from.FirstName != "" {
+				parts = append(parts, from.FirstName)
+			}
+			if from.LastName != "" {
+				parts = append(parts, from.LastName)
+			}
+			chatTitle = strings.TrimSpace(strings.Join(parts, " "))
+		}
+	}
+
+	if chatTitle == "" {
+		if chatUsername != "" {
+			chatTitle = "@" + chatUsername
+		} else if chatID != 0 {
+			chatTitle = fmt.Sprintf("Chat %d", chatID)
+		}
+	}
+
+	if chatID == 0 {
+		return
+	}
+
+	_, _ = b.pool.Exec(ctx, `
+		INSERT INTO telegram_subscribers (chat_id, type, title, username, notify_in, notify_out, notify_adjust, notify_low_stock, active)
+		VALUES ($1, $2, $3, $4, TRUE, TRUE, FALSE, TRUE, TRUE)
+		ON CONFLICT (chat_id) DO UPDATE SET
+			title = CASE WHEN EXCLUDED.title != '' AND telegram_subscribers.title = '' THEN EXCLUDED.title ELSE telegram_subscribers.title END,
+			username = CASE WHEN EXCLUDED.username != '' THEN EXCLUDED.username ELSE telegram_subscribers.username END,
+			type = EXCLUDED.type,
+			updated_at = now()`,
+		chatID, chatType, chatTitle, chatUsername)
 }
 
 // ---- State Machine Helpers ----
@@ -299,6 +363,15 @@ func (b *Bot) buildBackKeyboard() models.InlineKeyboardMarkup {
 }
 
 func (b *Bot) editMessage(ctx context.Context, bt *bot.Bot, chatID int64, messageID int, text string, keyboard models.InlineKeyboardMarkup) {
+	if messageID == 0 {
+		_, _ = bt.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:      chatID,
+			Text:        text,
+			ParseMode:   models.ParseModeMarkdown,
+			ReplyMarkup: keyboard,
+		})
+		return
+	}
 	_, err := bt.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:      chatID,
 		MessageID:   messageID,
@@ -307,12 +380,19 @@ func (b *Bot) editMessage(ctx context.Context, bt *bot.Bot, chatID int64, messag
 		ReplyMarkup: keyboard,
 	})
 	if err != nil {
-		_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
+		_, err2 := bt.EditMessageText(ctx, &bot.EditMessageTextParams{
 			ChatID:      chatID,
 			MessageID:   messageID,
 			Text:        text,
 			ReplyMarkup: keyboard,
 		})
+		if err2 != nil {
+			_, _ = bt.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:      chatID,
+				Text:        text,
+				ReplyMarkup: keyboard,
+			})
+		}
 	}
 }
 
@@ -324,6 +404,7 @@ func (b *Bot) handleStart(ctx context.Context, bt *bot.Bot, u *models.Update) {
 	}
 	chatID := u.Message.Chat.ID
 	b.clearWizard(chatID)
+	b.autoRegisterSubscriber(ctx, &u.Message.Chat, u.Message.From)
 
 	if !b.allowed(chatID) {
 		name := u.Message.Chat.FirstName
@@ -333,7 +414,7 @@ func (b *Bot) handleStart(ctx context.Context, bt *bot.Bot, u *models.Update) {
 		if name == "" {
 			name = "Pengguna"
 		}
-		text := fmt.Sprintf("👋 *Halo, %s!*\n\n🆔 *Chat ID Anda:* `%d`\n\nAkun Anda belum terdaftar sebagai subscriber aktif di sistem Inventaris Puskesmas.\n\nSilakan salin Chat ID di atas dan tambahkan pada menu *Administrasi > Telegram* di web panel.", name, chatID)
+		text := fmt.Sprintf("👋 *Halo, %s!*\n\n🆔 *Chat ID Anda:* `%d`\n\nAkun Anda dinonaktifkan di sistem Inventaris Puskesmas.\nSilakan hubungi administrator.", name, chatID)
 		_, _ = bt.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:    chatID,
 			Text:      text,
@@ -412,7 +493,11 @@ func (b *Bot) handleBantu(ctx context.Context, bt *bot.Bot, u *models.Update) {
 
 // handleDefault handles interactive wizard inputs, photos, and natural language
 func (b *Bot) handleDefault(ctx context.Context, bt *bot.Bot, u *models.Update) {
-	if u.Message == nil || !b.allowed(u.Message.Chat.ID) {
+	if u.Message == nil {
+		return
+	}
+	b.autoRegisterSubscriber(ctx, &u.Message.Chat, u.Message.From)
+	if !b.allowed(u.Message.Chat.ID) {
 		return
 	}
 	chatID := u.Message.Chat.ID
@@ -439,7 +524,7 @@ func (b *Bot) handleDefault(ctx context.Context, bt *bot.Bot, u *models.Update) 
 		cmdName := strings.TrimPrefix(strings.Fields(text)[0], "/")
 		cmdName = strings.ToLower(cmdName)
 		var resp, label string
-		err := b.pool.QueryRow(ctx, `SELECT response, label FROM telegram_commands WHERE LOWER(command)=$1 AND active=TRUE`, cmdName).Scan(&resp, &label)
+		err := b.pool.QueryRow(ctx, `SELECT response, label FROM telegram_commands WHERE (LOWER(command)=$1 OR LOWER(command)=$2) AND active=TRUE LIMIT 1`, cmdName, "/"+cmdName).Scan(&resp, &label)
 		if err == nil && resp != "" {
 			bt.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID:      chatID,
@@ -1649,17 +1734,37 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 		return
 	}
 	cb := u.CallbackQuery
-	chatID := cb.Message.Message.Chat.ID
-	if !b.allowed(chatID) {
-		return
-	}
 
-	bt.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+	// Always answer callback query immediately to prevent client UI freeze / loading state
+	_, _ = bt.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 		CallbackQueryID: cb.ID,
 	})
 
+	var chatID int64
+	var msgID int
+	if cb.Message.Message != nil {
+		chatID = cb.Message.Message.Chat.ID
+		msgID = cb.Message.Message.ID
+	}
+	if chatID == 0 && cb.From != nil {
+		chatID = cb.From.ID
+	}
+	if chatID == 0 {
+		return
+	}
+
+	var chatObj *models.Chat
+	if cb.Message.Message != nil {
+		chatObj = &cb.Message.Message.Chat
+	}
+	b.autoRegisterSubscriber(ctx, chatObj, &cb.From)
+
+	if !b.allowed(chatID) {
+		b.editMessage(ctx, bt, chatID, msgID, "⚠️ Akun Anda belum terdaftar sebagai subscriber aktif.", b.buildBackKeyboard())
+		return
+	}
+
 	data := cb.Data
-	msgID := cb.Message.Message.ID
 
 	// 1. Wizard category selection
 	if strings.HasPrefix(data, "wizcat:") {
@@ -1870,8 +1975,8 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 		}
 		b.sendItemCard(ctx, bt, chatID, it.SKU, it.Name, it.Stock, it.MinStock, it.Unit, it.Location, it.Category, it.Condition)
 
-	case strings.HasPrefix(action, "label:"):
-		sku := strings.TrimPrefix(action, "label:")
+	case strings.HasPrefix(action, "label:") || strings.HasPrefix(action, "qr:"):
+		sku := strings.TrimPrefix(strings.TrimPrefix(action, "label:"), "qr:")
 		b.sendQRLabel(ctx, bt, chatID, sku)
 
 	case strings.HasPrefix(action, "add:"):
@@ -1980,8 +2085,9 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 
 	case strings.HasPrefix(action, "custom:"):
 		cmdName := strings.TrimPrefix(action, "custom:")
+		cleanCmd := strings.TrimPrefix(strings.ToLower(cmdName), "/")
 		var resp, label string
-		err := b.pool.QueryRow(ctx, `SELECT response, label FROM telegram_commands WHERE LOWER(command)=$1 AND active=TRUE`, strings.ToLower(cmdName)).Scan(&resp, &label)
+		err := b.pool.QueryRow(ctx, `SELECT response, label FROM telegram_commands WHERE (LOWER(command)=$1 OR LOWER(command)=$2) AND active=TRUE LIMIT 1`, cleanCmd, "/"+cleanCmd).Scan(&resp, &label)
 		if err == nil && resp != "" {
 			b.editMessage(ctx, bt, chatID, msgID, fmt.Sprintf("📌 *%s*\n\n%s", label, resp), b.buildBackKeyboard())
 		} else {
@@ -1998,12 +2104,10 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 		var name, unit, loc, cat, cond string
 		var cur, min int32
 		err := b.pool.QueryRow(ctx, `
-			SELECT i.sku, i.name, i.current_stock, i.min_stock, i.unit,
-			       COALESCE(l.name, '-'), COALESCE(c.name, '-'), COALESCE(i.condition, 'Baik')
-			FROM inventory_items i
-			LEFT JOIN locations l ON l.id = i.location_id
-			LEFT JOIN categories c ON c.id = i.category_id
-			WHERE i.sku ILIKE $1 LIMIT 1`, sku).Scan(&sku, &name, &cur, &min, &unit, &loc, &cat, &cond)
+			SELECT sku, name, current_stock, min_stock, unit,
+			       COALESCE(location, '-'), COALESCE(category, '-'), COALESCE(condition_status, 'Berfungsi')
+			FROM inventory_items
+			WHERE sku ILIKE $1 LIMIT 1`, sku).Scan(&sku, &name, &cur, &min, &unit, &loc, &cat, &cond)
 		if err == nil {
 			b.sendItemCard(ctx, bt, chatID, sku, name, cur, min, unit, loc, cat, cond)
 		} else {

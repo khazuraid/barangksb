@@ -381,14 +381,32 @@ func (h *SettingHandler) TestTelegram(c *gin.Context) {
 			targets = append(targets, t)
 		}
 		rows.Close()
+
+		if len(targets) == 0 {
+			csvIDs := h.getSetting(c, "telegram_chat_ids")
+			if csvIDs == "" {
+				csvIDs = os.Getenv("TELEGRAM_CHAT_IDS")
+			}
+			if csvIDs != "" {
+				for _, s := range strings.Split(csvIDs, ",") {
+					s = strings.TrimSpace(s)
+					if id, err := strconv.ParseInt(s, 10, 64); err == nil && id != 0 {
+						targets = append(targets, target{chatID: id, title: fmt.Sprintf("Chat %d", id)})
+					}
+				}
+			}
+		}
 	} else {
 		var title string
 		h.pool.QueryRow(c, `SELECT title FROM telegram_subscribers WHERE chat_id=$1`, req.ChatID).Scan(&title)
+		if title == "" {
+			title = fmt.Sprintf("Chat %d", req.ChatID)
+		}
 		targets = append(targets, target{chatID: req.ChatID, title: title})
 	}
 
 	if len(targets) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "tidak ada subscriber aktif"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tidak ada subscriber aktif atau chat id tujuan"})
 		return
 	}
 
@@ -411,6 +429,14 @@ func (h *SettingHandler) TestTelegram(c *gin.Context) {
 		// Log to DB
 		h.pool.Exec(c, `INSERT INTO telegram_message_log (chat_id, chat_title, message, status, error) VALUES ($1,$2,$3,$4,$5)`,
 			t.chatID, t.title, msg, status, errMsg)
+
+		if status == "ok" && t.chatID != 0 {
+			h.pool.Exec(c, `
+				INSERT INTO telegram_subscribers (chat_id, type, title, active)
+				VALUES ($1, 'private', $2, TRUE)
+				ON CONFLICT (chat_id) DO UPDATE SET active=TRUE, updated_at=now()`,
+				t.chatID, t.title)
+		}
 
 		results = append(results, map[string]any{
 			"chat_id": strconv.FormatInt(t.chatID, 10),
