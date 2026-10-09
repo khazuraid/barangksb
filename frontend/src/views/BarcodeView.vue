@@ -4,6 +4,7 @@ import api from '@/api'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Tag from 'primevue/tag'
@@ -28,25 +29,51 @@ const locationFilter = ref('')
 const fmt = ref<'qr' | 'code128'>('qr')
 const size = ref(160)
 
-// Thermal Printer & Sticker Label Profiles
-const layout = ref('label_50x30')
+// Thermal Printer, Sticker Sheets & Label Profiles
+const layout = ref('tj_103')
 const layoutOptions = [
-  { label: '🏷️ Stiker Label 50 x 30 mm (Standar Printer Barcode)', value: 'label_50x30' },
-  { label: '🏷️ Stiker Label 40 x 30 mm (Mini Aset)', value: 'label_40x30' },
-  { label: '🏷️ Stiker Label 60 x 40 mm (Sedang)', value: 'label_60x40' },
-  { label: '🏷️ Stiker Label 70 x 50 mm (Besar)', value: 'label_70x50' },
-  { label: '🏷️ Stiker Label 100 x 50 mm (Stiker Aset Lebar)', value: 'label_100x50' },
-  { label: '🖨️ Printer Thermal Roll 58 mm (Struk / Kasir 58mm)', value: 'thermal_58' },
-  { label: '🖨️ Printer Thermal Roll 80 mm (Struk / Lebar 80mm)', value: 'thermal_80' },
-  { label: '📄 Lembar Kertas A4 (Grid 3 x 7 · 21 Label)', value: 'a4_3x7' },
-  { label: '📄 Lembar Kertas A4 (Grid 4 x 10 · 40 Label Mini)', value: 'a4_4x10' },
+  { label: '🌟 Tom & Jerry No. 103 (12 Label / Lembar · 3x4 · 64x32 mm - Rekomendasi)', value: 'tj_103' },
+  { label: '📄 Tom & Jerry No. 107 (24 Label / Lembar · 3x8 · 50x18 mm)', value: 'tj_107' },
+  { label: '📄 Tom & Jerry No. 108 (40 Label / Lembar · 5x8 · 38x18 mm)', value: 'tj_108' },
+  { label: '📄 Tom & Jerry No. 121 (10 Label / Lembar · 2x5 · 75x38 mm)', value: 'tj_121' },
+  { label: '📄 Kertas Stiker A4 (21 Label / Lembar · 3x7 · 65x38 mm)', value: 'a4_3x7' },
+  { label: '📄 Kertas Stiker A4 (40 Label / Lembar · 4x10 · 48x25.5 mm)', value: 'a4_4x10' },
+  { label: '🖨️ Printer Thermal Roll 58 mm (Struk Kasir)', value: 'thermal_58' },
+  { label: '🖨️ Printer Thermal Roll 80 mm (Struk Lebar)', value: 'thermal_80' },
+  { label: '🏷️ Stiker Rol 50 x 30 mm (Standar Printer Barcode)', value: 'label_50x30' },
+  { label: '🏷️ Stiker Rol 40 x 30 mm (Mini Aset)', value: 'label_40x30' },
+  { label: '🏷️ Stiker Rol 60 x 40 mm (Sedang)', value: 'label_60x40' },
+  { label: '🏷️ Stiker Rol 70 x 50 mm (Besar)', value: 'label_70x50' },
+  { label: '🏷️ Stiker Rol 100 x 50 mm (Stiker Aset Lebar)', value: 'label_100x50' },
 ]
 
 const showName = ref(true)
 const showSKU = ref(true)
 const showLoc = ref(true)
+const showBorder = ref(true)
+const copies = ref(1)
+const offset = ref(0)
 const labelTitle = ref('INVENTARIS KANTOR')
 const printModalVisible = ref(false)
+
+const isSheetLayout = computed(() => ['tj_103', 'tj_107', 'tj_108', 'tj_121', 'a4_3x7', 'a4_4x10'].includes(layout.value))
+const labelsPerSheet = computed(() => {
+  switch (layout.value) {
+    case 'tj_103': return 12
+    case 'tj_107': return 24
+    case 'tj_108': return 40
+    case 'tj_121': return 10
+    case 'a4_3x7': return 21
+    case 'a4_4x10': return 40
+    default: return 1
+  }
+})
+const totalLabelsToPrint = computed(() => selected.value.length * Math.max(1, copies.value || 1))
+const estimatedSheets = computed(() => {
+  if (!isSheetLayout.value) return null
+  const totalWithOffset = totalLabelsToPrint.value + (offset.value || 0)
+  return Math.ceil(totalWithOffset / labelsPerSheet.value)
+})
 
 const categoriesRaw = ref<any[]>([])
 const locationsRaw = ref<any[]>([])
@@ -113,6 +140,9 @@ function getPrintUrl(autoPrint = true) {
     show_name: showName.value ? '1' : '0',
     show_sku: showSKU.value ? '1' : '0',
     show_loc: showLoc.value ? '1' : '0',
+    show_border: showBorder.value ? '1' : '0',
+    copies: String(Math.max(1, copies.value || 1)),
+    offset: String(Math.max(0, offset.value || 0)),
   })
   if (!autoPrint) {
     params.set('noprint', '1')
@@ -201,7 +231,7 @@ const sampleItem = computed(() => {
       />
       <StatCard
         label="Profil Printer / Label"
-        :value="layout.startsWith('thermal') ? 'Printer Thermal' : layout.startsWith('a4') ? 'Kertas A4' : 'Stiker Label'"
+        :value="layout.startsWith('tj_') ? 'Lembar Tom & Jerry' : layout.startsWith('thermal') ? 'Printer Thermal' : layout.startsWith('a4') ? 'Kertas A4' : 'Stiker Rol'"
         icon="pi pi-print"
         tone="info"
         :hint="layoutOptions.find(o => o.value === layout)?.label?.slice(2) || layout"
@@ -441,6 +471,33 @@ const sampleItem = computed(() => {
             />
           </div>
 
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Jumlah Rangkap per Barang (Copies)</label>
+            <InputNumber
+              v-model="copies"
+              :min="1"
+              :max="50"
+              showButtons
+              class="w-full !text-[12.5px]"
+              inputClass="!py-1.5 !text-[12.5px]"
+            />
+          </div>
+
+          <div v-if="isSheetLayout" class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Lewati Stiker Terpakai (Offset)</label>
+              <span class="text-[10px] text-slate-500">Slot kosong di awal</span>
+            </div>
+            <InputNumber
+              v-model="offset"
+              :min="0"
+              :max="labelsPerSheet - 1"
+              showButtons
+              class="w-full !text-[12.5px]"
+              inputClass="!py-1.5 !text-[12.5px]"
+            />
+          </div>
+
           <!-- Element Toggles -->
           <div class="flex flex-wrap items-center gap-4 sm:col-span-2 pt-2 border-t" style="border-color: var(--line)">
             <label class="flex items-center gap-2 cursor-pointer text-[12px]" style="color: var(--txt)">
@@ -455,25 +512,84 @@ const sampleItem = computed(() => {
               <Checkbox v-model="showLoc" binary />
               <span>Tampilkan Ruangan / Lokasi</span>
             </label>
+            <label class="flex items-center gap-2 cursor-pointer text-[12px]" style="color: var(--txt)">
+              <Checkbox v-model="showBorder" binary />
+              <span>Garis Batas Stiker (Border)</span>
+            </label>
+          </div>
+
+          <!-- Bulk Summary Banner -->
+          <div class="sm:col-span-2 p-2.5 rounded-lg border text-[11.5px] flex flex-wrap items-center justify-between gap-2" style="background: var(--panel-1); border-color: var(--line)">
+            <div class="flex items-center gap-2">
+              <i class="pi pi-print text-indigo-500 text-sm" />
+              <span><strong>{{ selected.length }}</strong> barang &times; <strong>{{ copies }}</strong> rangkap = <strong>{{ totalLabelsToPrint }}</strong> label stiker</span>
+            </div>
+            <div v-if="isSheetLayout" class="font-semibold text-indigo-600 dark:text-indigo-400">
+              Kebutuhan kertas: &plusmn; {{ estimatedSheets }} lembar ({{ labelsPerSheet }} label/lembar)
+            </div>
           </div>
         </div>
 
-        <!-- Live Visual Preview of Single Label -->
+        <!-- Live Visual Preview of Labels -->
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
             <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">
-              Pratinjau Nyata Label (Skala 1:1)
+              {{ layout === 'tj_103' ? 'Pratinjau Lembar Tom & Jerry No. 103 (3 Kolom × 4 Baris)' : 'Pratinjau Nyata Label' }}
             </span>
             <span class="text-[11px] font-mono" style="color: var(--txt-dim)">
-              {{ selected.length }} label akan dicetak
+              {{ totalLabelsToPrint }} label akan dicetak
             </span>
           </div>
 
-          <div class="p-6 rounded-xl border grid place-items-center bg-slate-100 dark:bg-slate-900 overflow-x-auto" style="border-color: var(--line)">
-            <!-- Actual Visual Card Simulated per Layout -->
-            <!-- 1. Stiker Label 50x30 mm -->
+          <div class="p-4 rounded-xl border grid place-items-center bg-slate-100 dark:bg-slate-900 overflow-x-auto" style="border-color: var(--line)">
+            <!-- 1. Simulasi Lembar Tom & Jerry No. 103 (Yellow Backing Paper 3x4 Grid, Image #9) -->
             <div
-              v-if="layout === 'label_50x30'"
+              v-if="layout === 'tj_103'"
+              class="rounded-xl shadow-lg border border-amber-300 p-4 max-w-full"
+              style="background: #fef08a; width: 560px;"
+            >
+              <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-amber-300/80 text-[11px] font-extrabold text-amber-950 uppercase tracking-wider">
+                <span>🌟 Tom &amp; Jerry No. 103 (64 &times; 32 mm)</span>
+                <span class="font-normal text-[10px] text-amber-900">12 Label / Lembar</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <div
+                  v-for="idx in 12"
+                  :key="idx"
+                  class="h-[76px] rounded-[5px] transition-all overflow-hidden"
+                  :class="idx - 1 < offset ? 'border-2 border-dashed border-amber-400/70 bg-amber-100/50 flex flex-col items-center justify-center text-amber-800' : 'bg-white shadow-sm border border-slate-300 p-1.5 flex items-center justify-between text-black'"
+                >
+                  <!-- Skipped / Offset Slot -->
+                  <template v-if="idx - 1 < offset">
+                    <span class="text-[9px] font-bold">Slot #{{ idx }}</span>
+                    <span class="text-[8px] opacity-80">(Dilewati)</span>
+                  </template>
+                  <!-- Printed Slot -->
+                  <template v-else-if="idx - 1 - offset < totalLabelsToPrint">
+                    <div class="w-[38%] flex items-center justify-center p-0.5">
+                      <img :src="`/api/barcode/${sampleItem.id}.png?fmt=${fmt}`" class="max-w-full max-h-[60px] object-contain" alt="code" />
+                    </div>
+                    <div class="w-[62%] flex flex-col justify-center pl-1.5 border-l border-slate-200">
+                      <div class="text-[7.5px] font-extrabold uppercase border-b border-black pb-0.5 leading-tight truncate">{{ labelTitle }}</div>
+                      <div v-if="showName" class="text-[8.5px] font-bold mt-0.5 line-clamp-1 leading-tight">{{ sampleItem.name }}</div>
+                      <div v-if="showSKU" class="text-[7.5px] font-mono font-bold mt-0.5">{{ sampleItem.sku }}</div>
+                      <div v-if="showLoc && sampleItem.location" class="text-[7px] text-slate-700 truncate">📍 {{ sampleItem.location }}</div>
+                    </div>
+                  </template>
+                  <!-- Unused Slot on sheet -->
+                  <template v-else>
+                    <div class="w-full h-full flex flex-col items-center justify-center text-[8.5px] text-slate-400">
+                      <span>Slot #{{ idx }}</span>
+                      <span class="text-[7.5px] opacity-70">(Kosong)</span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Stiker Label 50x30 mm -->
+            <div
+              v-else-if="layout === 'label_50x30'"
               class="bg-white text-black p-2 rounded shadow-md border border-slate-300 flex items-center justify-between"
               style="width: 280px; height: 168px;"
             >
@@ -488,7 +604,7 @@ const sampleItem = computed(() => {
               </div>
             </div>
 
-            <!-- 2. Stiker Label 40x30 mm -->
+            <!-- 3. Stiker Label 40x30 mm -->
             <div
               v-else-if="layout === 'label_40x30'"
               class="bg-white text-black p-1.5 rounded shadow-md border border-slate-300 flex items-center justify-between"
@@ -505,7 +621,7 @@ const sampleItem = computed(() => {
               </div>
             </div>
 
-            <!-- 3. Thermal Roll 58 mm -->
+            <!-- 4. Thermal Roll 58 mm -->
             <div
               v-else-if="layout === 'thermal_58'"
               class="bg-white text-black p-3 rounded shadow-md border border-slate-300 text-center flex flex-col items-center"
@@ -521,7 +637,7 @@ const sampleItem = computed(() => {
               <div class="w-full border-b border-dashed border-slate-400 mt-2" />
             </div>
 
-            <!-- 4. Thermal Roll 80 mm -->
+            <!-- 5. Thermal Roll 80 mm -->
             <div
               v-else-if="layout === 'thermal_80'"
               class="bg-white text-black p-4 rounded shadow-md border border-slate-300 text-center flex flex-col items-center"
@@ -537,7 +653,7 @@ const sampleItem = computed(() => {
               <div class="w-full border-b border-dashed border-slate-400 mt-3" />
             </div>
 
-            <!-- 5. Stiker Lebar 60x40 / 70x50 / 100x50 / A4 -->
+            <!-- 6. Stiker Lebar 60x40 / 70x50 / 100x50 / A4 / TJ lainnya -->
             <div
               v-else
               class="bg-white text-black p-3 rounded shadow-md border border-slate-300 flex items-center justify-between"
