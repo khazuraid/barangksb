@@ -37,59 +37,77 @@
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ---------- dark palette: hardcoded fallback + PrimeVue override ----------
-   These are solid values that match the Aura dark preset.
-   If PrimeVue runtime injects --p-dark-*, they override gracefully. */
-:root, body.dark {
-  --ink-950: #0b0e13;
-  --ink-900: #111520;
-  --ink-850: #161b27;
-  --ink-800: #1d2331;
-  --ink-700: #2a3242;
-  --ink-600: #3d4759;
-  --ink-500: #5b6678;
-  --ink-400: #8791a3;
-  --ink-300: #b3bbc9;
-  --ink-200: #d5dae3;
-  --ink-100: #eceff4;
-  --ink-50:  #f7f8fa;
-  --acc-500: #f5a524;
-  --acc-300: #ffd166;
-  --line: #2a3242;
-  --line-soft: #1d2331;
-  --txt: #eceff4;
-  --txt-dim: #8791a3;
+/* ---------- light / dark dual palette ---------- */
+:root {
+  --ink-950: #ffffff;
+  --ink-900: #f8fafc;
+  --ink-850: #f1f5f9;
+  --ink-800: #e2e8f0;
+  --ink-700: #cbd5e1;
+  --ink-600: #94a3b8;
+  --ink-500: #64748b;
+  --ink-400: #475569;
+  --ink-300: #334155;
+  --ink-200: #1e293b;
+  --ink-100: #0f172a;
+  --ink-50:  #020617;
+  --acc-500: #4f46e5;
+  --acc-600: #4338ca;
+  --acc-300: #a5b4fc;
+  --acc-50:  #eef2ff;
+  --line: #e2e8f0;
+  --line-soft: #f1f5f9;
+  --txt: #0f172a;
+  --txt-dim: #64748b;
   --paper-0: #ffffff;
-  --paper-1: #111520;
-  --paper-2: #161b27;
-  --paper-3: #1d2331;
-  --sig-ok: #22c55e;
-  --sig-warn: #f5a524;
+  --paper-1: #ffffff;
+  --paper-2: #f8fafc;
+  --paper-3: #f1f5f9;
+  --sig-ok: #10b981;
+  --sig-warn: #f59e0b;
   --sig-bad: #ef4444;
-  --sig-info: #0ea5e9;
-  --panel: #111520;
-  --panel-2: #161b27;
+  --sig-info: #0284c7;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
 }
 
-/* let PrimeVue runtime override if available */
-body.dark {
-  --ink-950: var(--p-dark-surface-950, #0b0e13);
-  --ink-900: var(--p-dark-surface-900, #111520);
-  --ink-800: var(--p-dark-surface-800, #1d2331);
-  --ink-700: var(--p-dark-surface-700, #2a3242);
-  --ink-600: var(--p-dark-surface-600, #3d4759);
-  --ink-500: var(--p-dark-surface-500, #5b6678);
-  --ink-400: var(--p-dark-surface-400, #8791a3);
-  --ink-300: var(--p-dark-surface-300, #b3bbc9);
-  --ink-200: var(--p-dark-surface-200, #d5dae3);
-  --ink-100: var(--p-dark-surface-100, #eceff4);
-  --acc-500: var(--p-primary-500, #f5a524);
-  --acc-300: var(--p-primary-300, #ffd166);
-  --line: var(--p-dark-content-border-color, #2a3242);
-  --txt: var(--p-dark-text-color, #eceff4);
-  --txt-dim: var(--p-dark-text-muted-color, #8791a3);
-  --panel: var(--p-dark-content-background, #111520);
-  --paper-2: var(--p-dark-content-hover-background, #161b27);
+body.dark, html.dark {
+  --ink-950: #090d16;
+  --ink-900: #0f172a;
+  --ink-850: #172033;
+  --ink-800: #1e293b;
+  --ink-700: #334155;
+  --ink-600: #475569;
+  --ink-500: #64748b;
+  --ink-400: #94a3b8;
+  --ink-300: #cbd5e1;
+  --ink-200: #e2e8f0;
+  --ink-100: #f8fafc;
+  --ink-50:  #ffffff;
+  --acc-500: #6366f1;
+  --acc-600: #4f46e5;
+  --acc-300: #c7d2fe;
+  --acc-50:  #1e1b4b;
+  --line: #1e293b;
+  --line-soft: #172033;
+  --txt: #f8fafc;
+  --txt-dim: #94a3b8;
+  --paper-0: #0f172a;
+  --paper-1: #0f172a;
+  --paper-2: #172033;
+  --paper-3: #1e293b;
+  --sig-ok: #10b981;
+  --sig-warn: #f59e0b;
+  --sig-bad: #ef4444;
+  --sig-info: #38bdf8;
+  --panel: #0f172a;
+  --panel-2: #172033;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------- type helpers ---------- */
@@ -115,47 +133,17 @@ body.dark {
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.panel-flush { border-radius: 0; }
-
-/* hairline grid background */
-.grid-bg {
-  background-image:
-    linear-gradient(var(--line-soft) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
-  background-size: 28px 28px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* accent marks */
-.accent-bar::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--acc-500);
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--ink-950);
+  color: var(--txt);
+  min-height: 100vh;
 }
-.accent-underline { position: relative; }
-.accent-underline::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: -1px;
-  height: 2px;
-  background: var(--acc-500);
-}
-
-/* ---------- scrollbars ---------- */
-* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-*::-webkit-scrollbar { width: 9px; height: 9px; }
-*::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--txt-dim) 45%, transparent);
-  border-radius: 6px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-
-/* ---------- misc ---------- */
-body { margin: 0; font-family: var(--font-sans); }
-body.dark { background: var(--ink-950); color: var(--txt); }
 .tabular { font-variant-numeric: tabular-nums; }
 @media print { .no-print { display: none !important; } }

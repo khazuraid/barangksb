@@ -30,6 +30,7 @@ const category = ref('')
 const location = ref('')
 const onlyLow = ref(false)
 const loading = ref(true)
+const viewMode = ref<'table' | 'grid'>('table')
 
 const categories = ref<any[]>([])
 const locations = ref<any[]>([])
@@ -286,8 +287,14 @@ async function deleteMaintRecord(mId: string) {
         />
       </div>
 
-      <!-- Export Buttons -->
-      <div class="flex items-center gap-1.5 shrink-0">
+      <!-- Export & View Switcher Buttons -->
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center rounded-lg border p-0.5" style="border-color: var(--line); background: var(--panel-2)">
+          <Button icon="pi pi-list" size="small" :text="viewMode !== 'table'" class="!p-1.5 !w-7 !h-7"
+                  v-tooltip.top="'Tampilan Tabel'" @click="viewMode = 'table'" />
+          <Button icon="pi pi-th-large" size="small" :text="viewMode !== 'grid'" class="!p-1.5 !w-7 !h-7"
+                  v-tooltip.top="'Tampilan Kartu Grid'" @click="viewMode = 'grid'" />
+        </div>
         <Button label="CSV" icon="pi pi-file" size="small" text severity="secondary" @click="exportCsv" />
         <Button label="Excel" icon="pi pi-file-excel" size="small" text severity="secondary" @click="exportXlsx" />
         <Button label="PDF" icon="pi pi-file-pdf" size="small" text severity="secondary" @click="printReport" />
@@ -306,85 +313,131 @@ async function deleteMaintRecord(mId: string) {
         <Button label="Tambah barang" icon="pi pi-plus" size="small" @click="router.push('/items/new')" />
       </EmptyState>
 
+      <!-- View: Table or Grid -->
+      <div v-else-if="viewMode === 'grid'" class="p-4 grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3.5" style="background: var(--ink-950)">
+        <div
+          v-for="it in shown"
+          :key="it.id"
+          class="panel p-3.5 flex flex-col justify-between hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group"
+          @click="router.push('/items/' + it.id)"
+        >
+          <div>
+            <div class="flex items-start justify-between gap-2 mb-2.5">
+              <span class="t-mono text-[11px] font-semibold px-2 py-0.5 rounded border"
+                    style="border-color: var(--line); color: var(--txt-dim); background: var(--panel-2)">
+                {{ it.sku }}
+              </span>
+              <StatusChip :kind="it.condition_status" />
+            </div>
+
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-12 h-12 rounded-lg border overflow-hidden shrink-0 grid place-items-center"
+                   style="border-color: var(--line); background: var(--panel-2)">
+                <img v-if="it.photo_url" :src="it.photo_url" class="w-full h-full object-cover" />
+                <i v-else class="pi pi-box text-acc-500 text-[18px]" />
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-[13.5px] truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                  {{ it.name }}
+                </div>
+                <div class="text-[12px] truncate" style="color: var(--txt-dim)">{{ it.category }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2.5 border-t flex items-center justify-between text-[12px]" style="border-color: var(--line)">
+            <span class="truncate flex items-center gap-1" style="color: var(--txt-dim)">
+              <i class="pi pi-map-marker text-[10px]" /> {{ it.location }}
+            </span>
+            <div class="text-right shrink-0">
+              <span class="font-bold text-[14px]" :class="it.current_stock <= it.min_stock ? 'text-rose-500' : 'text-emerald-500'">
+                {{ it.current_stock }}
+              </span>
+              <span class="text-[11px] ml-1" style="color: var(--txt-dim)">{{ it.unit }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-else class="overflow-x-auto">
-        <table class="w-full text-[12.5px]">
+        <table class="w-full text-[13px]">
           <thead>
-            <tr class="text-left" style="background: var(--paper-2)">
-              <th class="t-label px-4 py-2.5">Barang &amp; SKU</th>
-              <th class="t-label px-4 py-2.5 w-[220px]">Kategori &amp; Ruangan</th>
-              <th class="t-label px-4 py-2.5 w-[140px] text-right">Stok</th>
-              <th class="t-label px-4 py-2.5 w-[130px]">Kondisi</th>
-              <th class="t-label px-4 py-2.5 w-[90px] text-center">Detail</th>
+            <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Barang &amp; SKU</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[220px]" style="color: var(--txt-dim)">Kategori &amp; Ruangan</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px] text-right" style="color: var(--txt-dim)">Stok</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px]" style="color: var(--txt-dim)">Kondisi</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[90px] text-center" style="color: var(--txt-dim)">Detail</th>
             </tr>
           </thead>
-          <tbody class="divide-y" style="border-color: var(--line-soft)">
+          <tbody class="divide-y" style="border-color: var(--line)">
             <tr
               v-for="it in shown"
               :key="it.id"
-              class="hover:bg-paper-2 transition-colors cursor-pointer group"
+              class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
               @click="router.push('/items/' + it.id)"
             >
               <!-- 1. Barang & Foto -->
-              <td class="px-4 py-2.5">
+              <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 shrink-0 rounded-md overflow-hidden border bg-black/20 flex items-center justify-center"
-                       style="border-color: var(--line)">
+                  <div class="w-10 h-10 shrink-0 rounded-lg overflow-hidden border flex items-center justify-center"
+                       style="border-color: var(--line); background: var(--panel-2)">
                     <img v-if="it.photo_url" :src="it.photo_url" :alt="it.name" class="w-full h-full object-cover" />
-                    <i v-else class="pi pi-box text-xs text-ink-400" />
+                    <i v-else class="pi pi-box text-[14px] text-acc-500" />
                   </div>
                   <div class="min-w-0">
-                    <div class="font-bold text-[13px] leading-snug group-hover:text-acc-400 transition-colors">
+                    <div class="font-bold text-[13.5px] leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                       {{ it.name }}
                     </div>
-                    <div class="t-mono text-[11px] text-ink-400 mt-0.5 flex items-center gap-2">
+                    <div class="t-mono text-[11px] mt-0.5 flex items-center gap-2" style="color: var(--txt-dim)">
                       <span>{{ it.sku }}</span>
-                      <span v-if="it.merk" class="text-[10.5px]">· {{ it.merk }}</span>
+                      <span v-if="it.merk" class="text-[11px]">· {{ it.merk }}</span>
                     </div>
                   </div>
                 </div>
               </td>
 
               <!-- 2. Kategori & Ruangan -->
-              <td class="px-4 py-2.5">
-                <div class="font-medium text-[12px] truncate">{{ it.category }}</div>
-                <div class="text-[11px] text-ink-400 flex items-center gap-1 mt-0.5">
-                  <i class="pi pi-map-marker text-[9px]" />
+              <td class="px-4 py-3">
+                <div class="font-semibold text-[12.5px] truncate">{{ it.category }}</div>
+                <div class="text-[11.5px] flex items-center gap-1 mt-0.5" style="color: var(--txt-dim)">
+                  <i class="pi pi-map-marker text-[10px]" />
                   <span class="truncate">{{ it.location }}</span>
                 </div>
               </td>
 
               <!-- 3. Stok -->
-              <td class="px-4 py-2.5 text-right whitespace-nowrap">
+              <td class="px-4 py-3 text-right whitespace-nowrap">
                 <template v-if="it.track_stock !== false">
-                  <span class="t-num font-bold text-[13.5px]" :class="it.current_stock <= it.min_stock ? 'text-rose-400' : 'text-ink-100'">
+                  <span class="t-num font-bold text-[14px]" :class="it.current_stock <= it.min_stock ? 'text-rose-500' : 'text-emerald-500'">
                     {{ it.current_stock }}
                   </span>
-                  <span class="text-[11px] ml-1 text-ink-400">{{ it.unit }}</span>
-                  <div v-if="it.current_stock <= it.min_stock" class="text-[10px] text-rose-400 font-semibold">
+                  <span class="text-[11.5px] ml-1" style="color: var(--txt-dim)">{{ it.unit }}</span>
+                  <div v-if="it.current_stock <= it.min_stock" class="text-[10.5px] text-rose-500 font-semibold">
                     min {{ it.min_stock }}
                   </div>
                 </template>
                 <template v-else>
-                  <span class="text-[11px] font-semibold text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                  <span class="text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
                     Aset Tetap
                   </span>
                 </template>
               </td>
 
               <!-- 4. Kondisi -->
-              <td class="px-4 py-2.5 whitespace-nowrap">
+              <td class="px-4 py-3 whitespace-nowrap">
                 <StatusChip :kind="it.condition_status" />
               </td>
 
               <!-- 5. Aksi / Panah Detail -->
-              <td class="px-4 py-2.5 text-center">
+              <td class="px-4 py-3 text-center">
                 <Button
                   icon="pi pi-chevron-right"
                   text
                   rounded
                   size="small"
                   severity="secondary"
-                  class="group-hover:text-acc-400 group-hover:translate-x-0.5 transition-all"
+                  class="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all"
                   v-tooltip.top="'Lihat Detail Lengkap'"
                   @click.stop="router.push('/items/' + it.id)"
                 />

@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +21,31 @@ type SettingHandler struct {
 
 func NewSettingHandler(pool *pgxpool.Pool) *SettingHandler {
 	return &SettingHandler{pool: pool}
+}
+
+func newTelegramBot(token, apiURL string) (*bot.Bot, error) {
+	httpClient := &http.Client{
+		Timeout: 20 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 15 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+	opts := []bot.Option{
+		bot.WithSkipGetMe(),
+		bot.WithHTTPClient(httpClient),
+	}
+	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
+	if apiURL != "" {
+		opts = append(opts, bot.WithServerURL(apiURL))
+	}
+	return bot.New(token, opts...)
 }
 
 // ---- types ----
@@ -44,20 +71,50 @@ func (h *SettingHandler) GetBotInfo(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"configured": false})
 		return
 	}
+	apiURL := h.getSetting(c, "telegram_api_url")
 
-	botInst, err := bot.New(token)
+	botInst, err := newTelegramBot(token, apiURL)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"configured": true, "error": err.Error()})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	me, err := botInst.GetMe(ctx)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"configured": true, "error": err.Error()})
+		// Fallback to cached bot info if live call fails (due to timeout or restricted network)
+		cachedID := h.getSetting(c, "telegram_bot_id")
+		cachedUser := h.getSetting(c, "telegram_bot_username")
+		cachedName := h.getSetting(c, "telegram_bot_first_name")
+		if cachedUser != "" {
+			c.JSON(http.StatusOK, gin.H{
+				"configured":      true,
+				"id":              cachedID,
+				"username":        cachedUser,
+				"first_name":      cachedName,
+				"can_join_groups": true,
+				"can_read_all":    false,
+				"supports_inline": false,
+				"warning":         "Koneksi ke Telegram API timeout. Menampilkan identitas bot dari cache.",
+				"error":           nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"configured": true,
+			"error":      fmt.Sprintf("Gagal menghubungi Telegram API (%v). Periksa koneksi internet atau gunakan Telegram API URL proxy.", err),
+		})
 		return
 	}
+
+	// Cache successful getMe result
+	h.pool.Exec(c, `INSERT INTO app_settings (key, value, updated_at) VALUES
+		('telegram_bot_id', $1, now()),
+		('telegram_bot_username', $2, now()),
+		('telegram_bot_first_name', $3, now())
+		ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`,
+		strconv.FormatInt(me.ID, 10), me.Username, me.FirstName)
 
 	c.JSON(http.StatusOK, gin.H{
 		"configured":      true,
@@ -99,6 +156,7 @@ func (h *SettingHandler) UpdateTelegram(c *gin.Context) {
 	}
 	allowed := map[string]bool{
 		"telegram_bot_token":        true,
+		"telegram_api_url":          true,
 		"telegram_alert_low_stock":  true,
 		"telegram_alert_daily_time": true,
 		"telegram_webhook_url":      true,
@@ -152,7 +210,8 @@ func (h *SettingHandler) AddSubscriber(c *gin.Context) {
 	chatUsername := ""
 
 	if token != "" {
-		botInst, err := bot.New(token)
+		apiURL := h.getSetting(c, "telegram_api_url")
+		botInst, err := newTelegramBot(token, apiURL)
 		if err == nil {
 			ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 			defer cancel()
@@ -278,8 +337,9 @@ func (h *SettingHandler) TestTelegram(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bot token belum dikonfigurasi"})
 		return
 	}
+	apiURL := h.getSetting(c, "telegram_api_url")
 
-	botInst, err := bot.New(token)
+	botInst, err := newTelegramBot(token, apiURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bot init gagal: " + err.Error()})
 		return

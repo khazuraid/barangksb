@@ -253,11 +253,9 @@ func main() {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
 	})
 
-	// Telegram bot
-	if cfg.TgToken != "" {
-		tgBot := telegram.NewBot(cfg.TgToken, cfg.TgChats, pool)
-		tgBot.Start(context.Background())
-	}
+	// Telegram bot (loads from env or DB app_settings)
+	tgBot := telegram.NewBot(cfg.TgToken, cfg.TgChats, pool)
+	tgBot.Start(context.Background())
 
 	slog.Info("server starting", "port", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {

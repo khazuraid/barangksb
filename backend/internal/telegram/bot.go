@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -47,7 +49,32 @@ func (b *Bot) Start(ctx context.Context) {
 		b.token = token
 	}
 
-	botInst, err := bot.New(b.token, bot.WithSkipGetMe())
+	var apiURL string
+	b.pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='telegram_api_url'`).Scan(&apiURL)
+
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 15 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+	opts := []bot.Option{
+		bot.WithSkipGetMe(),
+		bot.WithHTTPClient(httpClient),
+	}
+	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
+	if apiURL != "" {
+		opts = append(opts, bot.WithServerURL(apiURL))
+	}
+
+	botInst, err := bot.New(b.token, opts...)
 	if err != nil {
 		slog.Error("telegram bot init failed", "err", err)
 		return

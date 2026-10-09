@@ -79,6 +79,7 @@ async function saveToken() {
   try {
     await api.put('/settings/telegram', {
       telegram_bot_token: settings.value.telegram_bot_token,
+      telegram_api_url: settings.value.telegram_api_url || '',
       telegram_alert_low_stock: settings.value.telegram_alert_low_stock || 'false',
       telegram_alert_daily_time: settings.value.telegram_alert_daily_time || '07:00',
     })
@@ -266,6 +267,11 @@ function removeCmd(c: any) {
                            :placeholder="settings.telegram_bot_token ? '••••••••••••••••' : '123456:ABC-DEF...'"
                            class="w-full" fluid type="password" />
               </Field>
+              <Field label="Telegram API URL (Opsional / Proxy)" hint="Kosongkan untuk default (https://api.telegram.org). Isi jika koneksi ke Telegram diblokir atau timeout.">
+                <InputText v-model="settings.telegram_api_url"
+                           placeholder="https://api.telegram.org"
+                           class="w-full" fluid />
+              </Field>
               <div class="grid sm:grid-cols-2 gap-4">
                 <Field label="Waktu Daily Alert (WIB)" hint="Format 24 jam">
                   <InputText v-model="settings.telegram_alert_daily_time" placeholder="07:00" class="w-full" fluid />
@@ -291,7 +297,7 @@ function removeCmd(c: any) {
             </template>
 
             <!-- add form -->
-            <div class="px-4 py-3 border-b" style="border-color: var(--line-soft)">
+            <div class="px-4 py-3 border-b" style="border-color: var(--line)">
               <div class="flex flex-wrap gap-2.5 items-end">
                 <Field label="Chat ID">
                   <InputText v-model="newChatID" placeholder="mis. -1001234567890" class="w-[220px]" fluid />
@@ -309,54 +315,54 @@ function removeCmd(c: any) {
             <div v-else class="overflow-x-auto">
               <table class="w-full text-[12.5px]">
                 <thead>
-                  <tr class="text-left" style="background: var(--paper-2)">
-                    <th class="t-label px-4 py-2.5">Chat</th>
-                    <th class="t-label px-4 py-2.5">Tipe</th>
-                    <th class="t-label px-4 py-2.5 text-center">Masuk</th>
-                    <th class="t-label px-4 py-2.5 text-center">Keluar</th>
-                    <th class="t-label px-4 py-2.5 text-center">Opname</th>
-                    <th class="t-label px-4 py-2.5 text-center">Low Stock</th>
-                    <th class="t-label px-4 py-2.5 text-center">Aktif</th>
-                    <th class="t-label px-4 py-2.5 w-[100px] text-right">Aksi</th>
+                  <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Chat</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Tipe</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Masuk</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Keluar</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Opname</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Low Stock</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Aktif</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[100px] text-right" style="color: var(--txt-dim)">Aksi</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y" style="border-color: var(--line-soft)">
+                <tbody class="divide-y" style="border-color: var(--line)">
                   <tr v-for="s in subscribers" :key="s.chat_id"
-                      class="hover:bg-paper-2 transition-colors">
-                    <td class="px-4 py-2.5">
-                      <div class="font-semibold truncate">{{ s.title }}</div>
-                      <div class="t-mono" style="color: var(--txt-dim)">{{ s.chat_id }}</div>
-                      <div v-if="s.username" class="t-mono text-[10px]" style="color: var(--txt-dim)">@{{ s.username }}</div>
+                      class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td class="px-4 py-3">
+                      <div class="font-semibold truncate" style="color: var(--txt)">{{ s.title }}</div>
+                      <div class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ s.chat_id }}</div>
+                      <div v-if="s.username" class="t-mono text-[10.5px]" style="color: var(--txt-dim)">@{{ s.username }}</div>
                     </td>
-                    <td class="px-4 py-2.5">
-                      <Tag :severity="s.type === 'private' ? 'info' : 'warn'" :value="s.type.toUpperCase()" />
+                    <td class="px-4 py-3">
+                      <Tag :severity="s.type === 'private' ? 'info' : 'warn'" :value="s.type.toUpperCase()" class="!text-[10px]" />
                     </td>
-                    <td class="px-4 py-2.5 text-center">
+                    <td class="px-4 py-3 text-center">
                       <ToggleButton :modelValue="s.notify_in" @update:modelValue="toggleSub(s, 'notify_in', $event)"
                                     onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
                                     class="!p-1" />
                     </td>
-                    <td class="px-4 py-2.5 text-center">
+                    <td class="px-4 py-3 text-center">
                       <ToggleButton :modelValue="s.notify_out" @update:modelValue="toggleSub(s, 'notify_out', $event)"
                                     onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
                                     class="!p-1" />
                     </td>
-                    <td class="px-4 py-2.5 text-center">
+                    <td class="px-4 py-3 text-center">
                       <ToggleButton :modelValue="s.notify_adjust" @update:modelValue="toggleSub(s, 'notify_adjust', $event)"
                                     onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
                                     class="!p-1" />
                     </td>
-                    <td class="px-4 py-2.5 text-center">
+                    <td class="px-4 py-3 text-center">
                       <ToggleButton :modelValue="s.notify_low_stock" @update:modelValue="toggleSub(s, 'notify_low_stock', $event)"
                                     onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
                                     class="!p-1" />
                     </td>
-                    <td class="px-4 py-2.5 text-center">
+                    <td class="px-4 py-3 text-center">
                       <ToggleButton :modelValue="s.active" @update:modelValue="toggleSub(s, 'active', $event)"
                                     onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
                                     class="!p-1" />
                     </td>
-                    <td class="px-4 py-2.5 text-right">
+                    <td class="px-4 py-3 text-right">
                       <Button icon="pi pi-trash" text rounded size="small" severity="danger"
                               v-tooltip.top="'Hapus subscriber'" @click="removeSub(s)" />
                     </td>
@@ -393,24 +399,24 @@ function removeCmd(c: any) {
             <div v-else class="overflow-x-auto">
               <table class="w-full text-[12.5px]">
                 <thead>
-                  <tr class="text-left" style="background: var(--paper-2)">
-                    <th class="t-label px-4 py-2.5 w-[160px]">Waktu</th>
-                    <th class="t-label px-4 py-2.5">Tujuan</th>
-                    <th class="t-label px-4 py-2.5">Pesan</th>
-                    <th class="t-label px-4 py-2.5 w-[90px]">Status</th>
+                  <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[160px]" style="color: var(--txt-dim)">Waktu</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Tujuan</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Pesan</th>
+                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[100px]" style="color: var(--txt-dim)">Status</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y" style="border-color: var(--line-soft)">
-                  <tr v-for="l in logs" :key="l.id" class="hover:bg-paper-2 transition-colors">
-                    <td class="px-4 py-2.5 whitespace-nowrap t-mono" style="color: var(--txt-dim)">{{ l.sent_at }}</td>
-                    <td class="px-4 py-2.5">
-                      <div class="font-semibold truncate">{{ l.chat_title }}</div>
-                      <div class="t-mono text-[10px]" style="color: var(--txt-dim)">{{ l.chat_id }}</div>
+                <tbody class="divide-y" style="border-color: var(--line)">
+                  <tr v-for="l in logs" :key="l.id" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td class="px-4 py-3 whitespace-nowrap t-mono text-[11.5px]" style="color: var(--txt-dim)">{{ l.sent_at }}</td>
+                    <td class="px-4 py-3">
+                      <div class="font-semibold truncate" style="color: var(--txt)">{{ l.chat_title }}</div>
+                      <div class="t-mono text-[10.5px]" style="color: var(--txt-dim)">{{ l.chat_id }}</div>
                     </td>
-                    <td class="px-4 py-2.5 truncate max-w-[300px]">{{ l.message }}</td>
-                    <td class="px-4 py-2.5">
+                    <td class="px-4 py-3 truncate max-w-[300px]" style="color: var(--txt)">{{ l.message }}</td>
+                    <td class="px-4 py-3">
                       <Tag :severity="l.status === 'ok' ? 'success' : 'danger'"
-                           :value="l.status === 'ok' ? 'TERKIRIM' : 'GAGAL'" />
+                           :value="l.status === 'ok' ? 'TERKIRIM' : 'GAGAL'" class="!text-[10px]" />
                     </td>
                   </tr>
                 </tbody>
@@ -449,6 +455,10 @@ function removeCmd(c: any) {
               <div class="text-[11.5px] mt-1" style="color: var(--txt-dim)">{{ botInfo.error }}</div>
             </div>
             <div v-else-if="botConnected" class="flex flex-col gap-3">
+              <div v-if="botInfo.warning" class="p-2 rounded text-[11px] border"
+                   style="border-color: var(--sig-warn); background: rgba(245, 158, 11, 0.1); color: var(--sig-warn)">
+                <i class="pi pi-exclamation-triangle mr-1" />{{ botInfo.warning }}
+              </div>
               <div class="flex items-center gap-3">
                 <div class="w-12 h-12 rounded-full grid place-items-center text-[20px] font-bold"
                      style="background: var(--p-primary-500); color: var(--ink-950)">

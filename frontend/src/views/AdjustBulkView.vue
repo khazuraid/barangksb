@@ -75,18 +75,17 @@ const preview = computed(() => {
     </PageHeader>
 
     <!-- steps -->
-    <div class="grid sm:grid-cols-3 gap-px mb-4 rounded-lg overflow-hidden border"
-         style="border-color: var(--line); background: var(--line)">
+    <div class="grid sm:grid-cols-3 gap-3 mb-5">
       <div v-for="(s, i) in [
         { n: '01', t: 'Unduh data barang', d: 'CSV memuat seluruh SKU dan stok sistem saat ini.' },
         { n: '02', t: 'Isi stok fisik', d: 'Cukup ubah kolom stok_fisik sesuai hasil hitung.' },
         { n: '03', t: 'Unggah kembali', d: 'Sistem mencatat selisih sebagai transaksi opname.' },
-      ]" :key="s.n" class="px-4 py-3.5" style="background: var(--panel)">
-        <div class="flex items-center gap-2.5">
-          <span class="t-mono text-acc-600 font-bold">{{ s.n }}</span>
-          <span class="text-[12.5px] font-semibold">{{ s.t }}</span>
+      ]" :key="s.n" class="panel p-4 flex flex-col justify-between">
+        <div>
+          <span class="t-mono font-bold text-xs px-2 py-0.5 rounded border text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800">{{ s.n }}</span>
+          <div class="text-[13px] font-semibold mt-2.5" style="color: var(--txt)">{{ s.t }}</div>
+          <p class="text-[11.5px] mt-1 leading-relaxed" style="color: var(--txt-dim)">{{ s.d }}</p>
         </div>
-        <p class="text-[11.5px] mt-1.5 leading-snug" style="color: var(--txt-dim)">{{ s.d }}</p>
       </div>
     </div>
 
@@ -97,17 +96,19 @@ const preview = computed(() => {
           mode="basic"
           accept=".csv,text/csv"
           :auto="false"
-          chooseLabel="Pilih CSV"
+          chooseLabel="Pilih File CSV"
           :customUpload="true"
           @select="onSelect"
         />
 
-        <div v-if="file" class="mt-3.5 panel !rounded-md px-3.5 py-3 flex items-center gap-3"
-             style="background: var(--paper-1)">
-          <i class="pi pi-file text-[13px] text-acc-500" />
+        <div v-if="file" class="mt-3.5 panel p-3 flex items-center gap-3"
+             style="background: var(--panel-2)">
+          <div class="w-8 h-8 rounded-lg grid place-items-center text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs shrink-0">
+            <i class="pi pi-file" />
+          </div>
           <div class="flex-1 min-w-0">
-            <div class="text-[12.5px] font-semibold truncate">{{ file.name }}</div>
-            <div class="t-mono" style="color: var(--txt-dim)">{{ (file.size / 1024).toFixed(1) }} KB</div>
+            <div class="text-[12.5px] font-semibold truncate" style="color: var(--txt)">{{ file.name }}</div>
+            <div class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ (file.size / 1024).toFixed(1) }} KB</div>
           </div>
           <Button icon="pi pi-times" text rounded size="small" severity="secondary" @click="file = null" />
         </div>
@@ -120,8 +121,8 @@ const preview = computed(() => {
         </div>
 
         <div class="mt-4 pt-4 border-t" style="border-color: var(--line)">
-          <div class="t-label mb-2">Format Berkas</div>
-          <pre class="panel !rounded-md p-3 t-mono overflow-x-auto" style="background: var(--paper-1)">sku,stok_fisik
+          <div class="text-[11px] font-semibold uppercase tracking-wider mb-2" style="color: var(--txt-dim)">Format Berkas</div>
+          <pre class="panel p-3 t-mono text-[11px] overflow-x-auto" style="background: var(--panel-2)">sku,stok_fisik
 ELKO-2026-001,12
 ELKO-2026-002,0</pre>
           <ul class="text-[11.5px] mt-2.5 space-y-1" style="color: var(--txt-dim)">
@@ -140,15 +141,24 @@ ELKO-2026-002,0</pre>
                     sub="Hasil per baris akan tampil di sini setelah berkas diproses." />
 
         <template v-else>
-          <div class="grid grid-cols-2 gap-px rounded-lg overflow-hidden border mb-4"
-               style="border-color: var(--line); background: var(--line)">
-            <div class="px-4 py-3" style="background: var(--panel)">
-              <div class="t-label">Berhasil</div>
-              <div class="t-num text-[24px] font-bold mt-1 text-sig-ok">{{ result.ok }}</div>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="panel p-3.5 flex items-center justify-between">
+              <div>
+                <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Berhasil</div>
+                <div class="t-num text-[22px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{{ result.ok }}</div>
+              </div>
+              <div class="w-8 h-8 rounded-lg grid place-items-center bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs">
+                <i class="pi pi-check" />
+              </div>
             </div>
-            <div class="px-4 py-3" style="background: var(--panel)">
-              <div class="t-label">Gagal</div>
-              <div class="t-num text-[24px] font-bold mt-1" :class="result.fail ? 'text-sig-bad' : ''">{{ result.fail }}</div>
+            <div class="panel p-3.5 flex items-center justify-between">
+              <div>
+                <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Gagal</div>
+                <div class="t-num text-[22px] font-bold mt-0.5" :class="result.fail ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500'">{{ result.fail }}</div>
+              </div>
+              <div class="w-8 h-8 rounded-lg grid place-items-center bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs">
+                <i class="pi pi-times" />
+              </div>
             </div>
           </div>
 
@@ -157,7 +167,7 @@ ELKO-2026-002,0</pre>
             <ul class="divide-y max-h-[260px] overflow-y-auto border rounded-md"
                 style="border-color: var(--line); border-color: var(--line)">
               <li v-for="(err, i) in result.errors" :key="i"
-                  class="px-3.5 py-2.5 t-mono flex items-start gap-2.5" style="border-color: var(--line-soft)">
+                  class="px-3.5 py-2.5 t-mono flex items-start gap-2.5" style="border-color: var(--line)">
                 <i class="pi pi-exclamation-circle text-sig-bad text-[11px] mt-0.5" />
                 <span>{{ err }}</span>
               </li>

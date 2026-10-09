@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// Shared presentational primitives. Keep dumb — no data fetching here.
 defineProps<{
   label?: string
   value?: string | number
@@ -10,31 +9,32 @@ defineProps<{
 }>()
 
 const toneRing: Record<string, string> = {
-  neutral: 'text-ink-400 bg-ink-800/60 border-ink-700',
-  ok: 'text-sig-ok bg-[#e9f8ef] border-[#b9e8cd]',
-  warn: 'text-acc-600 bg-acc-50 border-acc-300',
-  bad: 'text-sig-bad bg-[#fdeded] border-[#f8c9c9]',
-  info: 'text-sig-info bg-[#eaf1fe] border-[#c2d6fb]',
-  accent: 'text-acc-700 bg-acc-50 border-acc-300',
+  neutral: 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700',
+  ok: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800',
+  warn: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800',
+  bad: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800',
+  info: 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800',
+  accent: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800',
 }
 </script>
 
 <template>
-  <div class="panel px-4 py-3.5 relative overflow-hidden">
+  <div class="panel p-4 relative overflow-hidden transition-all duration-200 hover:shadow-md">
     <div class="flex items-start justify-between gap-3">
-      <div class="t-label">{{ label }}</div>
+      <div class="text-[12px] font-medium tracking-wide uppercase" style="color: var(--txt-dim)">{{ label }}</div>
       <span
         v-if="icon"
-        class="w-7 h-7 shrink-0 grid place-items-center rounded-md border"
+        class="w-8 h-8 shrink-0 grid place-items-center rounded-lg border transition-transform duration-200"
         :class="toneRing[tone || 'neutral']"
       >
-        <i :class="icon" class="text-[13px]" />
+        <i :class="icon" class="text-[14px]" />
       </span>
     </div>
     <div
-      class="mt-2 text-[26px] leading-none font-bold tracking-tight tabular"
+      class="mt-2 text-[26px] leading-tight font-bold tracking-tight tabular"
       :class="mono ? 't-mono !text-[22px]' : ''"
+      style="color: var(--txt)"
     >{{ value ?? '—' }}</div>
-    <div v-if="hint" class="mt-1.5 text-[11.5px]" style="color: var(--txt-dim)">{{ hint }}</div>
+    <div v-if="hint" class="mt-1 text-[12px]" style="color: var(--txt-dim)">{{ hint }}</div>
   </div>
 </template>

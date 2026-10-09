@@ -89,23 +89,24 @@ function prettyJSON(raw: any) {
     </PageHeader>
 
     <!-- Audit KPI Summary Strip -->
-    <div
-      class="grid grid-cols-2 sm:grid-cols-4 gap-px mb-4 rounded-xl overflow-hidden border shadow-xs"
-      style="border-color: var(--line); background: var(--line)"
-    >
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
       <div
         v-for="c in [
-          { k: 'TOTAL LOG', v: counts.total, cls: 'text-ink-100' },
-          { k: 'INSERT (TAMBAH)', v: counts.ins, cls: 'text-sig-ok' },
-          { k: 'UPDATE (UBAH)', v: counts.upd, cls: 'text-sig-info' },
-          { k: 'DELETE (HAPUS)', v: counts.del, cls: 'text-sig-bad' },
+          { k: 'TOTAL LOG', v: counts.total, icon: 'pi pi-database', color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
+          { k: 'INSERT (TAMBAH)', v: counts.ins, icon: 'pi pi-plus', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
+          { k: 'UPDATE (UBAH)', v: counts.upd, icon: 'pi pi-sync', color: 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800' },
+          { k: 'DELETE (HAPUS)', v: counts.del, icon: 'pi pi-trash', color: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800' },
         ]"
         :key="c.k"
-        class="px-4 py-3"
-        style="background: var(--panel)"
+        class="panel p-3.5 flex items-center justify-between"
       >
-        <div class="t-label">{{ c.k }}</div>
-        <div class="t-num text-[20px] font-bold mt-1" :class="c.cls">{{ c.v }}</div>
+        <div>
+          <div class="text-[10.5px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">{{ c.k }}</div>
+          <div class="t-num text-[22px] font-bold mt-0.5" style="color: var(--txt)">{{ c.v }}</div>
+        </div>
+        <div class="w-8 h-8 rounded-lg grid place-items-center border text-xs" :class="c.color">
+          <i :class="c.icon" />
+        </div>
       </div>
     </div>
 
@@ -115,14 +116,14 @@ function prettyJSON(raw: any) {
         <InputText
           v-model="q"
           placeholder="Cari tabel / row id…"
-          class="!text-[12px] !py-1.5 w-[190px]"
+          class="!text-[12.5px] !py-1.5 w-[200px]"
         />
         <Select
           v-model="opFilter"
           :options="opOptions"
           optionLabel="label"
           optionValue="value"
-          class="!text-[12px] w-[160px]"
+          class="!text-[12.5px] w-[160px]"
         />
       </template>
 
@@ -137,31 +138,31 @@ function prettyJSON(raw: any) {
       <div v-else class="overflow-x-auto">
         <table class="w-full text-[12.5px]">
           <thead>
-            <tr class="text-left" style="background: var(--paper-2)">
-              <th class="t-label px-4 py-2.5 w-[180px]">Waktu</th>
-              <th class="t-label px-4 py-2.5 w-[170px]">Tabel Target</th>
-              <th class="t-label px-4 py-2.5 w-[110px]">Aksi</th>
-              <th class="t-label px-4 py-2.5">Row ID / Kunci</th>
-              <th class="t-label px-4 py-2.5 w-[80px] text-right">Detail</th>
+            <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">Waktu</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[170px]" style="color: var(--txt-dim)">Tabel Target</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[110px]" style="color: var(--txt-dim)">Aksi</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Row ID / Kunci</th>
+              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[80px] text-right" style="color: var(--txt-dim)">Detail</th>
             </tr>
           </thead>
-          <tbody class="divide-y" style="border-color: var(--line-soft)">
+          <tbody class="divide-y" style="border-color: var(--line)">
             <template v-for="(l, i) in filtered" :key="i">
               <tr
-                class="hover:bg-paper-2 transition-colors cursor-pointer"
+                class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                 @click="expanded = expanded === l.row_id + i ? null : l.row_id + i"
               >
-                <td class="px-4 py-2.5 whitespace-nowrap" style="color: var(--txt-dim)">{{ l.at }}</td>
-                <td class="px-4 py-2.5">
-                  <span class="t-mono font-semibold text-acc-400">{{ l.table_name }}</span>
+                <td class="px-4 py-3 whitespace-nowrap" style="color: var(--txt-dim)">{{ l.at }}</td>
+                <td class="px-4 py-3">
+                  <span class="t-mono font-semibold text-indigo-600 dark:text-indigo-400">{{ l.table_name }}</span>
                 </td>
-                <td class="px-4 py-2.5"><StatusChip :kind="l.op" /></td>
-                <td class="px-4 py-2.5">
+                <td class="px-4 py-3"><StatusChip :kind="l.op" /></td>
+                <td class="px-4 py-3">
                   <span class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ l.row_id || '—' }}</span>
                 </td>
-                <td class="px-4 py-2.5 text-right">
+                <td class="px-4 py-3 text-right">
                   <i
-                    class="pi text-[10px]"
+                    class="pi text-[11px]"
                     :class="expanded === l.row_id + i ? 'pi-chevron-up' : 'pi-chevron-down'"
                     style="color: var(--txt-dim)"
                   />
@@ -170,15 +171,15 @@ function prettyJSON(raw: any) {
 
               <!-- JSON Diff Expanded Row -->
               <tr v-if="expanded === l.row_id + i">
-                <td colspan="5" class="px-4 pb-3.5 pt-0" style="background: var(--paper-1)">
-                  <div class="grid md:grid-cols-2 gap-3 pt-2">
-                    <div class="flex flex-col gap-1">
-                      <div class="t-label text-rose-400">Data Sebelumnya (Old Data)</div>
-                      <pre class="panel !rounded-md p-3 t-mono text-[11px] overflow-x-auto max-h-[220px] bg-black/60 border border-line">{{ prettyJSON(l.old_data) }}</pre>
+                <td colspan="5" class="px-4 py-3.5" style="background: var(--panel-2)">
+                  <div class="grid md:grid-cols-2 gap-3 pt-1">
+                    <div class="flex flex-col gap-1.5">
+                      <div class="text-[11px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Data Sebelumnya (Old Data)</div>
+                      <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: var(--panel); border-color: var(--line)">{{ prettyJSON(l.old_data) }}</pre>
                     </div>
-                    <div class="flex flex-col gap-1">
-                      <div class="t-label text-emerald-400">Data Baru (New Data)</div>
-                      <pre class="panel !rounded-md p-3 t-mono text-[11px] overflow-x-auto max-h-[220px] bg-black/60 border border-line">{{ prettyJSON(l.new_data) }}</pre>
+                    <div class="flex flex-col gap-1.5">
+                      <div class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Data Baru (New Data)</div>
+                      <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: var(--panel); border-color: var(--line)">{{ prettyJSON(l.new_data) }}</pre>
                     </div>
                   </div>
                 </td>
