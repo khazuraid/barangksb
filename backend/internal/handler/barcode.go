@@ -135,6 +135,14 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+type LabelItem struct {
+	ID       string
+	Name     string
+	SKU      string
+	Location string
+	Category string
+}
+
 // GET /api/barcode/sheet?ids=a,b,c&layout=...&fmt=... — public, printable HTML label sheet
 func (h *BarcodeHandler) Sheet(c *gin.Context) {
 	ids := c.Query("ids")
@@ -146,20 +154,13 @@ func (h *BarcodeHandler) Sheet(c *gin.Context) {
 	showLoc := c.DefaultQuery("show_loc", "1") != "0"
 
 	idList := splitComma(ids)
-	type labelItem struct {
-		ID       string
-		Name     string
-		SKU      string
-		Location string
-		Category string
-	}
-	var items []labelItem
+	var items []LabelItem
 	for _, id := range idList {
 		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
 		}
-		var it labelItem
+		var it LabelItem
 		it.ID = id
 		err := h.pool.QueryRow(c, `
 			SELECT name, COALESCE(sku, ''), COALESCE(location, ''), COALESCE(category, '')
@@ -174,13 +175,7 @@ func (h *BarcodeHandler) Sheet(c *gin.Context) {
 	c.String(http.StatusOK, h.renderSheetHTML(items, layout, fmtType, title, showName, showSKU, showLoc))
 }
 
-func (h *BarcodeHandler) renderSheetHTML(items []struct {
-	ID       string
-	Name     string
-	SKU      string
-	Location string
-	Category string
-}, layout, fmtType, title string, showName, showSKU, showLoc bool) string {
+func (h *BarcodeHandler) renderSheetHTML(items []LabelItem, layout, fmtType, title string, showName, showSKU, showLoc bool) string {
 	layoutNames := map[string]string{
 		"thermal_58":  "Thermal Roll 58mm",
 		"thermal_80":  "Thermal Roll 80mm",
@@ -339,13 +334,7 @@ body {
 	)
 }
 
-func (h *BarcodeHandler) renderSingleLabel(it struct {
-	ID       string
-	Name     string
-	SKU      string
-	Location string
-	Category string
-}, layout, fmtType, title string, showName, showSKU, showLoc bool) string {
+func (h *BarcodeHandler) renderSingleLabel(it LabelItem, layout, fmtType, title string, showName, showSKU, showLoc bool) string {
 	codeImgURL := fmt.Sprintf("/api/barcode/%s.png?fmt=%s", it.ID, fmtType)
 
 	// Distinct rendering styles per layout geometry
