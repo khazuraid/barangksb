@@ -96,6 +96,10 @@ function resetFilters() {
 }
 
 function remove(item: any) {
+  if (!item?.id || item.id === 'undefined') {
+    toast.add({ severity: 'error', summary: 'ID barang tidak valid', life: 3000 })
+    return
+  }
   confirm.require({
     message: `Hapus barang "${item.name}" (${item.sku})? Seluruh riwayat transaksi barang ini ikut terhapus.`,
     header: 'Konfirmasi hapus barang',

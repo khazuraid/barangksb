@@ -20,10 +20,11 @@ func NewItemHandler(pool *pgxpool.Pool) *ItemHandler {
 }
 
 type itemReq struct {
-	SKU             string `json:"sku"`
-	Name            string `json:"name" binding:"required"`
-	Category        string `json:"category" binding:"required"`
-	Location        string `json:"location" binding:"required"`
+	ID              string   `json:"id,omitempty"`
+	SKU             string   `json:"sku"`
+	Name            string   `json:"name" binding:"required"`
+	Category        string   `json:"category" binding:"required"`
+	Location        string   `json:"location" binding:"required"`
 	CurrentStock    int32  `json:"current_stock"`
 	MinStock        int32  `json:"min_stock"`
 	Unit            string `json:"unit"`
@@ -68,7 +69,7 @@ func (h *ItemHandler) List(c *gin.Context) {
 	h.pool.QueryRow(c, `SELECT count(*) FROM inventory_items`+where, args...).Scan(&total)
 
 	args = append(args, perPage, offset)
-	rows, err := h.pool.Query(c, fmt.Sprintf(`SELECT id, sku, name, category, location, current_stock, min_stock, unit, price_per_unit, condition_status, is_available, photo_url, geo_lat, geo_lng, COALESCE(geo_name, ''), COALESCE(track_stock, true) FROM inventory_items%s ORDER BY name LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
+	rows, err := h.pool.Query(c, fmt.Sprintf(`SELECT id::text, sku, name, category, location, current_stock, min_stock, unit, price_per_unit, condition_status, is_available, photo_url, geo_lat, geo_lng, COALESCE(geo_name, ''), COALESCE(track_stock, true) FROM inventory_items%s ORDER BY name LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -107,10 +108,14 @@ func (h *ItemHandler) List(c *gin.Context) {
 
 func (h *ItemHandler) Get(c *gin.Context) {
 	id := c.Param("id")
+	if id == "" || id == "undefined" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id barang tidak valid"})
+		return
+	}
 	var it itemReq
 	var trackStock bool
-	err := h.pool.QueryRow(c, `SELECT sku, name, category, location, current_stock, min_stock, unit, COALESCE(price_per_unit, 0), COALESCE(description, ''), COALESCE(photo_url, ''), COALESCE(merk, ''), COALESCE(type_model, ''), COALESCE(serial_number, ''), COALESCE(procurement_year, ''), COALESCE(condition_status, 'Berfungsi'), COALESCE(funding_source, ''), COALESCE(distributor, ''), COALESCE(akl_akd, ''), is_available, geo_lat, geo_lng, geo_acc, COALESCE(geo_name, ''), COALESCE(track_stock, true) FROM inventory_items WHERE id::text=$1`, id).
-		Scan(&it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Description, &it.PhotoURL, &it.Merk, &it.TypeModel, &it.SerialNumber, &it.ProcurementYear, &it.ConditionStatus, &it.FundingSource, &it.Distributor, &it.AklAkd, &it.IsAvailable, &it.GeoLat, &it.GeoLng, &it.GeoAcc, &it.GeoName, &trackStock)
+	err := h.pool.QueryRow(c, `SELECT id::text, sku, name, category, location, current_stock, min_stock, unit, COALESCE(price_per_unit, 0), COALESCE(description, ''), COALESCE(photo_url, ''), COALESCE(merk, ''), COALESCE(type_model, ''), COALESCE(serial_number, ''), COALESCE(procurement_year, ''), COALESCE(condition_status, 'Berfungsi'), COALESCE(funding_source, ''), COALESCE(distributor, ''), COALESCE(akl_akd, ''), is_available, geo_lat, geo_lng, geo_acc, COALESCE(geo_name, ''), COALESCE(track_stock, true) FROM inventory_items WHERE id::text=$1`, id).
+		Scan(&it.ID, &it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Description, &it.PhotoURL, &it.Merk, &it.TypeModel, &it.SerialNumber, &it.ProcurementYear, &it.ConditionStatus, &it.FundingSource, &it.Distributor, &it.AklAkd, &it.IsAvailable, &it.GeoLat, &it.GeoLng, &it.GeoAcc, &it.GeoName, &trackStock)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
 		return
@@ -180,6 +185,10 @@ func (h *ItemHandler) Update(c *gin.Context) {
 
 func (h *ItemHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
+	if id == "" || id == "undefined" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id barang tidak valid"})
+		return
+	}
 
 	// Delete related transactions, maintenance records, and the item
 	_, _ = h.pool.Exec(c, `DELETE FROM stock_transactions WHERE item_id::text=$1 OR item_sku IN (SELECT sku FROM inventory_items WHERE id::text=$1)`, id)

@@ -62,9 +62,14 @@ const maintForm = ref({
 })
 
 async function fetchItem() {
+  const currentId = route.params.id as string
+  if (!currentId || currentId === 'undefined') {
+    router.push('/items')
+    return
+  }
   loading.value = true
   try {
-    const res = await api.get(`/items/${route.params.id}`)
+    const res = await api.get(`/items/${currentId}`)
     item.value = res.data
     maintForm.value.update_condition = res.data.condition_status || 'Berfungsi'
     if (res.data.track_stock !== false) {
@@ -81,9 +86,11 @@ async function fetchItem() {
 }
 
 async function fetchMaintenance() {
+  const currentId = route.params.id as string
+  if (!currentId || currentId === 'undefined') return
   loadingMaint.value = true
   try {
-    const res = await api.get(`/items/${route.params.id}/maintenance`)
+    const res = await api.get(`/items/${currentId}/maintenance`)
     maintenanceList.value = res.data
   } catch {
     // silent
@@ -199,16 +206,21 @@ async function submitStockMovement() {
 }
 
 function remove() {
+  const targetId = item.value?.id || (route.params.id as string)
+  if (!targetId || targetId === 'undefined') {
+    toast.add({ severity: 'error', summary: 'ID barang tidak valid', life: 3000 })
+    return
+  }
   confirm.require({
-    message: `Hapus barang "${item.value.name}" (${item.value.sku}) beserta seluruh riwayatnya? Tindakan ini tidak dapat dibatalkan.`,
+    message: `Hapus barang "${item.value?.name || 'ini'}" (${item.value?.sku || ''}) beserta seluruh riwayatnya? Tindakan ini tidak dapat dibatalkan.`,
     header: 'Konfirmasi Hapus Barang',
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
     accept: async () => {
       deleting.value = true
       try {
-        await api.delete(`/items/${item.value.id}`)
-        toast.add({ severity: 'success', summary: 'Barang berhasil dihapus', detail: item.value.name, life: 2500 })
+        await api.delete(`/items/${targetId}`)
+        toast.add({ severity: 'success', summary: 'Barang berhasil dihapus', detail: item.value?.name, life: 2500 })
         router.push('/items')
       } catch (e: any) {
         toast.add({ severity: 'error', summary: 'Gagal menghapus barang', detail: e.response?.data?.error || e.message, life: 4000 })
