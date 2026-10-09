@@ -50,6 +50,7 @@ const maintenanceList = ref<any[]>([])
 const loadingMaint = ref(false)
 const showAddMaintForm = ref(false)
 const submittingMaint = ref(false)
+const maintPhotoRef = ref<any>(null)
 const serviceTypeOptions = ['Servis Rutin', 'Kalibrasi', 'Perbaikan', 'Pemeriksaan Berkala', 'Penggantian Suku Cadang']
 const conditionOptions = ['Berfungsi', 'Rusak Ringan', 'Rusak Berat', 'Perlu Kalibrasi']
 const maintForm = ref({
@@ -193,6 +194,10 @@ async function submitMaintenance() {
   if (!selectedItemForMaint.value) return
   submittingMaint.value = true
   try {
+    if (maintPhotoRef.value?.hasPendingPhoto) {
+      const u = await maintPhotoRef.value.uploadPending()
+      if (u) maintForm.value.photo_url = u
+    }
     await api.post(`/items/${selectedItemForMaint.value.id}/maintenance`, maintForm.value)
     toast.add({ severity: 'success', summary: 'Catatan servis tersimpan', life: 3000 })
     showAddMaintForm.value = false
@@ -619,6 +624,8 @@ async function deleteMaintRecord(mId: string) {
             </label>
             <div class="sm:col-span-2">
               <PhotoUploader
+                ref="maintPhotoRef"
+                :defer-upload="true"
                 v-model="maintForm.photo_url"
                 :location-name="selectedItemForMaint?.location"
                 label="Foto Nota / Sertifikat Kalibrasi (Opsional)"

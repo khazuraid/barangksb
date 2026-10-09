@@ -31,6 +31,8 @@ const deleting = ref(false)
 // Stock Movement State (Stok Masuk & Stok Keluar dengan bukti foto geotag)
 const stockModalType = ref<'IN' | 'OUT' | null>(null)
 const submittingStock = ref(false)
+const stockPhotoRef = ref<any>(null)
+const maintPhotoRef = ref<any>(null)
 const stockForm = ref({
   quantity: 1,
   received_by: '',
@@ -191,6 +193,10 @@ async function submitStockMovement() {
   submittingStock.value = true
   const endpoint = stockModalType.value === 'IN' ? '/movement/in' : '/movement/out'
   try {
+    if (stockPhotoRef.value?.hasPendingPhoto) {
+      const u = await stockPhotoRef.value.uploadPending()
+      if (u) stockForm.value.photo_url = u
+    }
     const res = await api.post(endpoint, {
       item_id: item.value.id,
       quantity: stockForm.value.quantity,
@@ -249,6 +255,10 @@ function remove() {
 async function submitMaintenance() {
   submittingMaint.value = true
   try {
+    if (maintPhotoRef.value?.hasPendingPhoto) {
+      const u = await maintPhotoRef.value.uploadPending()
+      if (u) maintForm.value.photo_url = u
+    }
     await api.post(`/items/${route.params.id}/maintenance`, maintForm.value)
     toast.add({ severity: 'success', summary: 'Catatan servis tersimpan', life: 3000 })
     showMaintModal.value = false
@@ -844,6 +854,8 @@ async function deleteMaintRecord(mId: string) {
           <!-- Upload Foto Geotag Bukti Serah Terima -->
           <div class="sm:col-span-2">
             <PhotoUploader
+              ref="stockPhotoRef"
+              :defer-upload="true"
               v-model="stockForm.photo_url"
               v-model:geo-lat="stockForm.geo_lat"
               v-model:geo-lng="stockForm.geo_lng"
@@ -905,6 +917,8 @@ async function deleteMaintRecord(mId: string) {
           </label>
           <div class="sm:col-span-2">
             <PhotoUploader
+              ref="maintPhotoRef"
+              :defer-upload="true"
               v-model="maintForm.photo_url"
               :item-name="item?.name"
               :location-name="item?.location"

@@ -15,6 +15,7 @@ const props = withDefaults(
     geoLat?: number | null
     geoLng?: number | null
     geoAcc?: number | null
+    deferUpload?: boolean
   }>(),
   {
     modelValue: '',
@@ -25,6 +26,7 @@ const props = withDefaults(
     geoLat: null,
     geoLng: null,
     geoAcc: null,
+    deferUpload: false,
   }
 )
 
@@ -49,6 +51,8 @@ const showInlineMap = ref(false)
 const modalTab = ref<'photo' | 'map'>('photo')
 const localPreviewUrl = ref('')
 const lastRawFile = ref<File | null>(null)
+const pendingBlob = ref<Blob | null>(null)
+const hasPendingPhoto = computed(() => !!pendingBlob.value)
 
 // Animated Upload State
 const isUploadingModal = ref(false)
@@ -66,10 +70,10 @@ function cancelUpload() {
   isUploadingModal.value = false
   previewOpen.value = false
   removePhoto()
-  toast.add({ severity: 'info', summary: 'Foto Dibatalkan', detail: 'Unggahan dibatalkan dan foto dihapus.', life: 2500 })
+  toast.add({ severity: 'info', summary: 'Foto Dibatalkan', detail: 'Pratinjau foto dibatalkan dan dihapus.', life: 2500 })
 }
 
-const currentPhotoSrc = computed(() => props.modelValue || localPreviewUrl.value)
+const currentPhotoSrc = computed(() => localPreviewUrl.value || props.modelValue)
 
 // Sync props if provided from existing item
 watch(
@@ -710,6 +714,26 @@ async function onFileSelected(e: Event) {
     const stamped = await stampGpsMapCamera(file, coords.value, locName, props.itemName)
     if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
     localPreviewUrl.value = stamped.previewUrl
+    pendingBlob.value = stamped.blob
+
+    // Mode Defer Upload: Hanya simpan pratinjau lokal, jangan unggah fisik ke server dulu
+    if (props.deferUpload) {
+      uploadProgress.value = 100
+      uploadStep.value = 'success'
+      currentStepText.value = 'Pratinjau foto geotag siap! Foto akan diunggah saat disimpan.'
+
+      setTimeout(() => {
+        isUploadingModal.value = false
+      }, 750)
+
+      toast.add({
+        severity: 'info',
+        summary: 'Pratinjau Foto Siap',
+        detail: 'Foto berstempel siap dan belum diunggah ke storage server. Foto akan otomatis disimpan saat formulir dikirim.',
+        life: 3500,
+      })
+      return
+    }
 
     uploadStep.value = 'upload'
     currentStepText.value = 'Mengunggah foto berstempel ke server...'
@@ -800,6 +824,26 @@ async function reStampPhoto() {
     const stamped = await stampGpsMapCamera(lastRawFile.value, coords.value, locName, props.itemName)
     if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
     localPreviewUrl.value = stamped.previewUrl
+    pendingBlob.value = stamped.blob
+
+    // Mode Defer Upload: Hanya simpan pratinjau lokal
+    if (props.deferUpload) {
+      uploadProgress.value = 100
+      uploadStep.value = 'success'
+      currentStepText.value = 'Cap watermark pratinjau berhasil diperbarui!'
+
+      setTimeout(() => {
+        isUploadingModal.value = false
+      }, 750)
+
+      toast.add({
+        severity: 'success',
+        summary: 'Cap Berhasil Diperbarui',
+        detail: props.itemName ? `Nama "${props.itemName}" tercetak pada pratinjau foto` : 'Cap geotag diperbarui',
+        life: 2500,
+      })
+      return
+    }
 
     uploadStep.value = 'upload'
     uploadProgress.value = 70
@@ -858,9 +902,96 @@ function removePhoto() {
     URL.revokeObjectURL(localPreviewUrl.value)
     localPreviewUrl.value = ''
   }
+  pendingBlob.value = null
   lastRawFile.value = null
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
   emit('update:modelValue', '')
 }
+
+async function uploadPending(): Promise<string> {
+  if (!pendingBlob.value) {
+    return props.modelValue || ''
+  }
+
+  uploading.value = true
+  isUploadingModal.value = true
+  uploadProgress.value = 35
+  uploadStep.value = 'upload'
+  currentStepText.value = 'Menyimpan foto fisik ke server storage...'
+
+  try {
+    const locName = geoLabel.value || props.locationName
+    const fd = new FormData()
+    fd.append('photo', pendingBlob.value, 'photo.jpg')
+    fd.append('client_stamped', 'true')
+    if (coords.value) {
+      fd.append('geo_lat', coords.value.lat.toString())
+      fd.append('geo_lng', coords.value.lng.toString())
+      fd.append('geo_acc', coords.value.acc.toString())
+    }
+    if (locName) {
+      fd.append('geo_name', locName)
+    }
+
+    uploadAbortCtrl = new AbortController()
+    const res = await api.post('/upload', fd, {
+      signal: uploadAbortCtrl.signal,
+      onUploadProgress: (evt) => {
+        if (evt.total) {
+          const pct = Math.round(35 + (evt.loaded / evt.total) * 60)
+          uploadProgress.value = Math.min(95, pct)
+        }
+      },
+    })
+
+    const url = res.data.url
+    emit('update:modelValue', url)
+    if (res.data.geo_lat && res.data.geo_lng) {
+      coords.value = {
+        lat: res.data.geo_lat,
+        lng: res.data.geo_lng,
+        acc: res.data.geo_acc || 10,
+      }
+      emit('update:geoLat', res.data.geo_lat)
+      emit('update:geoLng', res.data.geo_lng)
+      emit('update:geoAcc', res.data.geo_acc)
+    }
+
+    uploadProgress.value = 100
+    uploadStep.value = 'success'
+    currentStepText.value = 'Foto berhasil disimpan!'
+    pendingBlob.value = null
+
+    setTimeout(() => {
+      isUploadingModal.value = false
+    }, 500)
+
+    return url
+  } catch (err: any) {
+    isUploadingModal.value = false
+    const msg = err.response?.data?.error || err.message || 'Gagal menyimpan foto'
+    toast.add({
+      severity: 'error',
+      summary: 'Gagal mengunggah foto',
+      detail: msg,
+      life: 4000,
+    })
+    throw err
+  } finally {
+    uploading.value = false
+    uploadAbortCtrl = null
+  }
+}
+
+defineExpose({
+  uploadPending,
+  hasPendingPhoto,
+  reStampPhoto,
+  cancelUpload,
+  removePhoto,
+})
 
 async function downloadPhoto() {
   if (!currentPhotoSrc.value) return
@@ -997,7 +1128,10 @@ async function downloadPhoto() {
       style="background: var(--paper-1); border-color: var(--line)"
     >
       <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1.5 text-[12px] font-bold text-sig-ok">
+        <div v-if="hasPendingPhoto" class="flex items-center gap-1.5 text-[12px] font-bold text-amber-500 dark:text-amber-400">
+          <i class="pi pi-clock" /> Pratinjau Siap (Belum Diunggah)
+        </div>
+        <div v-else class="flex items-center gap-1.5 text-[12px] font-bold text-sig-ok">
           <i class="pi pi-check-circle" /> Foto Berstempel GPS Map Camera
         </div>
         <div class="flex items-center gap-1">
@@ -1082,7 +1216,12 @@ async function downloadPhoto() {
       </div>
 
       <div class="flex items-center justify-between text-[11px] px-1" style="color: var(--txt-dim)">
-        <span>Stempel peta, alamat lengkap, dan koordinat GPS tercetak langsung di dalam foto</span>
+        <span v-if="hasPendingPhoto" class="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+          <i class="pi pi-shield text-[10px]" /> Hemat storage: Foto baru diunggah fisik saat tombol simpan ditekan
+        </span>
+        <span v-else>
+          Stempel peta, alamat lengkap, dan koordinat GPS tercetak langsung di dalam foto
+        </span>
         <span v-if="coords" class="t-mono text-[10.5px] text-sig-ok flex items-center gap-1">
           <i class="pi pi-map-marker text-[9px]" /> GPS Aktif
         </span>

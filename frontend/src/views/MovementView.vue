@@ -31,6 +31,7 @@ const items = ref<any[]>([])
 const loadingItems = ref(true)
 const submitting = ref(false)
 const search = ref('')
+const photoUploaderRef = ref<any>(null)
 
 const form = ref({ item_id: '', quantity: 1, received_by: '', notes: '', photo_url: '' })
 const selectedItem = computed(() => items.value.find(i => i.id === form.value.item_id))
@@ -77,6 +78,12 @@ async function submit() {
   submitting.value = true
   const endpoint = mode.value === 'in' ? '/movement/in' : mode.value === 'out' ? '/movement/out' : '/movement/adjust'
   try {
+    if (photoUploaderRef.value?.hasPendingPhoto) {
+      const uploadedUrl = await photoUploaderRef.value.uploadPending()
+      if (uploadedUrl) {
+        form.value.photo_url = uploadedUrl
+      }
+    }
     const res = await api.post(endpoint, form.value)
     const d = res.data
     toast.add({
@@ -152,6 +159,8 @@ async function submit() {
 
             <div class="sm:col-span-2">
               <PhotoUploader
+                ref="photoUploaderRef"
+                :defer-upload="true"
                 v-model="form.photo_url"
                 :location-name="selectedItem?.location || ''"
                 label="Foto Bukti &amp; Cap Geotag"

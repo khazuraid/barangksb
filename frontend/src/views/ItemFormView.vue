@@ -20,6 +20,7 @@ const toast = useToast()
 const isEdit = !!route.params.id
 const loading = ref(false)
 const loadingData = ref(true)
+const photoUploaderRef = ref<any>(null)
 
 const form = ref<any>({
   sku: '',
@@ -91,6 +92,14 @@ async function submit() {
   }
   loading.value = true
   try {
+    // Unggah foto fisik hanya saat pengguna benar-benar menyimpan formulir (hemat storage)
+    if (photoUploaderRef.value?.hasPendingPhoto) {
+      const uploadedUrl = await photoUploaderRef.value.uploadPending()
+      if (uploadedUrl) {
+        form.value.photo_url = uploadedUrl
+      }
+    }
+
     if (isEdit) {
       await api.put(`/items/${route.params.id}`, form.value)
       toast.add({ severity: 'success', summary: 'Perubahan disimpan', detail: form.value.name, life: 2500 })
@@ -151,6 +160,8 @@ async function submit() {
         <!-- Panel Foto & Geotag -->
         <Panel title="Foto Fisik &amp; Stempel Geotag" icon="pi pi-camera">
           <PhotoUploader
+            ref="photoUploaderRef"
+            :defer-upload="true"
             v-model="form.photo_url"
             v-model:geo-lat="form.geo_lat"
             v-model:geo-lng="form.geo_lng"
