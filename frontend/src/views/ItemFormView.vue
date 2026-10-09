@@ -86,6 +86,9 @@ async function submit() {
     toast.add({ severity: 'warn', summary: 'Field wajib belum diisi', detail: 'Nama, kategori, dan ruangan wajib diisi', life: 3000 })
     return
   }
+  if (!form.value.track_stock) {
+    form.value.unit = 'unit'
+  }
   loading.value = true
   try {
     if (isEdit) {
@@ -194,7 +197,7 @@ async function submit() {
               <span style="color: var(--txt-dim)">Kondisi Fisik:</span>
               <span class="font-semibold" style="color: var(--txt)">{{ form.condition_status }}</span>
             </div>
-            <div class="flex items-center justify-between">
+            <div v-if="form.track_stock" class="flex items-center justify-between">
               <span style="color: var(--txt-dim)">Satuan:</span>
               <span class="font-semibold" style="color: var(--txt)">{{ form.unit }}</span>
             </div>
@@ -257,7 +260,7 @@ async function submit() {
                   ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/30 shadow-xs ring-1 ring-indigo-500'
                   : 'hover:border-slate-300 dark:hover:border-slate-700'"
                 :style="form.track_stock ? { background: 'var(--panel-2)', borderColor: 'var(--line)' } : {}"
-                @click="form.track_stock = false"
+                @click="form.track_stock = false; form.unit = 'unit'"
               >
                 <div class="w-8 h-8 rounded-lg grid place-items-center shrink-0 border mt-0.5"
                      :class="!form.track_stock
@@ -326,7 +329,8 @@ async function submit() {
               />
             </Field>
 
-            <Field label="Satuan Unit" required>
+            <!-- Satuan Unit (Hanya untuk Barang Stok / Konsumabel) -->
+            <Field v-if="form.track_stock" label="Satuan Unit" required>
               <Select v-model="form.unit" :options="unitOptions" class="w-full !text-[12.5px]" fluid />
             </Field>
 

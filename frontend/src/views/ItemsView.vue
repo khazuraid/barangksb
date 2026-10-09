@@ -358,11 +358,16 @@ async function deleteMaintRecord(mId: string) {
               <i class="pi pi-map-marker text-[10px]" /> {{ it.location }}
             </span>
             <div class="flex items-center gap-2">
-              <div class="text-right shrink-0">
+              <div v-if="it.track_stock !== false" class="text-right shrink-0">
                 <span class="font-bold text-[14px]" :class="it.current_stock <= it.min_stock ? 'text-rose-500' : 'text-emerald-500'">
                   {{ it.current_stock }}
                 </span>
                 <span class="text-[11px] ml-1" style="color: var(--txt-dim)">{{ it.unit }}</span>
+              </div>
+              <div v-else class="text-right shrink-0">
+                <span class="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                  Aset Tetap
+                </span>
               </div>
               <Button
                 icon="pi pi-trash"
