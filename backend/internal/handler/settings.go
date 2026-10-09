@@ -160,6 +160,7 @@ func (h *SettingHandler) UpdateTelegram(c *gin.Context) {
 	allowed := map[string]bool{
 		"telegram_bot_token":        true,
 		"telegram_api_url":          true,
+		"telegram_webapp_url":       true,
 		"telegram_alert_low_stock":  true,
 		"telegram_alert_daily_time": true,
 		"telegram_webhook_url":      true,

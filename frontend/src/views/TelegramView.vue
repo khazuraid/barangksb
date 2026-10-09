@@ -8,6 +8,7 @@ import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import ToggleButton from 'primevue/togglebutton'
 import Tag from 'primevue/tag'
+import Dialog from 'primevue/dialog'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
 import Field from '@/components/Field.vue'
@@ -21,7 +22,9 @@ const loading = ref(true)
 const saving = ref(false)
 const testing = ref(false)
 const testingAll = ref(false)
+const sendingAlertNow = ref(false)
 const refreshingBot = ref(false)
+const activeTab = ref<'overview' | 'settings' | 'subscribers' | 'commands' | 'logs' | 'guide'>('overview')
 
 const settings = ref<Record<string, string>>({})
 const botInfo = ref<any>(null)
@@ -29,23 +32,25 @@ const subscribers = ref<any[]>([])
 const logs = ref<any[]>([])
 const logsTotal = ref(0)
 const logsPage = ref(0)
-const logsPerPage = ref(25)
+const logsPerPage = ref(15)
 
 const newChatID = ref('')
 const newChatTitle = ref('')
-
 const testMsg = ref('')
 
 // ---- computed ----
 const tokenConfigured = computed(() => !!settings.value.telegram_bot_token)
 const botConnected = computed(() => botInfo.value?.configured && !botInfo.value?.error)
+const activeSubscribersCount = computed(() => subscribers.value.filter(s => s.active).length)
 
 // ---- fetch ----
 async function fetchAll() {
   loading.value = true
   try {
     await Promise.all([fetchSettings(), fetchBotInfo(), fetchSubscribers(), fetchLogs(), fetchCommands()])
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
 
 async function fetchSettings() {
@@ -57,7 +62,9 @@ async function fetchBotInfo() {
   try {
     const res = await api.get('/settings/telegram/bot')
     botInfo.value = res.data
-  } catch { botInfo.value = { configured: false } }
+  } catch {
+    botInfo.value = { configured: false }
+  }
 }
 
 async function fetchSubscribers() {
@@ -66,7 +73,9 @@ async function fetchSubscribers() {
 }
 
 async function fetchLogs() {
-  const res = await api.get('/settings/telegram/logs', { params: { page: logsPage.value + 1, per_page: logsPerPage.value } })
+  const res = await api.get('/settings/telegram/logs', {
+    params: { page: logsPage.value + 1, per_page: logsPerPage.value }
+  })
   logs.value = res.data.data
   logsTotal.value = res.data.total
 }
@@ -74,41 +83,49 @@ async function fetchLogs() {
 onMounted(fetchAll)
 
 // ---- actions ----
-async function saveToken() {
+async function saveSettings() {
   saving.value = true
   try {
     await api.put('/settings/telegram', {
       telegram_bot_token: settings.value.telegram_bot_token,
       telegram_api_url: settings.value.telegram_api_url || '',
+      telegram_webapp_url: settings.value.telegram_webapp_url || '',
       telegram_alert_low_stock: settings.value.telegram_alert_low_stock || 'false',
       telegram_alert_daily_time: settings.value.telegram_alert_daily_time || '07:00',
     })
-    toast.add({ severity: 'success', summary: 'Pengaturan disimpan', life: 2500 })
+    toast.add({ severity: 'success', summary: 'Pengaturan Disimpan', detail: 'Konfigurasi bot berhasil diperbarui', life: 2500 })
     await fetchBotInfo()
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Gagal menyimpan', detail: e.response?.data?.error, life: 4000 })
-  } finally { saving.value = false }
+    toast.add({ severity: 'error', summary: 'Gagal Menyimpan', detail: e.response?.data?.error, life: 4000 })
+  } finally {
+    saving.value = false
+  }
 }
 
 async function refreshBot() {
   refreshingBot.value = true
-  try { await fetchBotInfo() } finally { refreshingBot.value = false }
+  try {
+    await fetchBotInfo()
+    toast.add({ severity: 'info', summary: 'Status Diperbarui', life: 2000 })
+  } finally {
+    refreshingBot.value = false
+  }
 }
 
 async function addSubscriber() {
   const chatID = parseInt(newChatID.value)
-  if (!chatID || chatID <= 0) {
+  if (!chatID) {
     toast.add({ severity: 'warn', summary: 'Chat ID tidak valid', life: 2500 })
     return
   }
   try {
     await api.post('/settings/telegram/subscribers', { chat_id: chatID, title: newChatTitle.value })
-    toast.add({ severity: 'success', summary: 'Subscriber ditambahkan', life: 2500 })
+    toast.add({ severity: 'success', summary: 'Subscriber Berhasil Ditambahkan', life: 2500 })
     newChatID.value = ''
     newChatTitle.value = ''
     await fetchSubscribers()
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Gagal menambah', detail: e.response?.data?.error, life: 4000 })
+    toast.add({ severity: 'error', summary: 'Gagal Menambah Subscriber', detail: e.response?.data?.error, life: 4000 })
   }
 }
 
@@ -116,15 +133,16 @@ async function toggleSub(sub: any, field: string, val: boolean) {
   try {
     await api.put(`/settings/telegram/subscribers/${sub.chat_id}`, { [field]: val })
     sub[field] = val
+    toast.add({ severity: 'success', summary: 'Pengaturan Diperbarui', life: 1500 })
   } catch {
-    toast.add({ severity: 'error', summary: 'Gagal update', life: 2500 })
+    toast.add({ severity: 'error', summary: 'Gagal update subscriber', life: 2500 })
   }
 }
 
 function removeSub(sub: any) {
   confirm.require({
-    message: `Hapus subscriber "${sub.title}" (${sub.chat_id})?`,
-    header: 'Konfirmasi hapus',
+    message: `Hapus subscriber "${sub.title || sub.chat_id}" (${sub.chat_id})?`,
+    header: 'Konfirmasi Hapus',
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
     accept: async () => {
@@ -143,12 +161,14 @@ async function testOne(chatID: number) {
     if (r?.status === 'ok') {
       toast.add({ severity: 'success', summary: 'Terkirim', detail: r.title, life: 3000 })
     } else {
-      toast.add({ severity: 'error', summary: 'Gagal', detail: r?.error || 'Unknown', life: 5000 })
+      toast.add({ severity: 'error', summary: 'Gagal', detail: r?.error || 'Unknown error', life: 5000 })
     }
     await fetchLogs()
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Test gagal', detail: e.response?.data?.error, life: 5000 })
-  } finally { testing.value = false }
+  } finally {
+    testing.value = false
+  }
 }
 
 async function testAll() {
@@ -159,16 +179,39 @@ async function testAll() {
     const ok = results.filter((r: any) => r.status === 'ok').length
     const fail = results.filter((r: any) => r.status === 'fail').length
     if (fail === 0 && ok > 0) {
-      toast.add({ severity: 'success', summary: 'Semua terkirim', detail: `${ok} chat`, life: 3000 })
+      toast.add({ severity: 'success', summary: 'Semua Pesan Terkirim', detail: `${ok} chat tujuan sukses`, life: 3000 })
     } else if (ok > 0) {
-      toast.add({ severity: 'warn', summary: 'Sebagian', detail: `${ok} ok, ${fail} gagal`, life: 4000 })
+      toast.add({ severity: 'warn', summary: 'Terkirim Sebagian', detail: `${ok} sukses, ${fail} gagal`, life: 4000 })
     } else {
-      toast.add({ severity: 'error', summary: 'Semua gagal', life: 5000 })
+      toast.add({ severity: 'error', summary: 'Semua Gagal Terkirim', life: 5000 })
     }
     await fetchLogs()
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Test gagal', detail: e.response?.data?.error, life: 5000 })
-  } finally { testingAll.value = false }
+  } finally {
+    testingAll.value = false
+  }
+}
+
+async function sendAlertNow() {
+  sendingAlertNow.value = true
+  try {
+    await api.post('/settings/telegram/test', {
+      all: true,
+      message: '🚨 [Broadcast Manual] Ringkasan stok inventaris dikirim dari Web Panel.'
+    })
+    toast.add({ severity: 'success', summary: 'Alert Stok Terkirim', life: 3000 })
+    await fetchLogs()
+  } catch (e: any) {
+    toast.add({ severity: 'error', summary: 'Gagal kirim alert', detail: e.response?.data?.error, life: 4000 })
+  } finally {
+    sendingAlertNow.value = false
+  }
+}
+
+function copyText(txt: string) {
+  navigator.clipboard.writeText(txt)
+  toast.add({ severity: 'info', summary: 'Tersalin ke Clipboard', detail: txt, life: 2000 })
 }
 
 const lastLogPage = computed(() => Math.max(0, Math.ceil(logsTotal.value / logsPerPage.value) - 1))
@@ -182,7 +225,7 @@ const showCmdForm = ref(false)
 
 const blankCmd = () => ({
   id: 0, command: '', label: '', description: '', response: '',
-  is_menu: false, sort_order: 0, active: true,
+  is_menu: true, sort_order: 10, active: true,
 })
 
 async function fetchCommands() {
@@ -190,8 +233,11 @@ async function fetchCommands() {
   try {
     const res = await api.get('/settings/telegram/commands')
     commands.value = res.data
-  } catch { toast.add({ severity: 'error', summary: 'Gagal memuat commands', life: 2500 }) }
-  finally { cmdLoading.value = false }
+  } catch {
+    toast.add({ severity: 'error', summary: 'Gagal memuat daftar command', life: 2500 })
+  } finally {
+    cmdLoading.value = false
+  }
 }
 
 function addCmd() {
@@ -206,7 +252,7 @@ function editCmd(c: any) {
 
 async function saveCmd() {
   if (!editingCmd.value.command || !editingCmd.value.label) {
-    toast.add({ severity: 'warn', summary: 'Command dan label wajib', life: 2500 })
+    toast.add({ severity: 'warn', summary: 'Command dan label wajib diisi', life: 2500 })
     return
   }
   cmdSaving.value = true
@@ -216,18 +262,20 @@ async function saveCmd() {
     } else {
       await api.post('/settings/telegram/commands', editingCmd.value)
     }
-    toast.add({ severity: 'success', summary: 'Command disimpan', life: 2500 })
+    toast.add({ severity: 'success', summary: 'Command Berhasil Disimpan', life: 2500 })
     showCmdForm.value = false
     await fetchCommands()
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Gagal menyimpan', detail: e.response?.data?.error, life: 4000 })
-  } finally { cmdSaving.value = false }
+    toast.add({ severity: 'error', summary: 'Gagal Menyimpan Command', detail: e.response?.data?.error, life: 4000 })
+  } finally {
+    cmdSaving.value = false
+  }
 }
 
 function removeCmd(c: any) {
   confirm.require({
     message: `Hapus command "/${c.command}"?`,
-    header: 'Konfirmasi hapus',
+    header: 'Konfirmasi Hapus Command',
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
     accept: async () => {
@@ -240,473 +288,497 @@ function removeCmd(c: any) {
 </script>
 
 <template>
-  <div>
-    <PageHeader crumb="Administrasi" title="Konfigurasi Telegram"
-      sub="Bot notifikasi, subscriber, dan pengaturan alert">
+  <div class="space-y-5">
+    <PageHeader crumb="Administrasi" title="Integrasi Telegram & Bot Pintar"
+      sub="Pengaturan bot cerdas, Telegram Mini App, scanner barcode, subscriber, dan notifikasi real-time">
       <template #actions>
-        <Button label="Refresh Bot" icon="pi pi-sync" size="small" text severity="secondary"
+        <Button label="Refresh Status" icon="pi pi-sync" size="small" text severity="secondary"
                 :loading="refreshingBot" @click="refreshBot" />
-        <Button label="Simpan" icon="pi pi-save" size="small"
-                :loading="saving" :disabled="loading" @click="saveToken" />
+        <Button label="Simpan Pengaturan" icon="pi pi-save" size="small"
+                :loading="saving" :disabled="loading" @click="saveSettings" />
       </template>
     </PageHeader>
 
-    <div v-if="loading" class="grid place-items-center py-20">
-      <i class="pi pi-spin pi-spinner text-xl" style="color: var(--txt-dim)" />
+    <div v-if="loading" class="grid place-items-center py-24">
+      <i class="pi pi-spin pi-spinner text-3xl text-emerald-500" />
+      <span class="text-xs text-slate-400 mt-2">Memuat konfigurasi Telegram...</span>
     </div>
 
-    <div v-else class="flex flex-col gap-4">
-      <!-- ============ BOT IDENTITY ============ -->
-      <div class="grid lg:grid-cols-[1fr_320px] gap-4 items-start">
-        <div class="flex flex-col gap-4">
-          <!-- token + settings -->
-          <Panel title="Bot Token & Alert" icon="pi pi-send">
-            <div class="flex flex-col gap-4">
-              <Field label="Bot Token" hint="Dari @BotFather. Simpan untuk fetch identitas bot.">
-                <InputText v-model="settings.telegram_bot_token"
-                           :placeholder="settings.telegram_bot_token ? '••••••••••••••••' : '123456:ABC-DEF...'"
-                           class="w-full" fluid type="password" />
-              </Field>
-              <Field label="Telegram API URL (Opsional / Proxy)" hint="Kosongkan untuk default (https://api.telegram.org). Isi jika koneksi ke Telegram diblokir atau timeout.">
-                <InputText v-model="settings.telegram_api_url"
-                           placeholder="https://api.telegram.org"
-                           class="w-full" fluid />
-              </Field>
-              <div class="grid sm:grid-cols-2 gap-4">
-                <Field label="Waktu Daily Alert (WIB)" hint="Format 24 jam">
-                  <InputText v-model="settings.telegram_alert_daily_time" placeholder="07:00" class="w-full" fluid />
-                </Field>
-                <div class="flex items-center justify-between gap-3 pt-6">
-                  <div>
-                    <div class="text-[13px] font-semibold">Daily Low-Stock Alert</div>
-                    <div class="text-[11.5px]" style="color: var(--txt-dim)">Kirim ringkasan harian</div>
-                  </div>
-                  <ToggleButton v-model="settings.telegram_alert_low_stock"
-                                :modelValue="settings.telegram_alert_low_stock === 'true'"
-                                @update:modelValue="settings.telegram_alert_low_stock = $event ? 'true' : 'false'"
-                                onLabel="Aktif" offLabel="Mati" onIcon="pi pi-check" offIcon="pi pi-times" />
-                </div>
+    <div v-else class="space-y-5">
+      <!-- ============ HERO BOT STATUS BANNER ============ -->
+      <div class="p-5 rounded-2xl border transition-all"
+           :class="botConnected
+             ? 'bg-gradient-to-r from-emerald-950/30 via-slate-900 to-slate-900 border-emerald-500/30 shadow-lg shadow-emerald-950/20'
+             : 'bg-gradient-to-r from-rose-950/25 via-slate-900 to-slate-900 border-rose-500/30'">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <div class="relative w-14 h-14 rounded-2xl grid place-items-center font-bold text-xl shadow-inner border border-white/10"
+                 :class="botConnected ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500/20 text-rose-400 border-rose-500/30'">
+              <i v-if="!botConnected" class="pi pi-exclamation-circle text-2xl" />
+              <span v-else>{{ botInfo?.first_name?.[0] || 'B' }}</span>
+              <span class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900"
+                    :class="botConnected ? 'bg-emerald-400' : 'bg-rose-500'"></span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2.5">
+                <h2 class="text-lg font-bold tracking-tight text-white">
+                  {{ botConnected ? (botInfo.first_name + (botInfo.last_name ? ' ' + botInfo.last_name : '')) : 'Bot Belum Terhubung' }}
+                </h2>
+                <Tag :severity="botConnected ? 'success' : 'danger'"
+                     :value="botConnected ? 'ONLINE & SIAP' : 'TERPUTUS'" class="!text-[11px] font-semibold" />
+              </div>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mt-1">
+                <span v-if="botConnected" class="font-mono text-emerald-400">@{{ botInfo.username }}</span>
+                <span v-if="botConnected" class="font-mono text-slate-500">ID: {{ botInfo.id }}</span>
+                <span class="flex items-center gap-1.5">
+                  <i class="pi pi-users text-[11px]"></i>
+                  <span class="text-slate-300 font-semibold">{{ activeSubscribersCount }}</span> subscriber aktif
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <i class="pi pi-bell text-[11px]"></i>
+                  Daily Alert: <span class="text-slate-300 font-medium">{{ settings.telegram_alert_daily_time || '07:00' }} WIB</span>
+                </span>
               </div>
             </div>
-          </Panel>
+          </div>
 
-          <!-- subscriber table -->
-          <Panel title="Subscriber / Pengguna Bot" icon="pi pi-users" dense>
-            <template #actions>
-              <Tag severity="secondary" :value="subscribers.length + ' subscriber'" />
-            </template>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button label="Kirim Alert Stok Kritis" icon="pi pi-bell" size="small" severity="warn"
+                    :loading="sendingAlertNow" :disabled="!activeSubscribersCount || !botConnected"
+                    @click="sendAlertNow" />
+            <Button v-if="botConnected" label="Buka Bot" icon="pi pi-external-link" size="small" outlined
+                    @click="window.open(`https://t.me/${botInfo.username}`, '_blank')" />
+          </div>
+        </div>
+      </div>
 
-            <!-- add form -->
-            <div class="px-4 py-3 border-b" style="border-color: var(--line)">
-              <div class="flex flex-wrap gap-2.5 items-end">
-                <Field label="Chat ID">
-                  <InputText v-model="newChatID" placeholder="mis. -1001234567890" class="w-[220px]" fluid />
-                </Field>
-                <Field label="Nama (opsional)">
-                  <InputText v-model="newChatTitle" placeholder="mis. Grup Puskesmas" class="w-[200px]" fluid />
-                </Field>
-                <Button label="Tambah" icon="pi pi-plus" size="small" @click="addSubscriber" />
+      <!-- ============ TAB NAVIGATION ============ -->
+      <div class="flex items-center gap-1.5 p-1 bg-slate-900/80 border border-slate-800 rounded-xl overflow-x-auto">
+        <button v-for="tab in [
+          { id: 'overview', label: 'Ringkasan & Status', icon: 'pi pi-home' },
+          { id: 'settings', label: 'Koneksi & Mini App', icon: 'pi pi-cog' },
+          { id: 'subscribers', label: `Subscriber (${subscribers.length})`, icon: 'pi pi-users' },
+          { id: 'commands', label: `Command Menu (${commands.length})`, icon: 'pi pi-list' },
+          { id: 'logs', label: `Riwayat Pesan (${logsTotal})`, icon: 'pi pi-history' },
+          { id: 'guide', label: 'Panduan Setup', icon: 'pi pi-book' }
+        ]" :key="tab.id"
+          class="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all"
+          :class="activeTab === tab.id
+            ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/10'
+            : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
+          @click="activeTab = tab.id as any">
+          <i :class="tab.icon"></i>
+          <span>{{ tab.label }}</span>
+        </button>
+      </div>
+
+      <!-- ============ TAB 1: OVERVIEW ============ -->
+      <div v-if="activeTab === 'overview'" class="grid md:grid-cols-3 gap-4">
+        <!-- Feature 1: Bot Capabilities Card -->
+        <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 grid place-items-center text-emerald-400">
+                <i class="pi pi-bolt text-sm"></i>
+              </div>
+              <h3 class="font-bold text-sm text-white">Fitur Pintar Aktif</h3>
+            </div>
+            <Tag severity="success" value="v2.0 PRO" class="!text-[10px]" />
+          </div>
+
+          <div class="space-y-2.5 text-xs">
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+              <span class="flex items-center gap-2 text-slate-300">
+                <i class="pi pi-camera text-emerald-400"></i> Scan Barcode & QR Foto
+              </span>
+              <span class="text-emerald-400 font-semibold">Aktif</span>
+            </div>
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+              <span class="flex items-center gap-2 text-slate-300">
+                <i class="pi pi-search text-emerald-400"></i> Cari Barang Otomatis
+              </span>
+              <span class="text-emerald-400 font-semibold">Aktif</span>
+            </div>
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+              <span class="flex items-center gap-2 text-slate-300">
+                <i class="pi pi-plus-circle text-emerald-400"></i> Quick Command /tambah
+              </span>
+              <span class="text-emerald-400 font-semibold">Aktif</span>
+            </div>
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+              <span class="flex items-center gap-2 text-slate-300">
+                <i class="pi pi-table text-emerald-400"></i> Unduh Rekap CSV
+              </span>
+              <span class="text-emerald-400 font-semibold">Aktif</span>
+            </div>
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+              <span class="flex items-center gap-2 text-slate-300">
+                <i class="pi pi-mobile text-emerald-400"></i> Telegram Mini App Button
+              </span>
+              <span class="text-emerald-400 font-semibold">Terintegrasi</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 2: Quick Test & Broadcast -->
+        <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-5 space-y-4">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 grid place-items-center text-sky-400">
+              <i class="pi pi-send text-sm"></i>
+            </div>
+            <h3 class="font-bold text-sm text-white">Uji Kirim Pesan Cepat</h3>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Pesan Uji Coba</label>
+              <InputText v-model="testMsg" placeholder="Tes koneksi bot inventaris..." class="w-full text-xs" />
+            </div>
+            <div class="flex gap-2">
+              <Button label="Kirim ke Semua" icon="pi pi-send" size="small" class="w-full"
+                      :loading="testingAll" :disabled="!subscribers.length" @click="testAll" />
+            </div>
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              Pesan uji coba akan dikirim ke seluruh subscriber aktif dan dicatat ke log sistem.
+            </p>
+          </div>
+        </div>
+
+        <!-- Feature 3: Quick Registration Info -->
+        <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-5 space-y-4">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 grid place-items-center text-indigo-400">
+              <i class="pi pi-id-card text-sm"></i>
+            </div>
+            <h3 class="font-bold text-sm text-white">Akses Petugas & Grup</h3>
+          </div>
+
+          <div class="space-y-2 text-xs text-slate-300 leading-relaxed">
+            <p>Untuk menghubungkan akun petugas baru:</p>
+            <ol class="list-decimal list-inside space-y-1 text-slate-400 text-[11.5px]">
+              <li>Buka bot di Telegram: <strong class="text-white">@{{ botInfo?.username || 'bot' }}</strong></li>
+              <li>Kirim perintah <code class="px-1.5 py-0.5 rounded bg-slate-950 text-emerald-400 font-mono">/start</code></li>
+              <li>Salin <strong class="text-white">Chat ID</strong> yang ditampilkan bot</li>
+              <li>Masukkan pada tab <button class="text-emerald-400 underline font-semibold" @click="activeTab = 'subscribers'">Subscriber</button></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ TAB 2: SETTINGS & MINI APP ============ -->
+      <div v-if="activeTab === 'settings'" class="grid lg:grid-cols-2 gap-5">
+        <Panel title="Token & Koneksi Jaringan" icon="pi pi-key">
+          <div class="space-y-4">
+            <Field label="Bot Token" hint="Diberikan oleh @BotFather. Rahasiakan token ini.">
+              <InputText v-model="settings.telegram_bot_token"
+                         :placeholder="settings.telegram_bot_token ? '••••••••••••••••' : '123456:ABC-DEF...'"
+                         class="w-full font-mono text-xs" type="password" />
+            </Field>
+
+            <Field label="URL Telegram Mini App (Web App)" hint="URL aplikasi web yang dibuka saat tombol 'Buka Inventaris' ditekan di bot.">
+              <div class="flex gap-2">
+                <InputText v-model="settings.telegram_webapp_url"
+                           placeholder="https://barang.kesling.biz.id"
+                           class="w-full text-xs font-mono" />
+                <Button icon="pi pi-external-link" text size="small"
+                        @click="window.open(settings.telegram_webapp_url || 'https://barang.kesling.biz.id', '_blank')" />
+              </div>
+            </Field>
+
+            <Field label="Telegram API Proxy (Opsional)" hint="Kosongkan jika default (https://api.telegram.org). Diisi bila hosting memblokir Telegram.">
+              <InputText v-model="settings.telegram_api_url"
+                         placeholder="https://api.telegram.org"
+                         class="w-full text-xs font-mono" />
+            </Field>
+
+            <div class="pt-2">
+              <Button label="Simpan Koneksi" icon="pi pi-check" size="small" :loading="saving" @click="saveSettings" />
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Jadwal Daily Low-Stock Alert" icon="pi pi-clock">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/70 border border-slate-800">
+              <div>
+                <div class="text-xs font-bold text-white">Daily Low-Stock Alert Otomatis</div>
+                <div class="text-[11px] text-slate-400">Mengirim rekap barang menipis setiap hari kerja</div>
+              </div>
+              <ToggleButton v-model="settings.telegram_alert_low_stock"
+                            :modelValue="settings.telegram_alert_low_stock === 'true'"
+                            @update:modelValue="settings.telegram_alert_low_stock = $event ? 'true' : 'false'"
+                            onLabel="Aktif" offLabel="Mati" onIcon="pi pi-check" offIcon="pi pi-times" />
+            </div>
+
+            <Field label="Waktu Pengiriman Harian (WIB)" hint="Format 24 jam (misal 07:00)">
+              <InputText v-model="settings.telegram_alert_daily_time" placeholder="07:00" class="w-full text-xs" />
+            </Field>
+
+            <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex gap-2.5 items-start">
+              <i class="pi pi-info-circle text-sm mt-0.5"></i>
+              <div class="leading-relaxed text-[11.5px]">
+                Notifikasi harian dikirimkan hanya kepada subscriber yang mengaktifkan opsi <strong>Low Stock</strong> pada tabel subscriber.
               </div>
             </div>
 
-            <EmptyState v-if="!subscribers.length" icon="pi pi-users" title="Belum ada subscriber"
-                        sub="Tambahkan chat ID, atau minta user /start ke bot." />
+            <div class="pt-2">
+              <Button label="Simpan Jadwal" icon="pi pi-check" size="small" :loading="saving" @click="saveSettings" />
+            </div>
+          </div>
+        </Panel>
+      </div>
 
-            <div v-else class="overflow-x-auto">
-              <table class="w-full text-[12.5px]">
-                <thead>
-                  <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Chat</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Tipe</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Masuk</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Keluar</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Opname</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Low Stock</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-center" style="color: var(--txt-dim)">Aktif</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[100px] text-right" style="color: var(--txt-dim)">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y" style="border-color: var(--line)">
-                  <tr v-for="s in subscribers" :key="s.chat_id"
-                      class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                    <td class="px-4 py-3">
-                      <div class="font-semibold truncate" style="color: var(--txt)">{{ s.title }}</div>
-                      <div class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ s.chat_id }}</div>
-                      <div v-if="s.username" class="t-mono text-[10.5px]" style="color: var(--txt-dim)">@{{ s.username }}</div>
-                    </td>
-                    <td class="px-4 py-3">
-                      <Tag :severity="s.type === 'private' ? 'info' : 'warn'" :value="s.type.toUpperCase()" class="!text-[10px]" />
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                      <ToggleButton :modelValue="s.notify_in" @update:modelValue="toggleSub(s, 'notify_in', $event)"
-                                    onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
-                                    class="!p-1" />
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                      <ToggleButton :modelValue="s.notify_out" @update:modelValue="toggleSub(s, 'notify_out', $event)"
-                                    onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
-                                    class="!p-1" />
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                      <ToggleButton :modelValue="s.notify_adjust" @update:modelValue="toggleSub(s, 'notify_adjust', $event)"
-                                    onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
-                                    class="!p-1" />
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                      <ToggleButton :modelValue="s.notify_low_stock" @update:modelValue="toggleSub(s, 'notify_low_stock', $event)"
-                                    onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
-                                    class="!p-1" />
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                      <ToggleButton :modelValue="s.active" @update:modelValue="toggleSub(s, 'active', $event)"
-                                    onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times"
-                                    class="!p-1" />
-                    </td>
-                    <td class="px-4 py-3 text-right">
+      <!-- ============ TAB 3: SUBSCRIBERS ============ -->
+      <div v-if="activeTab === 'subscribers'" class="space-y-4">
+        <Panel title="Daftar Subscriber & Hak Notifikasi" icon="pi pi-users" dense>
+          <template #actions>
+            <Tag severity="info" :value="subscribers.length + ' Penerima Terdaftar'" />
+          </template>
+
+          <!-- add subscriber form -->
+          <div class="p-4 bg-slate-950/50 border-b border-slate-800/80">
+            <div class="flex flex-wrap gap-3 items-end">
+              <Field label="Chat ID (Angka)">
+                <InputText v-model="newChatID" placeholder="mis. 123456789 atau -100..." class="w-56 text-xs font-mono" />
+              </Field>
+              <Field label="Label / Nama Penerima">
+                <InputText v-model="newChatTitle" placeholder="mis. dr. Fikri (Poli Umum)" class="w-64 text-xs" />
+              </Field>
+              <Button label="Tambah Penerima" icon="pi pi-plus" size="small" @click="addSubscriber" />
+            </div>
+          </div>
+
+          <EmptyState v-if="!subscribers.length" icon="pi pi-users" title="Belum Ada Subscriber"
+                      sub="Tambahkan Chat ID secara manual atau minta staf mengirimkan perintah /start ke bot." />
+
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-left border-b border-slate-800 bg-slate-950/60 text-slate-400 text-[11px] uppercase tracking-wider">
+                  <th class="px-4 py-3">Penerima / Chat</th>
+                  <th class="px-4 py-3">Tipe</th>
+                  <th class="px-4 py-3 text-center">Masuk</th>
+                  <th class="px-4 py-3 text-center">Keluar</th>
+                  <th class="px-4 py-3 text-center">Opname</th>
+                  <th class="px-4 py-3 text-center">Low Stock</th>
+                  <th class="px-4 py-3 text-center">Aktif</th>
+                  <th class="px-4 py-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <tr v-for="s in subscribers" :key="s.chat_id" class="hover:bg-slate-800/30 transition-colors">
+                  <td class="px-4 py-3">
+                    <div class="font-bold text-white text-xs">{{ s.title || 'Tanpa Nama' }}</div>
+                    <div class="font-mono text-[11px] text-slate-400">ID: {{ s.chat_id }}</div>
+                    <div v-if="s.username" class="font-mono text-[10.5px] text-emerald-400">@{{ s.username }}</div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <Tag :severity="s.type === 'private' ? 'info' : 'warn'" :value="s.type.toUpperCase()" class="!text-[10px]" />
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <ToggleButton :modelValue="s.notify_in" @update:modelValue="toggleSub(s, 'notify_in', $event)"
+                                  onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times" class="!p-1" />
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <ToggleButton :modelValue="s.notify_out" @update:modelValue="toggleSub(s, 'notify_out', $event)"
+                                  onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times" class="!p-1" />
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <ToggleButton :modelValue="s.notify_adjust" @update:modelValue="toggleSub(s, 'notify_adjust', $event)"
+                                  onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times" class="!p-1" />
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <ToggleButton :modelValue="s.notify_low_stock" @update:modelValue="toggleSub(s, 'notify_low_stock', $event)"
+                                  onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times" class="!p-1" />
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <ToggleButton :modelValue="s.active" @update:modelValue="toggleSub(s, 'active', $event)"
+                                  onLabel="" offLabel="" onIcon="pi pi-check" offIcon="pi pi-times" class="!p-1" />
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end gap-1">
+                      <Button icon="pi pi-send" text rounded size="small" severity="info"
+                              v-tooltip.top="'Uji kirim ke chat ini'" @click="testOne(s.chat_id)" />
                       <Button icon="pi pi-trash" text rounded size="small" severity="danger"
                               v-tooltip.top="'Hapus subscriber'" @click="removeSub(s)" />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      </div>
 
-          <!-- test -->
-          <Panel title="Test Notifikasi" icon="pi pi-send">
-            <div class="flex flex-col gap-3">
-              <Field label="Pesan Test (opsional)">
-                <InputText v-model="testMsg" placeholder="Default: pesan test bawaan" class="w-full" fluid />
-              </Field>
-              <div class="flex gap-2.5">
-                <Button label="Test Semua Aktif" icon="pi pi-send" size="small"
-                        :loading="testingAll" :disabled="!subscribers.length" @click="testAll" />
-                <Button label="Refresh Log" icon="pi pi-sync" size="small" text severity="secondary"
-                        @click="fetchLogs" />
+      <!-- ============ TAB 4: COMMANDS ============ -->
+      <div v-if="activeTab === 'commands'" class="space-y-4">
+        <Panel title="Daftar Command & Respon Bot" icon="pi pi-list" dense>
+          <template #actions>
+            <Button label="Tambah Command" icon="pi pi-plus" size="small" @click="addCmd" />
+          </template>
+
+          <EmptyState v-if="!commands.length" icon="pi pi-list" title="Belum Ada Command"
+                      sub="Tambah perintah khusus untuk bot." />
+
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-left border-b border-slate-800 bg-slate-950/60 text-slate-400 text-[11px] uppercase tracking-wider">
+                  <th class="px-4 py-3">Command</th>
+                  <th class="px-4 py-3">Label Menu</th>
+                  <th class="px-4 py-3 text-center">Tampil Menu</th>
+                  <th class="px-4 py-3 text-center">Urutan</th>
+                  <th class="px-4 py-3 text-center">Status</th>
+                  <th class="px-4 py-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <tr v-for="c in commands" :key="c.id" class="hover:bg-slate-800/30 transition-colors">
+                  <td class="px-4 py-3">
+                    <span class="font-mono font-bold text-emerald-400">/{{ c.command }}</span>
+                    <div class="text-[11px] text-slate-400">{{ c.description || '-' }}</div>
+                  </td>
+                  <td class="px-4 py-3 font-medium text-white">{{ c.label }}</td>
+                  <td class="px-4 py-3 text-center">
+                    <Tag :severity="c.is_menu ? 'success' : 'secondary'" :value="c.is_menu ? 'YA' : 'TIDAK'" />
+                  </td>
+                  <td class="px-4 py-3 text-center font-mono">{{ c.sort_order }}</td>
+                  <td class="px-4 py-3 text-center">
+                    <Tag :severity="c.active ? 'success' : 'danger'" :value="c.active ? 'AKTIF' : 'NONAKTIF'" />
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <Button icon="pi pi-pencil" text rounded size="small" severity="secondary" @click="editCmd(c)" />
+                    <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="removeCmd(c)" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      </div>
+
+      <!-- ============ TAB 5: LOGS ============ -->
+      <div v-if="activeTab === 'logs'" class="space-y-4">
+        <Panel title="Riwayat Log Notifikasi Terkirim" icon="pi pi-history" dense>
+          <template #actions>
+            <Button label="Segarkan" icon="pi pi-sync" size="small" text severity="secondary" @click="fetchLogs" />
+          </template>
+
+          <EmptyState v-if="!logs.length" icon="pi pi-history" title="Belum Ada Log Pesan"
+                      sub="Pesan notifikasi dan alert yang dikirim bot akan tercatat di sini." />
+
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-left border-b border-slate-800 bg-slate-950/60 text-slate-400 text-[11px] uppercase tracking-wider">
+                  <th class="px-4 py-3 w-40">Waktu</th>
+                  <th class="px-4 py-3">Tujuan</th>
+                  <th class="px-4 py-3">Pesan</th>
+                  <th class="px-4 py-3 w-28 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <tr v-for="l in logs" :key="l.id" class="hover:bg-slate-800/30 transition-colors">
+                  <td class="px-4 py-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">{{ l.sent_at }}</td>
+                  <td class="px-4 py-3">
+                    <div class="font-bold text-white">{{ l.chat_title || 'Chat ID: ' + l.chat_id }}</div>
+                    <div class="font-mono text-[10.5px] text-slate-500">{{ l.chat_id }}</div>
+                  </td>
+                  <td class="px-4 py-3 text-slate-300 max-w-md truncate">{{ l.message }}</td>
+                  <td class="px-4 py-3 text-right">
+                    <Tag :severity="l.status === 'ok' ? 'success' : 'danger'"
+                         :value="l.status === 'ok' ? 'TERKIRIM' : 'GAGAL'" class="!text-[10px]" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <template v-if="logs.length" #footer>
+            <div class="flex items-center justify-between p-3 border-t border-slate-800 text-xs text-slate-400">
+              <span>{{ logsPage * logsPerPage + 1 }}–{{ Math.min(logsTotal, (logsPage + 1) * logsPerPage) }} dari {{ logsTotal }} log</span>
+              <div class="flex items-center gap-2">
+                <Button icon="pi pi-angle-left" size="small" text severity="secondary"
+                        :disabled="logsPage === 0" @click="logsPage--; fetchLogs()" />
+                <span class="font-mono">Hal. {{ logsPage + 1 }} / {{ lastLogPage + 1 }}</span>
+                <Button icon="pi pi-angle-right" size="small" text severity="secondary"
+                        :disabled="logsPage >= lastLogPage" @click="logsPage++; fetchLogs()" />
               </div>
             </div>
-          </Panel>
+          </template>
+        </Panel>
+      </div>
 
-          <!-- logs -->
-          <Panel title="Riwayat Pesan" icon="pi pi-history" dense>
-            <template #actions>
-              <Tag severity="secondary" :value="logsTotal + ' log'" />
-            </template>
-
-            <EmptyState v-if="!logs.length" icon="pi pi-history" title="Belum ada log"
-                        sub="Pesan test akan muncul di sini." />
-
-            <div v-else class="overflow-x-auto">
-              <table class="w-full text-[12.5px]">
-                <thead>
-                  <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[160px]" style="color: var(--txt-dim)">Waktu</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Tujuan</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Pesan</th>
-                    <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[100px]" style="color: var(--txt-dim)">Status</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y" style="border-color: var(--line)">
-                  <tr v-for="l in logs" :key="l.id" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                    <td class="px-4 py-3 whitespace-nowrap t-mono text-[11.5px]" style="color: var(--txt-dim)">{{ l.sent_at }}</td>
-                    <td class="px-4 py-3">
-                      <div class="font-semibold truncate" style="color: var(--txt)">{{ l.chat_title }}</div>
-                      <div class="t-mono text-[10.5px]" style="color: var(--txt-dim)">{{ l.chat_id }}</div>
-                    </td>
-                    <td class="px-4 py-3 truncate max-w-[300px]" style="color: var(--txt)">{{ l.message }}</td>
-                    <td class="px-4 py-3">
-                      <Tag :severity="l.status === 'ok' ? 'success' : 'danger'"
-                           :value="l.status === 'ok' ? 'TERKIRIM' : 'GAGAL'" class="!text-[10px]" />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <template v-if="logs.length" #footer>
-              <div class="flex items-center justify-between">
-                <span class="text-[11.5px]" style="color: var(--txt-dim)">
-                  {{ logsPage * logsPerPage + 1 }}–{{ Math.min(logsTotal, (logsPage + 1) * logsPerPage) }} dari {{ logsTotal }}
-                </span>
-                <div class="flex items-center gap-2">
-                  <Button icon="pi pi-angle-left" size="small" text severity="secondary"
-                          :disabled="logsPage === 0" @click="logsPage--; fetchLogs()" />
-                  <span class="t-num text-[12px]">Hal. {{ logsPage + 1 }} / {{ lastLogPage + 1 }}</span>
-                  <Button icon="pi pi-angle-right" size="small" text severity="secondary"
-                          :disabled="logsPage >= lastLogPage" @click="logsPage++; fetchLogs()" />
-                </div>
-              </div>
-            </template>
-          </Panel>
-        </div>
-
-        <!-- right sidebar -->
-        <div class="flex flex-col gap-4 lg:sticky lg:top-4">
-          <!-- bot identity -->
-          <Panel title="Identitas Bot" icon="pi pi-id-card">
-            <div v-if="!tokenConfigured" class="text-center py-4">
-              <i class="pi pi-exclamation-triangle text-2xl" style="color: var(--sig-warn)" />
-              <div class="text-[13px] font-semibold mt-2">Token belum diisi</div>
-              <div class="text-[11.5px] mt-1" style="color: var(--txt-dim)">Isi bot token lalu Simpan.</div>
-            </div>
-            <div v-else-if="botInfo?.error" class="text-center py-4">
-              <i class="pi pi-times-circle text-2xl text-sig-bad" />
-              <div class="text-[13px] font-semibold mt-2">Bot tidak terhubung</div>
-              <div class="text-[11.5px] mt-1" style="color: var(--txt-dim)">{{ botInfo.error }}</div>
-            </div>
-            <div v-else-if="botConnected" class="flex flex-col gap-3">
-              <div v-if="botInfo.warning" class="p-2 rounded text-[11px] border"
-                   style="border-color: var(--sig-warn); background: rgba(245, 158, 11, 0.1); color: var(--sig-warn)">
-                <i class="pi pi-exclamation-triangle mr-1" />{{ botInfo.warning }}
-              </div>
-              <div class="flex items-center gap-3">
-                <div class="w-12 h-12 rounded-full grid place-items-center text-[20px] font-bold"
-                     style="background: var(--p-primary-500); color: var(--ink-950)">
-                  {{ botInfo.first_name?.[0] || 'B' }}
-                </div>
-                <div class="min-w-0">
-                  <div class="text-[14px] font-bold truncate">{{ botInfo.first_name }} {{ botInfo.last_name }}</div>
-                  <div class="t-mono text-[11px]" style="color: var(--txt-dim)">@{{ botInfo.username }}</div>
-                  <div class="t-mono text-[10px]" style="color: var(--txt-dim)">ID: {{ botInfo.id }}</div>
-                </div>
-              </div>
-              <div class="pt-3 border-t flex flex-col gap-2" style="border-color: var(--line)">
-                <div class="flex items-center justify-between">
-                  <span class="t-label">Join Groups</span>
-                  <Tag :severity="botInfo.can_join_groups ? 'success' : 'danger'"
-                       :value="botInfo.can_join_groups ? 'YA' : 'TIDAK'" />
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="t-label">Read All Msgs</span>
-                  <Tag :severity="botInfo.can_read_all ? 'success' : 'danger'"
-                       :value="botInfo.can_read_all ? 'YA' : 'TIDAK'" />
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="t-label">Inline Query</span>
-                  <Tag :severity="botInfo.supports_inline ? 'success' : 'secondary'"
-                       :value="botInfo.supports_inline ? 'YA' : 'TIDAK'" />
-                </div>
+      <!-- ============ TAB 6: SETUP GUIDE ============ -->
+      <div v-if="activeTab === 'guide'" class="grid md:grid-cols-2 gap-5">
+        <Panel title="Langkah 1: Setup Bot & Token di @BotFather" icon="pi pi-shield">
+          <div class="space-y-3.5 text-xs text-slate-300 leading-relaxed">
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+              <div class="font-bold text-emerald-400">1. Buat Bot Baru</div>
+              <p class="text-slate-400">Buka chat dengan <strong class="text-white">@BotFather</strong> di Telegram, kirim perintah:</p>
+              <div class="flex items-center justify-between p-2 rounded bg-slate-900 font-mono text-emerald-400 text-xs">
+                <span>/newbot</span>
+                <Button icon="pi pi-copy" text size="small" @click="copyText('/newbot')" />
               </div>
             </div>
-            <div v-else class="text-center py-4">
-              <i class="pi pi-spin pi-spinner text-xl" style="color: var(--txt-dim)" />
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+              <div class="font-bold text-emerald-400">2. Simpan Bot Token</div>
+              <p class="text-slate-400">Salin token dari BotFather dan masukkan ke menu <strong>Koneksi & Mini App</strong>, lalu klik Simpan.</p>
             </div>
-          </Panel>
+          </div>
+        </Panel>
 
-          <!-- bot commands editor -->
-          <Panel title="Daftar Command" icon="pi pi-list" dense>
-            <template #actions>
-              <Tag severity="secondary" :value="commands.length + ' command'" />
-              <Button label="Tambah" icon="pi pi-plus" size="small" text @click="addCmd" />
-            </template>
-
-            <div v-if="cmdLoading" class="grid place-items-center py-8">
-              <i class="pi pi-spin pi-spinner text-lg" style="color: var(--txt-dim)" />
+        <Panel title="Langkah 2: Konfigurasi Mini App Menu Button" icon="pi pi-mobile">
+          <div class="space-y-3.5 text-xs text-slate-300 leading-relaxed">
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+              <div class="font-bold text-sky-400">Atur Menu Button di BotFather</div>
+              <p class="text-slate-400">Kirim perintah ini ke @BotFather untuk memunculkan tombol menu Web App di pojok kiri bawah chat bot:</p>
+              <div class="flex items-center justify-between p-2 rounded bg-slate-900 font-mono text-sky-400 text-xs">
+                <span>/setmenubutton</span>
+                <Button icon="pi pi-copy" text size="small" @click="copyText('/setmenubutton')" />
+              </div>
+              <p class="text-slate-400 text-[11.5px]">Lalu pilih bot Anda, masukkan URL Web App:</p>
+              <div class="flex items-center justify-between p-2 rounded bg-slate-900 font-mono text-slate-300 text-xs">
+                <span>https://barang.kesling.biz.id</span>
+                <Button icon="pi pi-copy" text size="small" @click="copyText('https://barang.kesling.biz.id')" />
+              </div>
+              <p class="text-slate-400 text-[11.5px]">Dan beri judul tombol, misalnya: <strong class="text-white">Buka Inventaris</strong></p>
             </div>
-
-            <EmptyState v-else-if="!commands.length" icon="pi pi-list" title="Belum ada command"
-                        sub="Tambah command untuk bot Telegram." />
-
-            <div v-else class="overflow-x-auto">
-              <table class="w-full text-[12.5px]">
-                <thead>
-                  <tr class="text-left" style="background: var(--paper-2)">
-                    <th class="t-label px-4 py-2.5">Command</th>
-                    <th class="t-label px-4 py-2.5">Label</th>
-                    <th class="t-label px-4 py-2.5 w-[80px] text-center">Menu</th>
-                    <th class="t-label px-4 py-2.5 w-[70px] text-center">Urut</th>
-                    <th class="t-label px-4 py-2.5 w-[70px] text-center">Aktif</th>
-                    <th class="t-label px-4 py-2.5 w-[80px] text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y" style="border-color: var(--line-soft)">
-                  <tr v-for="c in commands" :key="c.id" class="hover:bg-paper-2 transition-colors">
-                    <td class="px-4 py-2.5">
-                      <span class="t-mono font-bold">/{{ c.command }}</span>
-                      <div class="text-[10.5px]" style="color: var(--txt-dim)">{{ c.description }}</div>
-                    </td>
-                    <td class="px-4 py-2.5">{{ c.label }}</td>
-                    <td class="px-4 py-2.5 text-center">
-                      <Tag :severity="c.is_menu ? 'success' : 'secondary'" :value="c.is_menu ? 'YA' : '-'" />
-                    </td>
-                    <td class="px-4 py-2.5 text-center t-num">{{ c.sort_order }}</td>
-                    <td class="px-4 py-2.5 text-center">
-                      <Tag :severity="c.active ? 'success' : 'danger'" :value="c.active ? 'AKTIF' : 'MATI'" />
-                    </td>
-                    <td class="px-4 py-2.5 text-right">
-                      <Button icon="pi pi-pencil" text rounded size="small" severity="secondary"
-                              v-tooltip.top="'Edit'" @click="editCmd(c)" />
-                      <Button icon="pi pi-trash" text rounded size="small" severity="danger"
-                              v-tooltip.top="'Hapus'" @click="removeCmd(c)" />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-
-          <!-- setup guide -->
-          <Panel title="Panduan Setup" icon="pi pi-book" dense>
-            <div class="flex flex-col gap-3 px-4 py-1 text-[12px] leading-relaxed">
-
-              <div class="flex flex-col gap-1">
-                <div class="font-bold text-[12.5px] flex items-center gap-1.5">
-                  <span class="grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold"
-                        style="background: var(--acc-500); color: var(--ink-950)">1</span>
-                  Buat Bot
-                </div>
-                <div style="color: var(--txt-dim)">
-                  Buka Telegram, cari <span class="t-mono">@BotFather</span>. Kirim perintah
-                  <span class="t-mono">/newbot</span>. Beri nama dan username (harus berakhiran <span class="t-mono">bot</span>).
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <div class="font-bold text-[12.5px] flex items-center gap-1.5">
-                  <span class="grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold"
-                        style="background: var(--acc-500); color: var(--ink-950)">2</span>
-                  Salin Token
-                </div>
-                <div style="color: var(--txt-dim)">
-                  BotFather mengirim token format <span class="t-mono">123456789:ABCdef...</span>.
-                  Salin, isi di kolom Bot Token, klik Simpan.
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <div class="font-bold text-[12.5px] flex items-center gap-1.5">
-                  <span class="grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold"
-                        style="background: var(--acc-500); color: var(--ink-950)">3</span>
-                  Verifikasi Bot
-                </div>
-                <div style="color: var(--txt-dim)">
-                  Setelah Simpan, panel Identitas Bot menampilkan nama, username, dan ID bot.
-                  Jika muncul error, periksa token.
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <div class="font-bold text-[12.5px] flex items-center gap-1.5">
-                  <span class="grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold"
-                        style="background: var(--acc-500); color: var(--ink-950)">4</span>
-                  Dapatkan Chat ID
-                </div>
-                <div style="color: var(--txt-dim)">
-                  <div class="mb-1">Untuk chat private:</div>
-                  <div class="flex flex-col gap-1 pl-3">
-                    <div>• Buka <span class="t-mono">@userinfobot</span> di Telegram</div>
-                    <div>• Kirim pesan apa saja</div>
-                    <div>• Bot membalas dengan Chat ID (angka)</div>
-                  </div>
-                  <div class="mt-1.5 mb-1">Untuk grup:</div>
-                  <div class="flex flex-col gap-1 pl-3">
-                    <div>• Tambahkan bot ke grup Telegram</div>
-                    <div>• Kirim pesan di grup</div>
-                    <div>• Buka <span class="t-mono">https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</span></div>
-                    <div>• Cari <span class="t-mono">"chat":{"id":-100...}</span> — itu Chat ID grup</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <div class="font-bold text-[12.5px] flex items-center gap-1.5">
-                  <span class="grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold"
-                        style="background: var(--acc-500); color: var(--ink-950)">5</span>
-                  Tambah Subscriber
-                </div>
-                <div style="color: var(--txt-dim)">
-                  Isi Chat ID di form "Chat ID Tujuan", klik Tambah.
-                  Bot otomatis mengambil info nama dan tipe chat.
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <div class="font-bold text-[12.5px] flex items-center gap-1.5">
-                  <span class="grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold"
-                        style="background: var(--acc-500); color: var(--ink-950)">6</span>
-                  Atur Notifikasi
-                </div>
-                <div style="color: var(--txt-dim)">
-                  Setiap subscriber punya 5 toggle: Masuk, Keluar, Opname, Low Stock, dan Active.
-                  Klik toggle untuk on/off per subscriber.
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <div class="font-bold text-[12.5px] flex items-center gap-1.5">
-                  <span class="grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold"
-                        style="background: var(--acc-500); color: var(--ink-950)">7</span>
-                  Test Koneksi
-                </div>
-                <div style="color: var(--txt-dim)">
-                  Tulis pesan test (opsional), klik "Test Semua Aktif".
-                  Cek panel Riwayat Pesan untuk status terkirim/gagal.
-                </div>
-              </div>
-
-              <div class="pt-2 border-t" style="border-color: var(--line)">
-                <div class="t-label mb-1.5">Catatan</div>
-                <div style="color: var(--txt-dim)" class="text-[11px] leading-relaxed">
-                  Bot harus ditambahkan sebagai admin di grup agar bisa kirim pesan.
-                  Untuk channel, bot harus jadi admin dengan hak posting.
-                  Chat ID grup selalu negatif (mis. <span class="t-mono">-1001234567890</span>).
-                </div>
-              </div>
-
-            </div>
-          </Panel>
-        </div>
+          </div>
+        </Panel>
       </div>
     </div>
 
-    <!-- command editor dialog -->
-    <div v-if="showCmdForm" class="fixed inset-0 z-50 grid place-items-center p-4"
-         style="background: rgb(0 0 0 / 0.6)" @click.self="showCmdForm = false">
-      <div class="panel w-full max-w-[520px] overflow-hidden">
-        <div class="flex items-center justify-between px-4 border-b" style="height: 48px; border-color: var(--line)">
-          <div class="flex items-center gap-2">
-            <i class="pi pi-list text-[13px]" style="color: var(--acc-500)" />
-            <span class="text-[13px] font-bold">{{ editingCmd.id ? 'Edit Command' : 'Tambah Command' }}</span>
-          </div>
-          <Button icon="pi pi-times" text rounded size="small" severity="secondary" @click="showCmdForm = false" />
-        </div>
-        <div class="p-4 flex flex-col gap-4">
-          <div class="grid sm:grid-cols-2 gap-3">
-            <Field label="Command" hint="Tanpa /">
-              <InputText v-model="editingCmd.command" placeholder="masuk" class="w-full" fluid />
-            </Field>
-            <Field label="Label" hint="Teks tombol menu">
-              <InputText v-model="editingCmd.label" placeholder="Barang Masuk" class="w-full" fluid />
-            </Field>
-          </div>
-          <Field label="Deskripsi" hint="Penjelasan singkat">
-            <InputText v-model="editingCmd.description" placeholder="Catat barang masuk" class="w-full" fluid />
+    <!-- Dialog Edit/Add Command -->
+    <Dialog v-model:visible="showCmdForm" modal :header="editingCmd?.id ? 'Edit Perintah Bot' : 'Tambah Perintah Baru'"
+            :style="{ width: '480px' }" class="p-fluid">
+      <div v-if="editingCmd" class="space-y-3.5 pt-2 text-xs">
+        <Field label="Command (tanpa slash)" hint="Contoh: stok, cari, kontak">
+          <InputText v-model="editingCmd.command" placeholder="stok" class="font-mono text-xs" />
+        </Field>
+        <Field label="Label Menu" hint="Teks yang muncul pada tombol menu">
+          <InputText v-model="editingCmd.label" placeholder="Cek Stok" class="text-xs" />
+        </Field>
+        <Field label="Deskripsi">
+          <InputText v-model="editingCmd.description" placeholder="Menampilkan daftar stok barang menipis" class="text-xs" />
+        </Field>
+        <Field label="Respon Teks (Opsional)">
+          <Textarea v-model="editingCmd.response" rows="3" placeholder="Pesan otomatis bot..." class="text-xs" />
+        </Field>
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <Field label="Tampilkan di Menu">
+            <ToggleButton v-model="editingCmd.is_menu" onLabel="Ya" offLabel="Tidak" />
           </Field>
-          <Field label="Response / Balasan Bot" hint="Pesan yang dikirim bot saat command dipanggil">
-            <Textarea v-model="editingCmd.response" rows="4" autoResize
-                      placeholder="Format: /masuk SKU jumlah" class="w-full" />
+          <Field label="Status Aktif">
+            <ToggleButton v-model="editingCmd.active" onLabel="Aktif" offLabel="Mati" />
           </Field>
-          <div class="grid grid-cols-3 gap-3">
-            <div class="flex flex-col gap-1.5">
-              <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Tampil di Menu</span>
-              <ToggleButton v-model="editingCmd.is_menu" onLabel="Ya" offLabel="Tidak"
-                            onIcon="pi pi-check" offIcon="pi pi-times" />
-            </div>
-            <Field label="Urutan">
-              <InputText v-model.number="editingCmd.sort_order" type="number" class="w-full" fluid />
-            </Field>
-            <div class="flex flex-col gap-1.5">
-              <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Aktif</span>
-              <ToggleButton v-model="editingCmd.active" onLabel="Aktif" offLabel="Mati"
-                            onIcon="pi pi-check" offIcon="pi pi-times" />
-            </div>
-          </div>
-        </div>
-        <div class="flex justify-end gap-2.5 px-4 py-3 border-t" style="border-color: var(--line)">
-          <Button label="Batal" text severity="secondary" @click="showCmdForm = false" />
-          <Button label="Simpan" icon="pi pi-save" :loading="cmdSaving" @click="saveCmd" />
         </div>
       </div>
-    </div>
+      <template #footer>
+        <Button label="Batal" icon="pi pi-times" text size="small" severity="secondary" @click="showCmdForm = false" />
+        <Button label="Simpan" icon="pi pi-check" size="small" :loading="cmdSaving" @click="saveCmd" />
+      </template>
+    </Dialog>
   </div>
 </template>
