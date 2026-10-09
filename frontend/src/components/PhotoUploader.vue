@@ -756,6 +756,11 @@ async function onFileSelected(e: Event) {
     uploadStep.value = 'success'
     currentStepText.value = 'Foto berhasil diproses & disimpan!'
 
+    // Tutup modal otomatis setelah feedback sukses singkat (750ms)
+    setTimeout(() => {
+      isUploadingModal.value = false
+    }, 750)
+
     toast.add({
       severity: 'success',
       summary: 'Foto Geotag Berhasil',
@@ -820,6 +825,12 @@ async function reStampPhoto() {
     uploadProgress.value = 100
     uploadStep.value = 'success'
     currentStepText.value = 'Cap watermark berhasil diperbarui!'
+
+    // Tutup modal otomatis setelah feedback sukses singkat (750ms)
+    setTimeout(() => {
+      isUploadingModal.value = false
+    }, 750)
+
     toast.add({
       severity: 'success',
       summary: 'Cap Berhasil Diperbarui',
@@ -841,19 +852,6 @@ async function reStampPhoto() {
     uploadAbortCtrl = null
   }
 }
-
-let debounceTimer: any = null
-watch(
-  () => [props.itemName, props.locationName],
-  () => {
-    if (lastRawFile.value && !uploading.value && currentPhotoSrc.value) {
-      if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(() => {
-        reStampPhoto()
-      }, 1400)
-    }
-  }
-)
 
 function removePhoto() {
   if (localPreviewUrl.value) {
@@ -1140,11 +1138,22 @@ async function downloadPhoto() {
       <div
         v-if="isUploadingModal"
         class="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300"
+        @click.self="isUploadingModal = false"
       >
         <div
           class="relative max-w-sm w-full bg-slate-900 border border-slate-700/80 rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center overflow-hidden"
           style="background: linear-gradient(180deg, #0f172a 0%, #090d16 100%)"
         >
+          <!-- Close button -->
+          <button
+            type="button"
+            class="absolute top-3 right-3 w-7 h-7 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors z-20"
+            title="Tutup"
+            @click="isUploadingModal = false"
+          >
+            <i class="pi pi-times text-xs" />
+          </button>
+
           <!-- Background Ambient Glow -->
           <div
             class="absolute -top-20 -left-20 w-44 h-44 rounded-full bg-cyan-500/20 blur-3xl pointer-events-none"
