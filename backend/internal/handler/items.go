@@ -190,7 +190,34 @@ func (h *ItemHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	// Delete related transactions, maintenance records, and the item
+	// 1. Gather all photo URLs associated with this item to delete physical files
+	var itemPhoto *string
+	_ = h.pool.QueryRow(c, `SELECT photo_url FROM inventory_items WHERE id::text=$1`, id).Scan(&itemPhoto)
+	if itemPhoto != nil && *itemPhoto != "" {
+		DeleteUploadedPhoto(*itemPhoto)
+	}
+
+	txPhotos, errTx := h.pool.Query(c, `SELECT photo_url FROM stock_transactions WHERE (item_id::text=$1 OR item_sku IN (SELECT sku FROM inventory_items WHERE id::text=$1)) AND photo_url IS NOT NULL`, id)
+	if errTx == nil {
+		for txPhotos.Next() {
+			var p string
+			txPhotos.Scan(&p)
+			DeleteUploadedPhoto(p)
+		}
+		txPhotos.Close()
+	}
+
+	maintPhotos, errMaint := h.pool.Query(c, `SELECT photo_url FROM item_maintenances WHERE item_id::text=$1 AND photo_url IS NOT NULL`, id)
+	if errMaint == nil {
+		for maintPhotos.Next() {
+			var p string
+			maintPhotos.Scan(&p)
+			DeleteUploadedPhoto(p)
+		}
+		maintPhotos.Close()
+	}
+
+	// 2. Delete related transactions, maintenance records, and the item from database
 	_, _ = h.pool.Exec(c, `DELETE FROM stock_transactions WHERE item_id::text=$1 OR item_sku IN (SELECT sku FROM inventory_items WHERE id::text=$1)`, id)
 	_, _ = h.pool.Exec(c, `DELETE FROM item_maintenances WHERE item_id::text=$1`, id)
 	tag, err := h.pool.Exec(c, `DELETE FROM inventory_items WHERE id::text=$1`, id)

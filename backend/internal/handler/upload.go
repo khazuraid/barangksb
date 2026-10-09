@@ -214,6 +214,21 @@ func (h *UploadHandler) Serve(c *gin.Context) {
 	io.Copy(c.Writer, reader)
 }
 
+// DeleteUploadedPhoto deletes physical file from storage to keep disk clean
+func DeleteUploadedPhoto(photoURL string) {
+	if photoURL == "" {
+		return
+	}
+	name := filepath.Base(photoURL)
+	if name == "" || name == "." || name == "/" {
+		return
+	}
+	dir := getUploadDir()
+	_ = os.Remove(filepath.Join(dir, name))
+	_ = os.Remove(filepath.Join("uploads", name))
+	slog.Info("deleted uploaded photo file", "name", name)
+}
+
 func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string, clientStamped bool) ([]byte, error) {
 	img, err := imaging.Decode(bytes.NewReader(src))
 	if err != nil {

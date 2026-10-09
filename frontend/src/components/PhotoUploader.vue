@@ -498,7 +498,7 @@ async function stampGpsMapCamera(
         // Draw Map Box (Left column)
         const mapX = cardX + padX
         const mapY = cardY + (cardH - mapSize) / 2
-        const mapRadius = Math.round(10 * (width / 1440))
+        const mapRadius = Math.round(mapSize * 0.08)
 
         ctx.save()
         ctx.beginPath()
@@ -570,10 +570,6 @@ async function stampGpsMapCamera(
 
         // 4. Timestamp
         const dateStr = formatGpsDate(new Date())
-        ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#e2e8f0'
-        ctx.fillText(dateStr, textX, textY)
-        ctx.restore()
         ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#cbd5e1'
         ctx.fillText(dateStr, textX, textY)

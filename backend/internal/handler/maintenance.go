@@ -123,6 +123,11 @@ func (h *MaintenanceHandler) Create(c *gin.Context) {
 // DELETE /api/items/:id/maintenance/:mId
 func (h *MaintenanceHandler) Delete(c *gin.Context) {
 	mID := c.Param("mId")
+	var photo *string
+	_ = h.pool.QueryRow(c, `SELECT photo_url FROM item_maintenances WHERE id::text=$1`, mID).Scan(&photo)
+	if photo != nil && *photo != "" {
+		DeleteUploadedPhoto(*photo)
+	}
 	h.pool.Exec(c, `DELETE FROM item_maintenances WHERE id::text=$1`, mID)
 	c.JSON(http.StatusOK, gin.H{"message": "riwayat servis dihapus"})
 }

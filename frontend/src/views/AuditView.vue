@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
@@ -10,6 +10,11 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 
 const auditLogs = ref<any[]>([])
+const total = ref(0)
+const page = ref(0)
+const perPage = ref(25)
+const perPageOptions = [25, 50, 100]
+
 const loading = ref(true)
 const q = ref('')
 const opFilter = ref('')
@@ -22,20 +27,34 @@ const opOptions = [
   { label: 'DELETE (Hapus)', value: 'DELETE' },
 ]
 
-async function fetchAudit() {
+async function fetchAudit(reset = false) {
+  if (reset) page.value = 0
   loading.value = true
   try {
-    const res = await api.get('/audit')
+    const res = await api.get('/audit', {
+      params: { page: page.value + 1, per_page: perPage.value },
+    })
     const list = res.data?.data || (Array.isArray(res.data) ? res.data : [])
     auditLogs.value = Array.isArray(list) ? list : []
+    total.value = res.data?.total || auditLogs.value.length
   } catch {
     auditLogs.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
 }
 
 onMounted(() => fetchAudit())
+watch([page, perPage], () => fetchAudit())
+
+const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
+const range = computed(() => {
+  if (!total.value) return '0'
+  const from = page.value * perPage.value + 1
+  const to = Math.min(total.value, (page.value + 1) * perPage.value)
+  return `${from}–${to} dari ${total.value}`
+})
 
 const filtered = computed(() => {
   const safeList = Array.isArray(auditLogs.value) ? auditLogs.value : []
@@ -51,7 +70,7 @@ const filtered = computed(() => {
 const counts = computed(() => {
   const safeList = Array.isArray(auditLogs.value) ? auditLogs.value : []
   return {
-    total: safeList.length,
+    total: total.value,
     ins: safeList.filter((l) => l.op === 'INSERT').length,
     upd: safeList.filter((l) => l.op === 'UPDATE').length,
     del: safeList.filter((l) => l.op === 'DELETE').length,
@@ -83,7 +102,7 @@ function prettyJSON(raw: any) {
           severity="secondary"
           outlined
           :loading="loading"
-          @click="fetchAudit"
+          @click="fetchAudit(true)"
         />
       </template>
     </PageHeader>
@@ -110,7 +129,7 @@ function prettyJSON(raw: any) {
       </div>
     </div>
 
-    <!-- Audit Table Panel -->
+    <!-- Audit Table Panel with Pagination -->
     <Panel title="Jejak Mutasi Database &amp; Keamanan" icon="pi pi-shield" dense>
       <template #actions>
         <InputText
@@ -190,9 +209,28 @@ function prettyJSON(raw: any) {
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between text-[11.5px]" style="color: var(--txt-dim)">
-          <span>Menampilkan {{ filtered.length }} dari {{ auditLogs.length }} catatan audit</span>
-          <span>Klik baris untuk melihat perbedaan payload JSON</span>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+          <div class="flex items-center gap-2">
+            <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
+            <Button
+              icon="pi pi-angle-left"
+              size="small"
+              text
+              severity="secondary"
+              :disabled="page === 0"
+              @click="page--"
+            />
+            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <Button
+              icon="pi pi-angle-right"
+              size="small"
+              text
+              severity="secondary"
+              :disabled="page >= lastPage"
+              @click="page++"
+            />
+          </div>
         </div>
       </template>
     </Panel>
