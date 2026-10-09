@@ -849,6 +849,7 @@ async function deleteMaintRecord(mId: string) {
               v-model:geo-lng="stockForm.geo_lng"
               v-model:geo-acc="stockForm.geo_acc"
               v-model:geo-name="stockForm.geo_name"
+              :item-name="item?.name"
               :location-name="item?.location"
               :label="stockModalType === 'IN' ? 'Foto Bukti Penerimaan Barang (Wajib Cap Geotag)' : 'Foto Bukti Penyerahan Barang (Wajib Cap Geotag)'"
               hint="Foto fisik barang dengan cap GPS Map Camera sebagai bukti otentik"
@@ -905,6 +906,7 @@ async function deleteMaintRecord(mId: string) {
           <div class="sm:col-span-2">
             <PhotoUploader
               v-model="maintForm.photo_url"
+              :item-name="item?.name"
               :location-name="item?.location"
               label="Foto Nota / Sertifikat Kalibrasi (Opsional)"
               hint="Dapat dicap lokasi GPS"

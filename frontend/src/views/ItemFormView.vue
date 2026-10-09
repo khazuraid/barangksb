@@ -153,6 +153,7 @@ async function submit() {
             v-model:geo-lng="form.geo_lng"
             v-model:geo-acc="form.geo_acc"
             v-model:geo-name="form.geo_name"
+            :item-name="form.name"
             :location-name="form.location"
             label="Foto Fisik Barang"
             hint="Otomatis dicap banner GPS Map Camera proporsional"
@@ -163,7 +164,7 @@ async function submit() {
         <div class="panel p-4 flex flex-col gap-2.5">
           <div class="flex items-center justify-between">
             <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">
-              Preview Identitas SKU
+              Preview Identitas Barang
             </span>
             <Tag :severity="form.track_stock ? 'warn' : 'info'"
                  :value="form.track_stock ? 'KONSUMABEL' : 'ASET TETAP'" class="!text-[10px]" />
@@ -173,6 +174,15 @@ async function submit() {
                style="background: var(--panel-2); border-color: var(--line)">
             <span>{{ skuPreview }}</span>
             <i class="pi pi-barcode text-lg opacity-70" />
+          </div>
+
+          <!-- Live Nama Barang -->
+          <div class="p-2.5 rounded-lg border flex flex-col gap-0.5"
+               style="background: var(--panel-2); border-color: var(--line)">
+            <span class="text-[10px] uppercase font-semibold" style="color: var(--txt-dim)">Nama Barang:</span>
+            <span class="font-bold text-[13px] break-words" :class="form.name ? 'text-slate-900 dark:text-white' : 'italic text-slate-400'">
+              {{ form.name || 'Belum diisi (Ketik nama di formulir)' }}
+            </span>
           </div>
 
           <p class="text-[11.5px] leading-relaxed" style="color: var(--txt-dim)">

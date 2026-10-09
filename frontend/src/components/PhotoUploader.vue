@@ -9,6 +9,7 @@ const props = withDefaults(
   defineProps<{
     modelValue?: string
     label?: string
+    itemName?: string
     locationName?: string
     hint?: string
     geoLat?: number | null
@@ -18,6 +19,7 @@ const props = withDefaults(
   {
     modelValue: '',
     label: 'Foto Barang',
+    itemName: '',
     locationName: '',
     hint: 'Foto akan otomatis dikompresi dan dicap watermark GPS Map Camera.',
     geoLat: null,
@@ -46,28 +48,25 @@ const previewOpen = ref(false)
 const showInlineMap = ref(false)
 const modalTab = ref<'photo' | 'map'>('photo')
 const localPreviewUrl = ref('')
+const lastRawFile = ref<File | null>(null)
 
-// Progress & live logs
-const showProgressModal = ref(false)
+// Animated Upload State
+const isUploadingModal = ref(false)
 const uploadProgress = ref(0)
+const uploadStep = ref<'gps' | 'stamp' | 'compress' | 'upload' | 'success'>('gps')
 const currentStepText = ref('')
-interface LogEntry {
-  time: string
-  text: string
-  type?: 'info' | 'success' | 'warn' | 'error'
-}
-const logs = ref<LogEntry[]>([])
+let uploadAbortCtrl: AbortController | null = null
 
-function addLog(text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') {
-  const now = new Date()
-  const time = now.toTimeString().split(' ')[0]
-  logs.value.push({ time, text, type })
-}
-
-function copyLogs() {
-  const text = logs.value.map((l) => `[${l.time}] ${l.text}`).join('\n')
-  navigator.clipboard.writeText(text)
-  toast.add({ severity: 'info', summary: 'Log disalin ke clipboard', life: 2000 })
+function cancelUpload() {
+  if (uploadAbortCtrl) {
+    uploadAbortCtrl.abort()
+    uploadAbortCtrl = null
+  }
+  uploading.value = false
+  isUploadingModal.value = false
+  previewOpen.value = false
+  removePhoto()
+  toast.add({ severity: 'info', summary: 'Foto Dibatalkan', detail: 'Unggahan dibatalkan dan foto dihapus.', life: 2500 })
 }
 
 const currentPhotoSrc = computed(() => props.modelValue || localPreviewUrl.value)
@@ -345,11 +344,11 @@ function drawIndonesianFlag(ctx: CanvasRenderingContext2D, x: number, y: number,
 async function stampGpsMapCamera(
   file: File,
   geoCoords: { lat: number; lng: number; acc: number } | null,
-  locName: string
+  locName: string,
+  itemNameText?: string
 ): Promise<{ blob: Blob; previewUrl: string; originalSizeKB: number; compressedSizeKB: number }> {
   return new Promise(async (resolve) => {
-    currentStepText.value = 'Membaca & mengompresi gambar...'
-    addLog(`Membaca berkas: ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`, 'info')
+    currentStepText.value = 'Membaca berkas gambar...'
 
     const originalSizeKB = Math.round(file.size / 1024)
     const reader = new FileReader()
@@ -371,7 +370,6 @@ async function stampGpsMapCamera(
             width = Math.round((width * maxDim) / height)
             height = maxDim
           }
-          addLog(`📐 Dimensi dioptimasi: ${img.width}x${img.height} ➔ ${width}x${height}`, 'info')
         }
 
         canvas.width = width
@@ -386,7 +384,6 @@ async function stampGpsMapCamera(
         ctx.drawImage(img, 0, 0, width, height)
 
         if (!geoCoords) {
-          addLog('Koordinat GPS tidak tersedia, foto disimpan tanpa cap peta', 'warn')
           canvas.toBlob(
             (b) => {
               const compressedSizeKB = Math.round((b?.size || file.size) / 1024)
@@ -399,21 +396,18 @@ async function stampGpsMapCamera(
         }
 
         // Reverse Geocoding
-        currentStepText.value = 'Mengambil alamat daerah...'
-        addLog(`Reverse geocoding (Lat: ${geoCoords.lat.toFixed(5)}, Lng: ${geoCoords.lng.toFixed(5)})...`, 'info')
+        currentStepText.value = 'Mengidentifikasi alamat wilayah lokasi...'
         const geoData = await getReverseGeocode(geoCoords.lat, geoCoords.lng)
+        const trimmedItemName = (itemNameText || '').trim()
         const titleText = locName ? `${locName}, ${geoData.title}` : geoData.title
         const addressText = geoData.fullAddress
-        addLog(`Alamat: ${titleText}`, 'success')
 
         // Prepare map tile
-        currentStepText.value = 'Menyiapkan thumbnail peta lokasi...'
-        addLog('Mengunduh thumbnail peta OSM...', 'info')
+        currentStepText.value = 'Menyiapkan thumbnail peta koordinat...'
         const tileImg = await loadTileBlobImage(geoCoords.lat, geoCoords.lng)
 
         // Large, bold, highly legible GPS Map Camera fonts (matches real GPS Map Camera overlay)
-        currentStepText.value = 'Mengecap watermark GPS Map Camera...'
-        addLog('Merender watermark GPS Map Camera (tulisan besar & tajam)...', 'info')
+        currentStepText.value = 'Mengecap banner GPS Map Camera...'
 
         // Dynamic ratio-adaptive scaling matching real GPS Map Camera apps
         // Automatically adapts proportions, typography, and card height based on aspect ratio (portrait, landscape, square)
@@ -422,8 +416,6 @@ async function stampGpsMapCamera(
         const isPortrait = aspectRatio < 0.95
 
         // Base dimension tailored to orientation so watermark never overwhelms the subject photo
-        // In landscape: height is the limiting dimension (e.g. 1080 in 1920x1080)
-        // In portrait: width is the limiting dimension (e.g. 1080 in 1080x1920)
         const baseDim = isLandscape ? height : width
         const scale = Math.max(0.9, baseDim / 720)
 
@@ -453,8 +445,6 @@ async function stampGpsMapCamera(
         const badgeTotalW = badgeIconSize + badgeTextW + Math.round(10 * scale)
 
         // Map thumbnail dimensions dynamically adapted to aspect ratio
-        // In landscape: ~22% of photo height
-        // In portrait: ~23% of photo width so text column has maximum horizontal clearance
         const approxMapSize = Math.round(isLandscape ? height * 0.22 : width * 0.23)
 
         // Available width for right-side text column
@@ -464,15 +454,45 @@ async function stampGpsMapCamera(
         // Full text width for address, coords, and timestamp
         const textAreaW = cardW - textX - padX
 
-        ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
-        const titleLines = wrapText(ctx, titleText, titleAreaW).slice(0, 2)
+        let textContentH = 0
+        let itemLines: string[] = []
+        let subLines: string[] = []
+        let titleLines: string[] = []
+        let addressLines: string[] = []
+        const flagW = Math.round(titleSize * 1.15)
+        const flagH = Math.round(titleSize * 0.75)
 
-        ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-        const addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
+        if (trimmedItemName) {
+          // 1. Item Name (Prominent bold header)
+          ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
+          itemLines = wrapText(ctx, trimmedItemName, titleAreaW).slice(0, 2)
 
-        const titleBlockH = titleLines.length * titleLineH
-        const addressBlockH = addressLines.length * bodyLineH
-        const textContentH = titleBlockH + Math.round(6 * scale) + addressBlockH + Math.round(6 * scale) + metaLineH * 2 + Math.round(6 * scale)
+          // 2. Subtitle: Location / District (Cyan) + Indonesian Flag
+          const subTitleText = locName ? `${locName} · ${geoData.title}` : geoData.title
+          ctx.font = `600 ${bodySize}px system-ui, -apple-system, sans-serif`
+          const subAreaW = textAreaW - Math.round(bodySize * 1.2) - Math.round(12 * scale)
+          subLines = wrapText(ctx, subTitleText, subAreaW).slice(0, 2)
+
+          // 3. Street Address
+          ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
+          addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
+
+          const itemBlockH = itemLines.length * titleLineH
+          const subBlockH = subLines.length * bodyLineH
+          const addressBlockH = addressLines.length * metaLineH
+          textContentH = itemBlockH + Math.round(4 * scale) + subBlockH + Math.round(4 * scale) + addressBlockH + Math.round(5 * scale) + metaLineH * 2 + Math.round(4 * scale)
+        } else {
+          // Fallback if no item name is provided
+          ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
+          titleLines = wrapText(ctx, titleText, titleAreaW).slice(0, 2)
+
+          ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
+          addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
+
+          const titleBlockH = titleLines.length * titleLineH
+          const addressBlockH = addressLines.length * bodyLineH
+          textContentH = titleBlockH + Math.round(6 * scale) + addressBlockH + Math.round(6 * scale) + metaLineH * 2 + Math.round(6 * scale)
+        }
 
         const mapSize = Math.max(approxMapSize, textContentH)
         const cardH = mapSize + padY * 2
@@ -555,44 +575,79 @@ async function stampGpsMapCamera(
         const textYOffset = Math.max(0, Math.floor((mapSize - textContentH) / 2))
         let textY = cardY + padY + textYOffset
 
-        // 1. Title Header + Indonesian Flag
         ctx.save()
         ctx.shadowColor = 'rgba(0, 0, 0, 0.95)'
         ctx.shadowBlur = Math.round(4 * scale)
         ctx.shadowOffsetX = 0
         ctx.shadowOffsetY = Math.round(2 * scale)
-        ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#ffffff'
         ctx.textBaseline = 'top'
-        for (let i = 0; i < titleLines.length; i++) {
-          const line = titleLines[i]
-          ctx.fillText(line, textX, textY)
-          if (i === titleLines.length - 1) {
-            const lw = ctx.measureText(line).width
-            const flagW = Math.round(titleSize * 1.15)
-            const flagH = Math.round(titleSize * 0.75)
-            drawIndonesianFlag(ctx, textX + lw + Math.round(12 * scale), textY + Math.round((titleSize - flagH) / 2), flagW, flagH)
+
+        if (trimmedItemName) {
+          // 1. Item Name Header (Bold White)
+          ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
+          ctx.fillStyle = '#ffffff'
+          for (const line of itemLines) {
+            ctx.fillText(line, textX, textY)
+            textY += titleLineH
           }
-          textY += titleLineH
-        }
-        textY += Math.round(6 * scale)
+          textY += Math.round(4 * scale)
 
-        // 2. Full Detailed Address (wrapped 1-2 lines)
-        ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-        ctx.fillStyle = '#f1f5f9'
-        for (const line of addressLines) {
-          ctx.fillText(line, textX, textY)
-          textY += bodyLineH
-        }
-        textY += Math.round(6 * scale)
+          // 2. Subtitle: Location / District (Cyan) + Indonesian Flag
+          ctx.font = `600 ${bodySize}px system-ui, -apple-system, sans-serif`
+          ctx.fillStyle = '#38bdf8'
+          for (let i = 0; i < subLines.length; i++) {
+            const line = subLines[i]
+            ctx.fillText(line, textX, textY)
+            if (i === subLines.length - 1) {
+              const lw = ctx.measureText(line).width
+              const subFlagW = Math.round(bodySize * 1.15)
+              const subFlagH = Math.round(bodySize * 0.75)
+              drawIndonesianFlag(ctx, textX + lw + Math.round(10 * scale), textY + Math.round((bodySize - subFlagH) / 2), subFlagW, subFlagH)
+            }
+            textY += bodyLineH
+          }
+          textY += Math.round(4 * scale)
 
-        // 3. Coordinates (Crisp Monospace)
+          // 3. Street Address
+          ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
+          ctx.fillStyle = '#f1f5f9'
+          for (const line of addressLines) {
+            ctx.fillText(line, textX, textY)
+            textY += metaLineH
+          }
+          textY += Math.round(5 * scale)
+        } else {
+          // 1. Title Header + Indonesian Flag
+          ctx.font = `700 ${titleSize}px system-ui, -apple-system, sans-serif`
+          ctx.fillStyle = '#ffffff'
+          for (let i = 0; i < titleLines.length; i++) {
+            const line = titleLines[i]
+            ctx.fillText(line, textX, textY)
+            if (i === titleLines.length - 1) {
+              const lw = ctx.measureText(line).width
+              drawIndonesianFlag(ctx, textX + lw + Math.round(12 * scale), textY + Math.round((titleSize - flagH) / 2), flagW, flagH)
+            }
+            textY += titleLineH
+          }
+          textY += Math.round(6 * scale)
+
+          // 2. Full Detailed Address (wrapped 1-2 lines)
+          ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
+          ctx.fillStyle = '#f1f5f9'
+          for (const line of addressLines) {
+            ctx.fillText(line, textX, textY)
+            textY += bodyLineH
+          }
+          textY += Math.round(6 * scale)
+        }
+
+        // Monospace Coordinates
         ctx.font = `600 ${metaSize}px ui-monospace, SFMono-Regular, system-ui, monospace`
         ctx.fillStyle = '#ffffff'
         ctx.fillText(`Lat ${geoCoords.lat.toFixed(6)}°  Long ${geoCoords.lng.toFixed(6)}°`, textX, textY)
-        textY += metaLineH + Math.round(6 * scale)
+        textY += metaLineH + Math.round(5 * scale)
 
-        // 4. Timestamp (Single, crisp, clean)
+        // Timestamp (Single, crisp, clean)
         const dateStr = formatGpsDate(new Date())
         ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
         ctx.fillStyle = '#cbd5e1'
@@ -628,27 +683,19 @@ async function onFileSelected(e: Event) {
   const file = target.files?.[0]
   if (!file) return
 
+  lastRawFile.value = file
   uploading.value = true
-  showProgressModal.value = true
-  uploadProgress.value = 10
-  logs.value = []
-
-  addLog(`📁 Berkas dipilih: ${file.name} (${(file.size / 1024).toFixed(1)} KB, tipe: ${file.type})`, 'info')
+  isUploadingModal.value = true
+  uploadProgress.value = 15
+  uploadStep.value = 'gps'
+  currentStepText.value = 'Mengunci koordinat GPS presisi tinggi...'
 
   try {
     // 1. Lock GPS
-    currentStepText.value = 'Mengunci koordinat GPS...'
-    addLog('Mengunci koordinat GPS presisi tinggi...', 'info')
     if (!coords.value && navigator.geolocation) {
       await fetchGeo()
     }
-
-    if (coords.value) {
-      addLog(`GPS Terkunci: ${coords.value.lat.toFixed(6)}, ${coords.value.lng.toFixed(6)} (±${coords.value.acc}m)`, 'success')
-    } else {
-      addLog('GPS tidak terdeteksi atau izin belum diberikan', 'warn')
-    }
-    uploadProgress.value = 30
+    uploadProgress.value = 35
 
     const locName = geoLabel.value || props.locationName
     if (locName) {
@@ -656,20 +703,19 @@ async function onFileSelected(e: Event) {
     }
 
     // 2. Stamp photo with compact GPS Map Camera template & compression
-    const stamped = await stampGpsMapCamera(file, coords.value, locName)
+    uploadStep.value = 'stamp'
+    currentStepText.value = 'Mengecap banner GPS Map Camera & peta...'
+    uploadProgress.value = 50
+
+    const stamped = await stampGpsMapCamera(file, coords.value, locName, props.itemName)
     if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
     localPreviewUrl.value = stamped.previewUrl
 
-    const savedPct = stamped.originalSizeKB > 0
-      ? Math.round((1 - stamped.compressedSizeKB / stamped.originalSizeKB) * 100)
-      : 0
-    addLog(`📦 Hasil kompresi: ${stamped.originalSizeKB} KB ➔ ${stamped.compressedSizeKB} KB (Hemat ${savedPct}%)`, 'success')
-    uploadProgress.value = 65
+    uploadStep.value = 'upload'
+    currentStepText.value = 'Mengunggah foto berstempel ke server...'
+    uploadProgress.value = 70
 
     // 3. Upload to server
-    currentStepText.value = 'Mengunggah foto berstempel ke server...'
-    addLog('Mengunggah form data ke POST /api/upload...', 'info')
-
     const fd = new FormData()
     fd.append('photo', stamped.blob, 'photo.jpg')
     fd.append('client_stamped', 'true')
@@ -682,11 +728,13 @@ async function onFileSelected(e: Event) {
       fd.append('geo_name', locName)
     }
 
+    uploadAbortCtrl = new AbortController()
     const res = await api.post('/upload', fd, {
+      signal: uploadAbortCtrl.signal,
       onUploadProgress: (evt) => {
         if (evt.total) {
-          const pct = Math.round(65 + (evt.loaded / evt.total) * 30)
-          uploadProgress.value = Math.min(95, pct)
+          const pct = Math.round(70 + (evt.loaded / evt.total) * 28)
+          uploadProgress.value = Math.min(98, pct)
         }
       },
     })
@@ -705,20 +753,8 @@ async function onFileSelected(e: Event) {
     }
 
     uploadProgress.value = 100
-    currentStepText.value = 'Foto berhasil diunggah dan diverifikasi!'
-    addLog(`Respon server: status ${res.status}, url: ${url}`, 'success')
-
-    // Immediate verification of the uploaded image
-    try {
-      const check = await fetch(url, { method: 'HEAD' })
-      if (check.ok) {
-        addLog(`Verifikasi akses URL: ${check.status} OK (Dapat diakses publik)`, 'success')
-      } else {
-        addLog(`Verifikasi URL ${url}: ${check.status} ${check.statusText}`, 'warn')
-      }
-    } catch (e: any) {
-      addLog(`Status akses: ${e.message}`, 'info')
-    }
+    uploadStep.value = 'success'
+    currentStepText.value = 'Foto berhasil diproses & disimpan!'
 
     toast.add({
       severity: 'success',
@@ -726,12 +762,13 @@ async function onFileSelected(e: Event) {
       detail: coords.value
         ? `Watermark GPS (${coords.value.lat.toFixed(4)}, ${coords.value.lng.toFixed(4)}) tercetak di dalam foto`
         : 'Foto berhasil disimpan',
-      life: 3500,
+      life: 3000,
     })
   } catch (err: any) {
+    if (err.name === 'CanceledError' || err.name === 'AbortError') return
     const errorMsg = err.response?.data?.error || err.message || 'Gagal mengunggah foto'
     currentStepText.value = 'Gagal memproses foto'
-    addLog(`ERROR: ${errorMsg}`, 'error')
+    isUploadingModal.value = false
     toast.add({
       severity: 'error',
       summary: 'Gagal mengunggah foto',
@@ -740,15 +777,90 @@ async function onFileSelected(e: Event) {
     })
   } finally {
     uploading.value = false
+    uploadAbortCtrl = null
     if (target) target.value = ''
   }
 }
+
+async function reStampPhoto() {
+  if (!lastRawFile.value || uploading.value) return
+  uploading.value = true
+  isUploadingModal.value = true
+  uploadProgress.value = 25
+  uploadStep.value = 'stamp'
+  currentStepText.value = 'Mencetak ulang cap GPS Map Camera...'
+
+  try {
+    const locName = geoLabel.value || props.locationName
+    const stamped = await stampGpsMapCamera(lastRawFile.value, coords.value, locName, props.itemName)
+    if (localPreviewUrl.value) URL.revokeObjectURL(localPreviewUrl.value)
+    localPreviewUrl.value = stamped.previewUrl
+
+    uploadStep.value = 'upload'
+    uploadProgress.value = 70
+    currentStepText.value = 'Mengunggah foto berstempel terbaru...'
+
+    const fd = new FormData()
+    fd.append('photo', stamped.blob, 'photo.jpg')
+    fd.append('client_stamped', 'true')
+    if (coords.value) {
+      fd.append('geo_lat', coords.value.lat.toString())
+      fd.append('geo_lng', coords.value.lng.toString())
+      fd.append('geo_acc', coords.value.acc.toString())
+    }
+    if (locName) {
+      fd.append('geo_name', locName)
+    }
+
+    uploadAbortCtrl = new AbortController()
+    const res = await api.post('/upload', fd, { signal: uploadAbortCtrl.signal })
+    const url = res.data.url
+    emit('update:modelValue', url)
+
+    uploadProgress.value = 100
+    uploadStep.value = 'success'
+    currentStepText.value = 'Cap watermark berhasil diperbarui!'
+    toast.add({
+      severity: 'success',
+      summary: 'Cap Berhasil Diperbarui',
+      detail: props.itemName ? `Nama "${props.itemName}" tercetak pada foto` : 'Cap geotag diperbarui',
+      life: 2500,
+    })
+  } catch (err: any) {
+    if (err.name === 'CanceledError' || err.name === 'AbortError') return
+    const errorMsg = err.response?.data?.error || err.message || 'Gagal memperbarui cap'
+    isUploadingModal.value = false
+    toast.add({
+      severity: 'error',
+      summary: 'Gagal memperbarui cap',
+      detail: errorMsg,
+      life: 3500,
+    })
+  } finally {
+    uploading.value = false
+    uploadAbortCtrl = null
+  }
+}
+
+let debounceTimer: any = null
+watch(
+  () => [props.itemName, props.locationName],
+  () => {
+    if (lastRawFile.value && !uploading.value && currentPhotoSrc.value) {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        reStampPhoto()
+      }, 1400)
+    }
+  }
+)
 
 function removePhoto() {
   if (localPreviewUrl.value) {
     URL.revokeObjectURL(localPreviewUrl.value)
     localPreviewUrl.value = ''
   }
+  lastRawFile.value = null
   emit('update:modelValue', '')
 }
 
@@ -819,16 +931,6 @@ async function downloadPhoto() {
       </div>
 
       <div class="flex items-center gap-1">
-        <Button
-          v-if="logs.length"
-          label="Log"
-          icon="pi pi-list"
-          text
-          size="small"
-          severity="secondary"
-          v-tooltip.top="'Lihat log debug unggahan'"
-          @click="showProgressModal = true"
-        />
         <Button
           v-if="coords"
           :label="showInlineMap ? 'Tutup Peta' : 'Peta'"
@@ -902,15 +1004,6 @@ async function downloadPhoto() {
         </div>
         <div class="flex items-center gap-1">
           <Button
-            label="Log"
-            icon="pi pi-list"
-            size="small"
-            text
-            severity="secondary"
-            v-tooltip.top="'Buka log proses & debug'"
-            @click="showProgressModal = true"
-          />
-          <Button
             label="Perbesar"
             icon="pi pi-search-plus"
             size="small"
@@ -937,14 +1030,36 @@ async function downloadPhoto() {
             @click="triggerSelect(false)"
           />
           <Button
+            label="Batal / Hapus"
             icon="pi pi-trash"
             size="small"
             text
             severity="danger"
-            v-tooltip.top="'Hapus Foto'"
-            @click="removePhoto"
+            v-tooltip.top="'Batalkan dan hapus foto'"
+            @click="cancelUpload"
           />
         </div>
+      </div>
+
+      <!-- Stamped Item Name & Location Banner indicator -->
+      <div v-if="props.itemName || props.locationName" class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded text-[11.5px] border" style="background: var(--panel-2); border-color: var(--line)">
+        <div class="flex items-center gap-1.5 overflow-hidden">
+          <i class="pi pi-tag text-indigo-500 text-[10px] shrink-0" />
+          <span style="color: var(--txt-dim)">Nama di Cap:</span>
+          <span class="font-semibold truncate" style="color: var(--txt)">{{ props.itemName || '(Belum ada nama)' }}</span>
+          <span v-if="props.locationName" class="text-indigo-400 truncate">· {{ props.locationName }}</span>
+        </div>
+        <Button
+          v-if="lastRawFile"
+          label="Perbarui Cap"
+          icon="pi pi-sync"
+          size="small"
+          text
+          class="!py-0 !px-1.5 !text-[10px] shrink-0"
+          :loading="uploading"
+          v-tooltip.top="'Cetak ulang cap dengan nama barang / lokasi terbaru'"
+          @click="reStampPhoto"
+        />
       </div>
 
       <!-- Prominent Preview Image with Cap Geotag clearly visible -->
@@ -970,12 +1085,9 @@ async function downloadPhoto() {
 
       <div class="flex items-center justify-between text-[11px] px-1" style="color: var(--txt-dim)">
         <span>Stempel peta, alamat lengkap, dan koordinat GPS tercetak langsung di dalam foto</span>
-        <button
-          class="text-acc-500 hover:underline cursor-pointer flex items-center gap-1"
-          @click="showProgressModal = true"
-        >
-          <i class="pi pi-info-circle text-[10px]" /> Debug Log
-        </button>
+        <span v-if="coords" class="t-mono text-[10.5px] text-sig-ok flex items-center gap-1">
+          <i class="pi pi-map-marker text-[9px]" /> GPS Aktif
+        </span>
       </div>
     </div>
 
@@ -1023,202 +1135,258 @@ async function downloadPhoto() {
       </div>
     </div>
 
-    <!-- Live Upload Progress & Activity Log Modal -->
-    <div
-      v-if="showProgressModal"
-      class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 backdrop-blur-xs"
-    >
+    <!-- Futuristic Upload & Stamping Radar Animation Modal -->
+    <Teleport to="body">
       <div
-        class="relative max-w-xl w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col p-4 gap-3.5"
-        style="border-color: var(--line)"
+        v-if="isUploadingModal"
+        class="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300"
       >
-        <div class="flex items-center justify-between border-b pb-2.5" style="border-color: var(--line)">
-          <div class="flex items-center gap-2 text-[13px] font-bold">
-            <i class="pi pi-spin pi-spinner text-acc-500" v-if="uploading" />
-            <i class="pi pi-check-circle text-sig-ok" v-else />
-            <span>Proses Geotagging &amp; Unggah Foto</span>
-          </div>
-          <Button
-            icon="pi pi-times"
-            text
-            rounded
-            size="small"
-            severity="secondary"
-            @click="showProgressModal = false"
-          />
-        </div>
-
-        <!-- Progress bar -->
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between text-[11.5px]">
-            <span class="font-medium text-acc-400">{{ currentStepText || 'Menunggu berkas...' }}</span>
-            <span class="t-mono font-bold">{{ uploadProgress }}%</span>
-          </div>
-          <div class="w-full h-2 rounded-full overflow-hidden bg-black/50 border" style="border-color: var(--line)">
-            <div
-              class="h-full bg-acc-500 transition-all duration-300"
-              :style="{ width: `${uploadProgress}%` }"
-            />
-          </div>
-        </div>
-
-        <!-- Live Terminal Logs -->
-        <div class="flex flex-col gap-1">
-          <div class="flex items-center justify-between">
-            <span class="text-[11px] font-semibold" style="color: var(--txt-dim)">Log Detail &amp; Debug:</span>
-            <button
-              v-if="logs.length"
-              class="text-[10.5px] text-acc-500 hover:underline flex items-center gap-1 cursor-pointer"
-              @click="copyLogs"
-            >
-              <i class="pi pi-copy text-[10px]" /> Salin Log
-            </button>
-          </div>
+        <div
+          class="relative max-w-sm w-full bg-slate-900 border border-slate-700/80 rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center overflow-hidden"
+          style="background: linear-gradient(180deg, #0f172a 0%, #090d16 100%)"
+        >
+          <!-- Background Ambient Glow -->
           <div
-            class="bg-black/90 rounded border p-2.5 max-h-56 overflow-y-auto flex flex-col gap-1 font-mono text-[11px]"
-            style="border-color: var(--line)"
-          >
+            class="absolute -top-20 -left-20 w-44 h-44 rounded-full bg-cyan-500/20 blur-3xl pointer-events-none"
+          />
+          <div
+            class="absolute -bottom-20 -right-20 w-44 h-44 rounded-full bg-indigo-500/20 blur-3xl pointer-events-none"
+          />
+
+          <!-- Cool Radar / Satellite Orbit Visual -->
+          <div class="relative w-28 h-28 my-3 flex items-center justify-center">
+            <!-- Pulsing outer wave -->
             <div
-              v-for="(log, i) in logs"
-              :key="i"
-              class="flex items-start gap-1.5 leading-snug"
+              class="absolute inset-0 rounded-full border border-cyan-500/30 animate-ping opacity-75"
+              style="animation-duration: 2.4s"
+            />
+            <!-- Outer rotating dashed orbit -->
+            <div
+              class="absolute inset-1 rounded-full border border-dashed border-cyan-400/50 animate-spin"
+              style="animation-duration: 9s"
+            />
+            <!-- Middle counter-rotating dashed orbit -->
+            <div
+              class="absolute inset-3 rounded-full border border-dashed border-indigo-400/60 animate-spin"
+              style="animation-duration: 6s; animation-direction: reverse"
+            />
+            <!-- Inner glowing core circle with step icon -->
+            <div
+              class="relative w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all duration-500"
               :class="{
-                'text-emerald-400': log.type === 'success',
-                'text-amber-400': log.type === 'warn',
-                'text-rose-400': log.type === 'error',
-                'text-ink-200': !log.type || log.type === 'info',
+                'bg-cyan-500/20 border border-cyan-400 text-cyan-300 shadow-cyan-500/40': uploadStep === 'gps',
+                'bg-indigo-500/20 border border-indigo-400 text-indigo-300 shadow-indigo-500/40': uploadStep === 'stamp',
+                'bg-purple-500/20 border border-purple-400 text-purple-300 shadow-purple-500/40': uploadStep === 'compress',
+                'bg-sky-500/20 border border-sky-400 text-sky-300 shadow-sky-500/40': uploadStep === 'upload',
+                'bg-emerald-500/25 border border-emerald-400 text-emerald-300 shadow-emerald-500/50': uploadStep === 'success',
               }"
             >
-              <span class="text-ink-500 shrink-0">[{{ log.time }}]</span>
-              <span class="break-all">{{ log.text }}</span>
+              <i
+                v-if="uploadStep === 'gps'"
+                class="pi pi-compass text-2xl animate-pulse"
+              />
+              <i
+                v-else-if="uploadStep === 'stamp'"
+                class="pi pi-camera text-2xl animate-pulse"
+              />
+              <i
+                v-else-if="uploadStep === 'compress'"
+                class="pi pi-sliders-h text-2xl animate-pulse"
+              />
+              <i
+                v-else-if="uploadStep === 'upload'"
+                class="pi pi-cloud-upload text-2xl animate-bounce"
+              />
+              <i
+                v-else
+                class="pi pi-check text-2xl scale-110 font-bold"
+              />
+            </div>
+          </div>
+
+          <!-- Title & Step Text -->
+          <div class="flex flex-col gap-1 z-10 w-full mt-1">
+            <div class="text-[15px] font-bold text-white flex items-center justify-center gap-1.5">
+              <span>{{ uploadStep === 'success' ? 'Foto Siap Digunakan' : 'Memproses Geotagging' }}</span>
+            </div>
+
+            <!-- Item Name Pill -->
+            <div v-if="props.itemName" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 text-[11px] font-medium mx-auto max-w-[260px] truncate">
+              <i class="pi pi-tag text-[9px] text-indigo-400 shrink-0" />
+              <span class="truncate">{{ props.itemName }}</span>
+            </div>
+
+            <p class="text-[12px] text-slate-400 mt-1 min-h-[32px] flex items-center justify-center gap-1.5 leading-snug">
+              <span v-if="uploadStep !== 'success'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
+              <span>{{ currentStepText }}</span>
+            </p>
+          </div>
+
+          <!-- Gradient Progress Bar -->
+          <div class="w-full flex flex-col gap-1.5 mt-2 z-10">
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="text-slate-400 font-mono text-[10px] uppercase tracking-wider">
+                {{ uploadStep === 'success' ? 'Selesai 100%' : 'Sedang Diproses' }}
+              </span>
+              <span class="font-mono font-bold text-cyan-300">{{ uploadProgress }}%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-slate-800 border border-slate-700/60 overflow-hidden p-0.5">
+              <div
+                class="h-full rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-emerald-400 transition-all duration-300 shadow-sm"
+                :style="{ width: `${uploadProgress}%` }"
+              />
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="w-full flex flex-col gap-2 mt-5 z-10">
+            <!-- If Upload Finished: Options to Cancel/Undo, View, or Close -->
+            <div v-if="uploadStep === 'success'" class="flex items-center gap-2 w-full">
+              <Button
+                label="Batal / Hapus"
+                icon="pi pi-trash"
+                severity="danger"
+                outlined
+                size="small"
+                class="flex-1 !text-[12px]"
+                @click="cancelUpload"
+              />
+              <Button
+                label="Lihat Foto"
+                icon="pi pi-eye"
+                severity="primary"
+                size="small"
+                class="flex-1 !text-[12px]"
+                @click="isUploadingModal = false; modalTab = 'photo'; previewOpen = true"
+              />
+              <Button
+                icon="pi pi-check"
+                severity="success"
+                size="small"
+                v-tooltip.top="'Selesai'"
+                @click="isUploadingModal = false"
+              />
+            </div>
+
+            <!-- While in progress: Abort / Cancel Button -->
+            <div v-else class="flex justify-center">
+              <Button
+                label="Batal Unggah"
+                icon="pi pi-times"
+                severity="danger"
+                text
+                size="small"
+                class="!text-[11.5px]"
+                @click="cancelUpload"
+              />
             </div>
           </div>
         </div>
-
-        <div class="flex justify-between items-center pt-1 border-t text-[11px]" style="border-color: var(--line)">
-          <span style="color: var(--txt-dim)">
-            {{ uploading ? 'Sedang memproses foto...' : 'Proses selesai' }}
-          </span>
-          <div class="flex gap-2">
-            <Button
-              v-if="currentPhotoSrc && !uploading"
-              label="Lihat Foto"
-              icon="pi pi-eye"
-              size="small"
-              severity="primary"
-              @click="showProgressModal = false; modalTab = 'photo'; previewOpen = true"
-            />
-            <Button
-              label="Tutup"
-              size="small"
-              severity="secondary"
-              @click="showProgressModal = false"
-            />
-          </div>
-        </div>
       </div>
-    </div>
+    </Teleport>
 
-    <!-- Preview Modal with Tab (Foto Berstempel vs Peta Geotag) -->
-    <div
-      v-if="previewOpen"
-      class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 backdrop-blur-xs"
-      @click.self="previewOpen = false"
-    >
+    <!-- Preview Modal with Tab (Foto Berstempel vs Peta Geotag) Teleported to Body -->
+    <Teleport to="body">
       <div
-        class="relative max-w-3xl w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col"
-        style="border-color: var(--line)"
+        v-if="previewOpen"
+        class="fixed inset-0 z-[9999] bg-black/85 flex items-center justify-center p-4 backdrop-blur-xs"
+        @click.self="previewOpen = false"
       >
-        <!-- Modal Header with Tabs -->
-        <div class="flex items-center justify-between px-4 py-2.5 border-b gap-3" style="border-color: var(--line)">
-          <div class="flex items-center gap-2">
-            <button
-              class="px-3 py-1 rounded text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              :class="modalTab === 'photo' ? 'bg-acc-500 text-ink-950' : 'text-ink-300 hover:bg-paper-2'"
-              @click="modalTab = 'photo'"
-            >
-              <i class="pi pi-image text-[11px]" /> Foto Berstempel GPS Map Camera
-            </button>
-            <button
-              v-if="coords"
-              class="px-3 py-1 rounded text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              :class="modalTab === 'map' ? 'bg-acc-500 text-ink-950' : 'text-ink-300 hover:bg-paper-2'"
-              @click="modalTab = 'map'"
-            >
-              <i class="pi pi-map text-[11px]" /> Peta Lokasi (OpenStreetMap)
-            </button>
-          </div>
-          <Button
-            icon="pi pi-times"
-            text
-            rounded
-            size="small"
-            severity="secondary"
-            @click="previewOpen = false"
-          />
-        </div>
-
-        <!-- Modal Body -->
-        <div class="bg-black flex items-center justify-center min-h-[50vh] max-h-[72vh] overflow-hidden">
-          <!-- Tab 1: Foto Geotag Penuh -->
-          <div v-if="modalTab === 'photo'" class="p-3 w-full h-full flex items-center justify-center overflow-auto">
-            <img
-              :src="currentPhotoSrc"
-              @error="(e) => { if (localPreviewUrl && (e.target as HTMLImageElement).src !== localPreviewUrl) (e.target as HTMLImageElement).src = localPreviewUrl }"
-              alt="Foto Geotag Penuh"
-              class="max-h-[68vh] object-contain rounded"
-            />
-          </div>
-
-          <!-- Tab 2: Peta Lokasi Geotag Interaktif -->
-          <div v-else-if="modalTab === 'map' && coords" class="relative w-full h-[65vh]">
-            <iframe
-              :src="osmEmbedUrl"
-              class="w-full h-full border-0"
-              title="Peta Lokasi OpenStreetMap"
-            />
-          </div>
-        </div>
-
-        <!-- Modal Footer -->
-        <div class="flex items-center justify-between px-4 py-2.5 border-t text-[11.5px]" style="border-color: var(--line)">
-          <div v-if="coords" class="flex items-center gap-2 t-mono">
-            <i class="pi pi-map-marker text-sig-ok" />
-            <span>{{ coords.lat.toFixed(6) }}, {{ coords.lng.toFixed(6) }}</span>
-            <span style="color: var(--txt-dim)">(±{{ coords.acc }}m)</span>
-          </div>
-          <div v-else></div>
-
-          <div class="flex items-center gap-2">
+        <div
+          class="relative max-w-3xl w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col"
+          style="border-color: var(--line)"
+        >
+          <!-- Modal Header with Tabs -->
+          <div class="flex items-center justify-between px-4 py-2.5 border-b gap-3" style="border-color: var(--line)">
+            <div class="flex items-center gap-2">
+              <button
+                class="px-3 py-1 rounded text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                :class="modalTab === 'photo' ? 'bg-acc-500 text-ink-950' : 'text-ink-300 hover:bg-paper-2'"
+                @click="modalTab = 'photo'"
+              >
+                <i class="pi pi-image text-[11px]" /> Foto Berstempel GPS Map Camera
+              </button>
+              <button
+                v-if="coords"
+                class="px-3 py-1 rounded text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                :class="modalTab === 'map' ? 'bg-acc-500 text-ink-950' : 'text-ink-300 hover:bg-paper-2'"
+                @click="modalTab = 'map'"
+              >
+                <i class="pi pi-map text-[11px]" /> Peta Lokasi (OpenStreetMap)
+              </button>
+            </div>
             <Button
-              label="Log Debug"
-              icon="pi pi-list"
-              size="small"
+              icon="pi pi-times"
               text
+              rounded
+              size="small"
               severity="secondary"
-              @click="previewOpen = false; showProgressModal = true"
+              @click="previewOpen = false"
             />
-            <a
-              v-if="coords"
-              :href="googleMapsUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex"
-            >
-              <Button label="Google Maps" icon="pi pi-map-marker" size="small" text />
-            </a>
-            <Button
-              label="Unduh Foto (JPG)"
-              icon="pi pi-download"
-              size="small"
-              severity="success"
-              text
-              @click="downloadPhoto"
-            />
-            <Button label="Tutup" size="small" severity="secondary" @click="previewOpen = false" />
+          </div>
+
+          <!-- Modal Body -->
+          <div class="bg-black flex items-center justify-center min-h-[50vh] max-h-[72vh] overflow-hidden">
+            <!-- Tab 1: Foto Geotag Penuh -->
+            <div v-if="modalTab === 'photo'" class="p-3 w-full h-full flex items-center justify-center overflow-auto">
+              <img
+                :src="currentPhotoSrc"
+                @error="(e) => { if (localPreviewUrl && (e.target as HTMLImageElement).src !== localPreviewUrl) (e.target as HTMLImageElement).src = localPreviewUrl }"
+                alt="Foto Geotag Penuh"
+                class="max-h-[68vh] object-contain rounded"
+              />
+            </div>
+
+            <!-- Tab 2: Peta Lokasi Geotag Interaktif -->
+            <div v-else-if="modalTab === 'map' && coords" class="relative w-full h-[65vh]">
+              <iframe
+                :src="osmEmbedUrl"
+                class="w-full h-full border-0"
+                title="Peta Lokasi OpenStreetMap"
+              />
+            </div>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="flex items-center justify-between px-4 py-2.5 border-t text-[11.5px]" style="border-color: var(--line)">
+            <div v-if="coords" class="flex items-center gap-2 t-mono">
+              <i class="pi pi-map-marker text-sig-ok" />
+              <span>{{ coords.lat.toFixed(6) }}, {{ coords.lng.toFixed(6) }}</span>
+              <span style="color: var(--txt-dim)">(±{{ coords.acc }}m)</span>
+            </div>
+            <div v-else></div>
+
+            <div class="flex items-center gap-2">
+              <Button
+                label="Batal / Hapus Foto"
+                icon="pi pi-trash"
+                size="small"
+                severity="danger"
+                text
+                @click="cancelUpload"
+              />
+              <a
+                v-if="coords"
+                :href="googleMapsUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex"
+              >
+                <Button label="Google Maps" icon="pi pi-map-marker" size="small" text />
+              </a>
+              <Button
+                label="Unduh Foto (JPG)"
+                icon="pi pi-download"
+                size="small"
+                severity="success"
+                text
+                @click="downloadPhoto"
+              />
+              <Button label="Tutup" size="small" severity="secondary" @click="previewOpen = false" />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
