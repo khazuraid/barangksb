@@ -236,5 +236,147 @@ body.dark .p-select-option.p-select-option-selected {
   background: rgba(245, 165, 36, 0.15) !important;
   color: #f5a524 !important;
 }
+
+/* ---------- Unified Form Controls Height & Sizing (InputText, Select, InputNumber, MultiSelect) ---------- */
+.p-inputtext,
+.p-select,
+.p-inputnumber,
+.p-inputnumber-input,
+.p-multiselect,
+.p-password,
+.p-password-input {
+  box-sizing: border-box !important;
+  font-family: inherit;
+}
+
+/* Base height: locked to 36px for standard form controls */
+.p-inputtext:not(.p-textarea),
+.p-select,
+.p-inputnumber,
+.p-inputnumber-input,
+.p-multiselect,
+.p-password,
+.p-password-input {
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  font-size: 13px;
+  line-height: normal !important;
+}
+
+.p-inputtext:not(.p-textarea) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.p-select {
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  overflow: hidden !important;
+}
+
+.p-select .p-select-label {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  padding-left: 0.625rem !important;
+  padding-right: 0.25rem !important;
+  height: 100% !important;
+  font-size: inherit;
+  display: flex !important;
+  align-items: center !important;
+  line-height: normal !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.p-select .p-select-dropdown {
+  width: 2rem !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  padding: 0 !important;
+}
+
+.p-inputnumber {
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.p-inputnumber .p-inputnumber-input {
+  height: 100% !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.p-multiselect {
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  overflow: hidden !important;
+}
+
+.p-multiselect .p-multiselect-label {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  padding-left: 0.625rem !important;
+  padding-right: 0.25rem !important;
+  height: 100% !important;
+  font-size: inherit;
+  display: flex !important;
+  align-items: center !important;
+  line-height: normal !important;
+}
+
+.p-multiselect .p-multiselect-dropdown {
+  width: 2rem !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  padding: 0 !important;
+}
+
+.p-password {
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.p-password .p-password-input {
+  height: 100% !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  width: 100% !important;
+}
+
+.p-textarea {
+  height: auto !important;
+  min-height: 60px !important;
+  max-height: none !important;
+  line-height: 1.4 !important;
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+/* Compact/small controls */
+.p-inputtext-sm,
+.p-select-sm,
+.p-inputnumber-sm,
+.p-inputnumber-sm .p-inputnumber-input,
+.p-multiselect-sm {
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  font-size: 12px !important;
+}
+
 .tabular { font-variant-numeric: tabular-nums; }
 @media print { .no-print { display: none !important; } }
