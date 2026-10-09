@@ -103,6 +103,9 @@ func (b *Bot) Start(ctx context.Context) {
 
 	go b.dailyAlert(ctx)
 
+	// Ensure standard commands show in menu if DB has old seed
+	_, _ = b.pool.Exec(ctx, `UPDATE telegram_commands SET is_menu=TRUE WHERE command IN ('stok', 'cari', 'masuk', 'bantu') AND (SELECT count(*) FROM telegram_commands WHERE is_menu=TRUE AND command != 'start') = 0`)
+
 	slog.Info("telegram bot started")
 	go botInst.Start(ctx)
 }
@@ -131,29 +134,44 @@ func (b *Bot) allowed(chatID int64) bool {
 // ---- inline keyboard builder ----
 
 func (b *Bot) buildMenuKeyboard(ctx context.Context) models.InlineKeyboardMarkup {
-	rows, _ := b.pool.Query(ctx, `SELECT command, label FROM telegram_commands WHERE is_menu=TRUE AND active=TRUE ORDER BY sort_order`)
+	rows, _ := b.pool.Query(ctx, `SELECT command, label FROM telegram_commands WHERE is_menu=TRUE AND active=TRUE AND command != 'start' ORDER BY sort_order`)
 	defer rows.Close()
 
 	var kbRows [][]models.InlineKeyboardButton
 	row := []models.InlineKeyboardButton{}
 	col := 0
-	for rows.Next() {
+	for rows != nil && rows.Next() {
 		var cmd, label string
-		rows.Scan(&cmd, &label)
-		btn := models.InlineKeyboardButton{
-			Text:         label,
-			CallbackData: "cmd:" + cmd,
-		}
-		row = append(row, btn)
-		col++
-		if col == 2 {
-			kbRows = append(kbRows, row)
-			row = []models.InlineKeyboardButton{}
-			col = 0
+		if err := rows.Scan(&cmd, &label); err == nil {
+			btn := models.InlineKeyboardButton{
+				Text:         label,
+				CallbackData: "cmd:" + cmd,
+			}
+			row = append(row, btn)
+			col++
+			if col == 2 {
+				kbRows = append(kbRows, row)
+				row = []models.InlineKeyboardButton{}
+				col = 0
+			}
 		}
 	}
 	if col > 0 {
 		kbRows = append(kbRows, row)
+	}
+
+	// Fallback menu buttons if DB has none configured
+	if len(kbRows) == 0 {
+		kbRows = [][]models.InlineKeyboardButton{
+			{
+				{Text: "📦 Stok Menipis", CallbackData: "cmd:stok"},
+				{Text: "🔍 Cari Barang", CallbackData: "cmd:cari"},
+			},
+			{
+				{Text: "📥 Barang Masuk", CallbackData: "cmd:masuk"},
+				{Text: "❓ Bantuan", CallbackData: "cmd:bantu"},
+			},
+		}
 	}
 
 	return models.InlineKeyboardMarkup{InlineKeyboard: kbRows}
@@ -193,53 +211,47 @@ func (b *Bot) handleStart(ctx context.Context, bt *bot.Bot, u *models.Update) {
 	b.showMenu(ctx, bt, chatID, u.Message.ID)
 }
 
-// showMenu sends a new message with loading → edits to menu
+// showMenu sends the interactive menu directly to the chat
 func (b *Bot) showMenu(ctx context.Context, bt *bot.Bot, chatID int64, replyToID int) {
-	// Send loading message
-	msg, err := bt.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: chatID,
-		Text:   "⏳ Memuat menu...",
-	})
-	if err != nil {
-		return
-	}
-
-	// Small delay for UX
-	time.Sleep(400 * time.Millisecond)
-
-	// Get menu intro text from DB
 	intro := "📋 *Menu Inventaris Kantor*\n\nPilih menu di bawah:"
-	if cmd := b.getCommandByCmd(ctx, "start"); cmd != nil && cmd.Response != "" {
+	if cmd := b.getCommandByCmd(ctx, "start"); cmd != nil && strings.TrimSpace(cmd.Response) != "" {
 		intro = cmd.Response
 	}
 
-	// Edit message to show menu
-	_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
+	kb := b.buildMenuKeyboard(ctx)
+	_, err := bt.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
-		MessageID:   msg.ID,
 		Text:        intro,
 		ParseMode:   models.ParseModeMarkdown,
-		ReplyMarkup: b.buildMenuKeyboard(ctx),
+		ReplyMarkup: kb,
 	})
+	if err != nil {
+		// Fallback without Markdown if parsing fails
+		_, _ = bt.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:      chatID,
+			Text:        intro,
+			ReplyMarkup: kb,
+		})
+	}
 }
 
-// showLoadingAndEdit: edit existing message to loading then to content
-func (b *Bot) showLoadingAndEdit(ctx context.Context, bt *bot.Bot, chatID int64, messageID int, text string, keyboard models.InlineKeyboardMarkup) {
-	// Edit to loading
-	_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
-		ChatID:    chatID,
-		MessageID: messageID,
-		Text:      "⏳ Memuat...",
-	})
-	time.Sleep(300 * time.Millisecond)
-	// Edit to content
-	_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
+// editMessage updates an existing message with markdown fallback
+func (b *Bot) editMessage(ctx context.Context, bt *bot.Bot, chatID int64, messageID int, text string, keyboard models.InlineKeyboardMarkup) {
+	_, err := bt.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:      chatID,
 		MessageID:   messageID,
 		Text:        text,
 		ParseMode:   models.ParseModeMarkdown,
 		ReplyMarkup: keyboard,
 	})
+	if err != nil {
+		_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
+			ChatID:      chatID,
+			MessageID:   messageID,
+			Text:        text,
+			ReplyMarkup: keyboard,
+		})
+	}
 }
 
 // handleCallback handles inline keyboard button presses
@@ -269,27 +281,34 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 	case "start":
 		// Back to menu
 		intro := "📋 *Menu Inventaris Kantor*\n\nPilih menu di bawah:"
-		if c := b.getCommandByCmd(ctx, "start"); c != nil && c.Response != "" {
+		if c := b.getCommandByCmd(ctx, "start"); c != nil && strings.TrimSpace(c.Response) != "" {
 			intro = c.Response
 		}
-		b.showLoadingAndEdit(ctx, bt, chatID, msgID, intro, b.buildMenuKeyboard(ctx))
+		b.editMessage(ctx, bt, chatID, msgID, intro, b.buildMenuKeyboard(ctx))
 
 	case "bantu":
 		text := b.getCommandResponse(ctx, "bantu")
-		b.showLoadingAndEdit(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
+		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
 
 	case "stok":
 		text := b.getLowStockText(ctx)
-		b.showLoadingAndEdit(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
+		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
+
+	case "cari":
+		text := "🔍 *Pencarian Barang*\n\nKetik `/cari <nama barang>` di chat.\nContoh:\n`/cari tensimeter`\n`/cari paracetamol`"
+		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
+
+	case "masuk":
+		text := "📥 *Catat Barang Masuk*\n\nKetik `/masuk <SKU> <jumlah>` di chat.\nContoh:\n`/masuk MED-2026-001 50`"
+		b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
 
 	default:
 		// Check if it's a DB command
 		if c := b.getCommandByCmd(ctx, cmd); c != nil {
 			text := c.Response
-			// For dynamic commands like masuk/cari, show format hint
-			b.showLoadingAndEdit(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
+			b.editMessage(ctx, bt, chatID, msgID, text, b.buildBackKeyboard())
 		} else {
-			b.showLoadingAndEdit(ctx, bt, chatID, msgID, "Perintah tidak ditemukan.", b.buildBackKeyboard())
+			b.editMessage(ctx, bt, chatID, msgID, "Perintah tidak ditemukan.", b.buildBackKeyboard())
 		}
 	}
 }
