@@ -106,8 +106,38 @@ func (b *Bot) Start(ctx context.Context) {
 	// Ensure standard commands show in menu if DB has old seed
 	_, _ = b.pool.Exec(ctx, `UPDATE telegram_commands SET is_menu=TRUE WHERE command IN ('stok', 'cari', 'masuk', 'bantu') AND (SELECT count(*) FROM telegram_commands WHERE is_menu=TRUE AND command != 'start') = 0`)
 
+	// Set Telegram Mini App Menu Button
+	webURL := b.getWebAppURL(ctx)
+	if webURL != "" {
+		_, _ = botInst.SetChatMenuButton(ctx, &bot.SetChatMenuButtonParams{
+			MenuButton: &models.MenuButtonWebApp{
+				Type: models.MenuButtonTypeWebApp,
+				Text: "Buka Inventaris",
+				WebApp: models.WebAppInfo{
+					URL: webURL,
+				},
+			},
+		})
+	}
+
 	slog.Info("telegram bot started")
 	go botInst.Start(ctx)
+}
+
+func (b *Bot) getWebAppURL(ctx context.Context) string {
+	var u string
+	_ = b.pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='telegram_webapp_url' OR key='app_url' LIMIT 1`).Scan(&u)
+	u = strings.TrimSpace(u)
+	if u == "" {
+		u = strings.TrimSpace(os.Getenv("WEBAPP_URL"))
+	}
+	if u == "" {
+		u = strings.TrimSpace(os.Getenv("APP_URL"))
+	}
+	if u == "" {
+		u = "https://barang.kesling.biz.id"
+	}
+	return u
 }
 
 func (b *Bot) allowed(chatID int64) bool {
@@ -172,6 +202,17 @@ func (b *Bot) buildMenuKeyboard(ctx context.Context) models.InlineKeyboardMarkup
 				{Text: "❓ Bantuan", CallbackData: "cmd:bantu"},
 			},
 		}
+	}
+
+	// Add Web App button at top
+	webURL := b.getWebAppURL(ctx)
+	if webURL != "" {
+		kbRows = append([][]models.InlineKeyboardButton{{
+			{
+				Text:   "🌐 Buka Aplikasi Web",
+				WebApp: &models.WebAppInfo{URL: webURL},
+			},
+		}}, kbRows...)
 	}
 
 	return models.InlineKeyboardMarkup{InlineKeyboard: kbRows}
