@@ -125,12 +125,14 @@ func main() {
 	importH := handler.NewImportHandler(pool, itemH)
 	maintH := handler.NewMaintenanceHandler(pool)
 
+	middleware.SetDBPool(pool)
 	r := gin.New()
 	allowedOrigins := strings.Split(cfg.CORSOrigins, ",")
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeadersMiddleware())
 	r.Use(middleware.GzipMiddleware())
 	r.Use(middleware.LoginRateLimiter(5, time.Minute))
+	r.Use(middleware.BurstAttackLimiter(35, 5*time.Second, 30*time.Second))
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -181,6 +183,9 @@ func main() {
 	api.DELETE("/users/:email", userH.Delete)
 
 	api.GET("/audit", userH.AuditLog)
+	api.GET("/audit/security", userH.SecurityAuditLog)
+	api.POST("/audit/security/unblock", userH.UnblockIP)
+	api.DELETE("/audit/security/events", userH.ClearSecurityEvents)
 
 	api.GET("/barcode/:id", bcH.PNG)
 	api.GET("/barcode/sheet", bcH.Sheet)
@@ -197,6 +202,8 @@ func main() {
 	api.GET("/photos", upH.ListPhotos)
 	api.DELETE("/photos/:filename", upH.DeletePhoto)
 	api.POST("/photos/clean-orphaned", upH.CleanOrphaned)
+	api.GET("/adjust/template", bulkH.DownloadTemplate)
+	api.GET("/adjust/export", bulkH.ExportOpname)
 	api.POST("/adjust/bulk", bulkH.BulkAdjust)
 
 	// Telegram settings (admin only)

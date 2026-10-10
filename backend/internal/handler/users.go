@@ -10,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
+
+	"inventariskantor/internal/middleware"
 )
 
 type UserHandler struct {
@@ -175,6 +177,33 @@ func (h *UserHandler) AuditLog(c *gin.Context) {
 		pages++
 	}
 	c.JSON(http.StatusOK, paginatedResp{Data: logs, Total: total, Page: page, PerPage: perPage, Pages: pages})
+}
+
+// SecurityAuditLog returns burst attack and rate limit telemetry
+func (h *UserHandler) SecurityAuditLog(c *gin.Context) {
+	events, blocked, stats := middleware.GetSecurityStatus()
+	c.JSON(http.StatusOK, gin.H{
+		"events":      events,
+		"blocked_ips": blocked,
+		"stats":       stats,
+	})
+}
+
+func (h *UserHandler) UnblockIP(c *gin.Context) {
+	var req struct {
+		IP string `json:"ip" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "IP wajib diisi"})
+		return
+	}
+	success := middleware.UnblockSecurityIP(req.IP)
+	c.JSON(http.StatusOK, gin.H{"success": success, "ip": req.IP})
+}
+
+func (h *UserHandler) ClearSecurityEvents(c *gin.Context) {
+	middleware.ClearSecurityEvents()
+	c.JSON(http.StatusOK, gin.H{"message": "log keamanan dibersihkan"})
 }
 
 func slugify(s string) string {

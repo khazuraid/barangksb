@@ -118,13 +118,23 @@ function remove(item: any) {
   })
 }
 
-function exportCsv() { window.open('/api/export/items.csv', '_blank') }
-function exportXlsx() { window.open('/api/export/items.xlsx', '_blank') }
-function printReport() { window.open('/api/report.pdf', '_blank') }
+function exportCsv() {
+  const token = localStorage.getItem('token') || ''
+  window.open(`/api/export/items.csv?token=${encodeURIComponent(token)}`, '_blank')
+}
+function exportXlsx() {
+  const token = localStorage.getItem('token') || ''
+  window.open(`/api/export/items.xlsx?token=${encodeURIComponent(token)}`, '_blank')
+}
+function printReport() {
+  const token = localStorage.getItem('token') || ''
+  window.open(`/api/report.pdf?token=${encodeURIComponent(token)}`, '_blank')
+}
 
 // --- Import functions ---
 function downloadTemplate(fmt: 'xlsx' | 'csv') {
-  window.open(`/api/items/template?fmt=${fmt}`, '_blank')
+  const token = localStorage.getItem('token') || ''
+  window.open(`/api/items/template?fmt=${fmt}&token=${encodeURIComponent(token)}`, '_blank')
 }
 
 function onImportFileChanged(e: Event) {
