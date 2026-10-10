@@ -9,6 +9,7 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
 import Field from '@/components/Field.vue'
@@ -21,6 +22,9 @@ const isEdit = !!route.params.id
 const loading = ref(false)
 const loadingData = ref(true)
 const photoUploaderRef = ref<any>(null)
+
+const enableKIR = ref(false)
+const enableProcurement = ref(false)
 
 const form = ref<any>({
   sku: '',
@@ -84,6 +88,32 @@ onMounted(async () => {
       Object.assign(form.value, res.data)
       form.value.sku = res.data.sku ?? ''
       form.value.track_stock = res.data.track_stock !== false
+
+      // Auto-aktifkan opsi KIR / KIB jika data aset memiliki atribut KIR
+      if (
+        res.data.item_code ||
+        res.data.register_number ||
+        res.data.location_code ||
+        res.data.merk ||
+        res.data.type_model ||
+        res.data.serial_number ||
+        res.data.size ||
+        res.data.material ||
+        res.data.procurement_year ||
+        (res.data.condition_status && !['Berfungsi', 'Baik (B)'].includes(res.data.condition_status))
+      ) {
+        enableKIR.value = true
+      }
+
+      // Auto-aktifkan opsi pengadaan jika ada data pengadaan atau keterangan
+      if (
+        res.data.funding_source ||
+        res.data.distributor ||
+        res.data.akl_akd ||
+        res.data.description
+      ) {
+        enableProcurement.value = true
+      }
     }
   } catch {
     toast.add({ severity: 'error', summary: 'Gagal memuat data barang', life: 3500 })
@@ -110,6 +140,26 @@ async function submit() {
   if (!form.value.track_stock) {
     form.value.unit = 'unit'
   }
+
+  // Jika opsi dinonaktifkan, bersihkan data agar tidak tersimpan sembarangan
+  if (!enableKIR.value) {
+    form.value.item_code = ''
+    form.value.register_number = ''
+    form.value.location_code = ''
+    form.value.merk = ''
+    form.value.type_model = ''
+    form.value.serial_number = ''
+    form.value.size = ''
+    form.value.material = ''
+    form.value.procurement_year = ''
+  }
+  if (!enableProcurement.value) {
+    form.value.funding_source = ''
+    form.value.distributor = ''
+    form.value.akl_akd = ''
+    form.value.description = ''
+  }
+
   loading.value = true
   try {
     // Unggah foto fisik hanya saat pengguna benar-benar menyimpan formulir (hemat storage)
@@ -224,22 +274,22 @@ async function submit() {
           </p>
 
           <div class="pt-2 border-t flex flex-col gap-1.5 text-[11.5px]" style="border-color: var(--line)">
-            <div v-if="form.item_code" class="flex items-center justify-between">
+            <div v-if="enableKIR && form.item_code" class="flex items-center justify-between">
               <span style="color: var(--txt-dim)">No. Kode Barang:</span>
               <span class="t-mono font-bold text-indigo-500">{{ form.item_code }}</span>
             </div>
-            <div v-if="form.register_number" class="flex items-center justify-between">
+            <div v-if="enableKIR && form.register_number" class="flex items-center justify-between">
               <span style="color: var(--txt-dim)">No. Register:</span>
               <span class="t-mono font-semibold" style="color: var(--txt)">{{ form.register_number }}</span>
             </div>
-            <div class="flex items-center justify-between">
+            <div v-if="enableKIR" class="flex items-center justify-between">
               <span style="color: var(--txt-dim)">Kondisi Fisik:</span>
               <span class="font-semibold" style="color: var(--txt)">{{ form.condition_status }}</span>
             </div>
             <div v-if="form.location" class="flex items-center justify-between">
               <span style="color: var(--txt-dim)">Ruangan:</span>
               <span class="font-semibold truncate max-w-[170px]" style="color: var(--txt)">
-                <span v-if="form.location_code" class="text-indigo-500 font-mono mr-1">[{{ form.location_code }}]</span>
+                <span v-if="enableKIR && form.location_code" class="text-indigo-500 font-mono mr-1">[{{ form.location_code }}]</span>
                 {{ form.location }}
               </span>
             </div>
@@ -340,19 +390,11 @@ async function submit() {
           </div>
         </Panel>
 
-        <!-- 2. Data Pokok & Inventaris Barang (KIR / KIB) -->
-        <Panel title="Data Pokok &amp; Buku Inventaris (KIR / KIB)" icon="pi pi-book">
+        <!-- 2. Data Pokok Barang -->
+        <Panel title="Data Pokok Barang" icon="pi pi-box">
           <div class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
             <Field label="Jenis Barang / Nama Barang" required span hint="Nama spesifik aset atau barang inventaris">
               <InputText v-model="form.name" required placeholder="mis. Kursi Kerja Putar / Laptop Lenovo ThinkPad / Tensimeter Digital" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="No. Kode Barang" hint="Kode barang standar inventaris daerah/KIB (cth: 02.03.01.02.05)">
-              <InputText v-model="form.item_code" placeholder="mis. 02.03.01.02.05" class="w-full t-mono !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Jumlah Barang / Register" hint="Nomor urut register pencatatan aset (cth: 0001, 0015)">
-              <InputText v-model="form.register_number" placeholder="mis. 0001 / REG-2026-001" class="w-full t-mono !text-[12.5px]" fluid />
             </Field>
 
             <Field label="Kategori Barang" required>
@@ -384,37 +426,6 @@ async function submit() {
               />
             </Field>
 
-            <Field label="NO. KODE LOKASI" hint="Nomor kode lokasi / ruangan penempatan aset">
-              <InputText v-model="form.location_code" placeholder="mis. 11.02.01" class="w-full t-mono !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Merk / Model">
-              <div class="grid grid-cols-2 gap-2">
-                <InputText v-model="form.merk" placeholder="Merk (mis. Chitose / Lenovo)" class="w-full !text-[12.5px]" fluid />
-                <InputText v-model="form.type_model" placeholder="Model (mis. L-14 / Ergo)" class="w-full !text-[12.5px]" fluid />
-              </div>
-            </Field>
-
-            <Field label="No. Seri Pabrik" hint="Nomor seri unik pabrikan (Serial Number jika ada)">
-              <InputText v-model="form.serial_number" placeholder="Nomor seri pabrik (barcode SN)" class="w-full t-mono !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Ukuran" hint="Dimensi, volume, atau ukuran fisik aset">
-              <InputText v-model="form.size" placeholder="mis. 120 x 80 x 75 cm / 14 inch / 2 Liter" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Bahan" hint="Material utama pembentuk barang">
-              <InputText v-model="form.material" placeholder="mis. Kayu Jati / Besi / Plastik / Aluminium / Kain" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Tahun Pembuatan / Pembelian">
-              <Select v-model="form.procurement_year" :options="yearOptions" showClear placeholder="Pilih tahun" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Keadaan Barang" hint="Kondisi fisik aset inventaris saat didaftarkan">
-              <Select v-model="form.condition_status" :options="conditionOptions" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
             <!-- Satuan Unit (Hanya untuk Barang Stok / Konsumabel) -->
             <Field v-if="form.track_stock" label="Satuan Unit" required>
               <Select v-model="form.unit" :options="unitOptions" class="w-full !text-[12.5px]" fluid />
@@ -443,9 +454,80 @@ async function submit() {
           </div>
         </Panel>
 
-        <!-- 3. Detail Pengadaan & Keterangan -->
+        <!-- 3. Buku Inventaris (KIR / KIB) - Opsi On/Off -->
+        <Panel title="Buku Inventaris (KIR / KIB)" icon="pi pi-book">
+          <template #actions>
+            <div class="flex items-center gap-2">
+              <span class="text-[11.5px] font-semibold" :style="{ color: enableKIR ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
+                {{ enableKIR ? 'Aktif' : 'Nonaktif' }}
+              </span>
+              <ToggleSwitch v-model="enableKIR" />
+            </div>
+          </template>
+
+          <div v-if="enableKIR" class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
+            <Field label="No. Kode Barang" hint="Kode barang standar inventaris daerah/KIB (cth: 02.03.01.02.05)">
+              <InputText v-model="form.item_code" placeholder="mis. 02.03.01.02.05" class="w-full t-mono !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Jumlah Barang / Register" hint="Nomor urut register pencatatan aset (cth: 0001, 0015)">
+              <InputText v-model="form.register_number" placeholder="mis. 0001 / REG-2026-001" class="w-full t-mono !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="NO. KODE LOKASI" hint="Nomor kode lokasi / ruangan penempatan aset">
+              <InputText v-model="form.location_code" placeholder="mis. 11.02.01" class="w-full t-mono !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Keadaan Barang" hint="Kondisi fisik aset inventaris saat didaftarkan">
+              <Select v-model="form.condition_status" :options="conditionOptions" class="w-full !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Merk / Model">
+              <div class="grid grid-cols-2 gap-2">
+                <InputText v-model="form.merk" placeholder="Merk (mis. Chitose / Lenovo)" class="w-full !text-[12.5px]" fluid />
+                <InputText v-model="form.type_model" placeholder="Model (mis. L-14 / Ergo)" class="w-full !text-[12.5px]" fluid />
+              </div>
+            </Field>
+
+            <Field label="No. Seri Pabrik" hint="Nomor seri unik pabrikan (Serial Number jika ada)">
+              <InputText v-model="form.serial_number" placeholder="Nomor seri pabrik (barcode SN)" class="w-full t-mono !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Ukuran" hint="Dimensi, volume, atau ukuran fisik aset">
+              <InputText v-model="form.size" placeholder="mis. 120 x 80 x 75 cm / 14 inch / 2 Liter" class="w-full !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Bahan" hint="Material utama pembentuk barang">
+              <InputText v-model="form.material" placeholder="mis. Kayu Jati / Besi / Plastik / Aluminium / Kain" class="w-full !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Tahun Pembuatan / Pembelian" span>
+              <Select v-model="form.procurement_year" :options="yearOptions" showClear placeholder="Pilih tahun pembuatan / pembelian" class="w-full !text-[12.5px]" fluid />
+            </Field>
+          </div>
+
+          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3"
+               style="background: var(--panel-2); border-color: var(--line)">
+            <div class="flex items-center gap-2.5 text-[12px]" style="color: var(--txt-dim)">
+              <i class="pi pi-info-circle text-indigo-500 text-sm" />
+              <span>Opsi format inventaris KIR/KIB (Kode Barang, Register, Kode Lokasi, Merk, Seri, Ukuran, Bahan, Tahun, Kondisi) sedang nonaktif.</span>
+            </div>
+            <Button label="Aktifkan Opsi KIR/KIB" icon="pi pi-plus" size="small" text severity="primary" @click="enableKIR = true" />
+          </div>
+        </Panel>
+
+        <!-- 4. Detail Pengadaan & Keterangan - Opsi On/Off -->
         <Panel title="Detail Pengadaan &amp; Keterangan" icon="pi pi-clipboard">
-          <div class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
+          <template #actions>
+            <div class="flex items-center gap-2">
+              <span class="text-[11.5px] font-semibold" :style="{ color: enableProcurement ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
+                {{ enableProcurement ? 'Aktif' : 'Nonaktif' }}
+              </span>
+              <ToggleSwitch v-model="enableProcurement" />
+            </div>
+          </template>
+
+          <div v-if="enableProcurement" class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
             <Field label="Sumber Dana">
               <InputText v-model="form.funding_source" placeholder="mis. APBD / DAK / BLU / Hibah" class="w-full !text-[12.5px]" fluid />
             </Field>
@@ -468,6 +550,15 @@ async function submit() {
                 fluid
               />
             </Field>
+          </div>
+
+          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3"
+               style="background: var(--panel-2); border-color: var(--line)">
+            <div class="flex items-center gap-2.5 text-[12px]" style="color: var(--txt-dim)">
+              <i class="pi pi-info-circle text-indigo-500 text-sm" />
+              <span>Opsi detail pengadaan (Sumber Dana, Rekanan Vendor, AKL/AKD) &amp; catatan keterangan tambahan sedang nonaktif.</span>
+            </div>
+            <Button label="Aktifkan Pengadaan" icon="pi pi-plus" size="small" text severity="primary" @click="enableProcurement = true" />
           </div>
         </Panel>
 
