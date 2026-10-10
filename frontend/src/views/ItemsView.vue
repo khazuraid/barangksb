@@ -345,10 +345,13 @@ async function deleteMaintRecord(mId: string) {
           @click="router.push('/items/' + it.id)"
         >
           <div>
-            <div class="flex items-start justify-between gap-2 mb-2.5">
+            <div class="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
               <span class="t-mono text-[11px] font-semibold px-2 py-0.5 rounded border"
                     style="border-color: var(--line); color: var(--txt-dim); background: var(--panel-2)">
                 {{ it.sku }}
+              </span>
+              <span v-if="it.item_code" class="t-mono text-[10px] text-indigo-500 font-bold px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30">
+                {{ it.item_code }}
               </span>
               <StatusChip :kind="it.condition_status" />
             </div>
@@ -370,7 +373,9 @@ async function deleteMaintRecord(mId: string) {
 
           <div class="pt-2.5 border-t flex items-center justify-between text-[12px]" style="border-color: var(--line)">
             <span class="truncate flex items-center gap-1" style="color: var(--txt-dim)">
-              <i class="pi pi-map-marker text-[10px]" /> {{ it.location }}
+              <i class="pi pi-map-marker text-[10px]" />
+              <span v-if="it.location_code" class="t-mono text-[10.5px] text-indigo-500 font-semibold mr-0.5">[{{ it.location_code }}]</span>
+              {{ it.location }}
             </span>
             <div class="flex items-center gap-2">
               <div v-if="it.track_stock !== false" class="text-right shrink-0">
@@ -428,8 +433,9 @@ async function deleteMaintRecord(mId: string) {
                     <div class="font-bold text-[13.5px] leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                       {{ it.name }}
                     </div>
-                    <div class="t-mono text-[11px] mt-0.5 flex items-center gap-2" style="color: var(--txt-dim)">
+                    <div class="t-mono text-[11px] mt-0.5 flex items-center gap-2 flex-wrap" style="color: var(--txt-dim)">
                       <span>{{ it.sku }}</span>
+                      <span v-if="it.item_code" class="text-indigo-500 font-semibold">Kode: {{ it.item_code }}</span>
                       <span v-if="it.merk" class="text-[11px]">· {{ it.merk }}</span>
                     </div>
                   </div>
@@ -441,6 +447,7 @@ async function deleteMaintRecord(mId: string) {
                 <div class="font-semibold text-[12.5px] truncate">{{ it.category }}</div>
                 <div class="text-[11.5px] flex items-center gap-1 mt-0.5" style="color: var(--txt-dim)">
                   <i class="pi pi-map-marker text-[10px]" />
+                  <span v-if="it.location_code" class="t-mono text-[11px] text-indigo-500 font-semibold">[{{ it.location_code }}]</span>
                   <span class="truncate">{{ it.location }}</span>
                 </div>
               </td>

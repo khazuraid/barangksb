@@ -205,16 +205,17 @@ func (h *MovementHandler) Categories(c *gin.Context) {
 }
 
 func (h *MovementHandler) Locations(c *gin.Context) {
-	rows, _ := h.pool.Query(c, `SELECT id, name FROM locations ORDER BY name`)
+	rows, _ := h.pool.Query(c, `SELECT id, name, COALESCE(code, '') FROM locations ORDER BY name`)
 	defer rows.Close()
 	type loc struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
+		Code string `json:"code"`
 	}
 	locs := []loc{}
 	for rows.Next() {
 		var l loc
-		rows.Scan(&l.ID, &l.Name)
+		rows.Scan(&l.ID, &l.Name, &l.Code)
 		locs = append(locs, l)
 	}
 	c.JSON(http.StatusOK, locs)

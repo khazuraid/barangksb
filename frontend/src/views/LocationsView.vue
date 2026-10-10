@@ -16,9 +16,11 @@ const toast = useToast()
 const rows = ref<any[]>([])
 const loading = ref(true)
 const newName = ref('')
+const newCode = ref('')
 const busy = ref(false)
 const editingId = ref<string | null>(null)
 const editName = ref('')
+const editCode = ref('')
 const q = ref('')
 
 const page = ref(0)
@@ -26,7 +28,7 @@ const perPage = ref(18)
 const perPageOptions = [12, 18, 30, 60]
 
 const filtered = computed(() =>
-  rows.value.filter(r => !q.value || [r.name, r.id].join(' ').toLowerCase().includes(q.value.toLowerCase()))
+  rows.value.filter(r => !q.value || [r.name, r.code, r.id].join(' ').toLowerCase().includes(q.value.toLowerCase()))
 )
 const lastPage = computed(() => Math.max(0, Math.ceil(filtered.value.length / perPage.value) - 1))
 const range = computed(() => {
@@ -48,28 +50,30 @@ onMounted(load)
 
 async function add() {
   const name = newName.value.trim()
+  const code = newCode.value.trim()
   if (!name) return
   busy.value = true
   try {
-    await api.post('/locations', { name })
+    await api.post('/locations', { name, code })
     newName.value = ''
-    toast.add({ severity: 'success', summary: 'Lokasi ditambah', detail: name, life: 2200 })
+    newCode.value = ''
+    toast.add({ severity: 'success', summary: 'Lokasi ditambah', detail: code ? `[${code}] ${name}` : name, life: 2200 })
     load()
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Gagal', detail: e.response?.data?.error, life: 3500 })
   } finally { busy.value = false }
 }
 
-function startEdit(r: any) { editingId.value = r.id; editName.value = r.name }
-function cancelEdit() { editingId.value = null; editName.value = '' }
+function startEdit(r: any) { editingId.value = r.id; editName.value = r.name; editCode.value = r.code || '' }
+function cancelEdit() { editingId.value = null; editName.value = ''; editCode.value = '' }
 
 async function saveEdit(r: any) {
   const name = editName.value.trim()
-  if (!name || name === r.name) return cancelEdit()
+  const code = editCode.value.trim()
+  if (!name) return cancelEdit()
   busy.value = true
   try {
-    const res = await api.post('/locations', { name })
-    if (res.data?.id && res.data.id !== r.id) await api.delete(`/locations/${r.id}`)
+    await api.post('/locations', { id: r.id, name, code })
     toast.add({ severity: 'success', summary: 'Lokasi diperbarui', life: 2200 })
     cancelEdit(); load()
   } catch (e: any) {
@@ -103,21 +107,25 @@ function remove(r: any) {
 
     <Panel title="Tambah Lokasi" icon="pi pi-plus">
       <form @submit.prevent="add" class="flex flex-wrap gap-2.5 items-end">
+        <label class="flex flex-col gap-1.5 w-[160px]">
+          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">No. Kode Lokasi</span>
+          <InputText v-model="newCode" placeholder="mis. 11.02.01" class="w-full t-mono" />
+        </label>
         <label class="flex flex-col gap-1.5 flex-1 min-w-[240px]">
-          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Nama Lokasi</span>
-          <InputText v-model="newName" placeholder="mis. Gudang Lantai 2 / Ruang Farmasi" class="w-full" />
+          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Nama Ruangan / Lokasi</span>
+          <InputText v-model="newName" placeholder="mis. Gudang Lantai 2 / Ruang Tata Usaha" class="w-full" required />
         </label>
         <Button type="submit" label="Tambah" icon="pi pi-plus" :loading="busy" />
       </form>
       <p class="text-[11.5px] mt-2.5" style="color: var(--txt-dim)">
-        Gunakan penamaan hierarkis (Lantai → Ruangan → Rak) agar pencarian lokasi tetap rapi saat data bertambah.
+        No. Kode Lokasi berguna untuk standarisasi kode ruangan inventaris KIB/KIR (cth: 01.01 atau KOD-LOK-01).
       </p>
     </Panel>
 
     <div class="mt-4">
       <Panel title="Daftar Lokasi" icon="pi pi-map-marker" dense>
         <template #actions>
-          <InputText v-model="q" placeholder="Cari lokasi…" class="!text-[12px] !py-1.5 w-[200px]" />
+          <InputText v-model="q" placeholder="Cari nama atau kode…" class="!text-[12px] !py-1.5 w-[200px]" />
           <Tag severity="secondary" :value="rows.length + ' lokasi'" />
         </template>
 
@@ -134,16 +142,25 @@ function remove(r: any) {
             </span>
 
             <template v-if="editingId === r.id">
-              <div class="flex-1 min-w-0 flex items-center gap-1.5">
-                <InputText v-model="editName" class="flex-1 !text-[12.5px]" @keyup.enter="saveEdit(r)"
-                           @keyup.esc="cancelEdit" autofocus />
-                <Button icon="pi pi-check" size="small" severity="success" :loading="busy" @click="saveEdit(r)" />
-                <Button icon="pi pi-times" size="small" text severity="secondary" @click="cancelEdit" />
+              <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+                <div class="flex items-center gap-1.5">
+                  <InputText v-model="editCode" placeholder="Kode Lokasi" class="w-[110px] t-mono !text-[12px]" @keyup.enter="saveEdit(r)" @keyup.esc="cancelEdit" />
+                  <InputText v-model="editName" placeholder="Nama Ruangan" class="flex-1 !text-[12.5px]" @keyup.enter="saveEdit(r)" @keyup.esc="cancelEdit" autofocus />
+                </div>
+                <div class="flex items-center gap-1">
+                  <Button label="Simpan" icon="pi pi-check" size="small" severity="success" :loading="busy" @click="saveEdit(r)" />
+                  <Button label="Batal" icon="pi pi-times" size="small" text severity="secondary" @click="cancelEdit" />
+                </div>
               </div>
             </template>
             <template v-else>
               <div class="flex-1 min-w-0">
-                <div class="text-[13px] font-semibold truncate" style="color: var(--txt)">{{ r.name }}</div>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span v-if="r.code" class="t-mono text-[10px] font-bold px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                    {{ r.code }}
+                  </span>
+                  <div class="text-[13px] font-semibold truncate" style="color: var(--txt)">{{ r.name }}</div>
+                </div>
                 <div class="t-mono text-[11px] truncate mt-0.5" style="color: var(--txt-dim)">{{ r.id }}</div>
               </div>
               <div class="flex gap-0.5 shrink-0">

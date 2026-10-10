@@ -117,15 +117,21 @@ func (h *UserHandler) DeleteCategory(c *gin.Context) {
 // Locations CRUD
 func (h *UserHandler) CreateLocation(c *gin.Context) {
 	var req struct {
+		ID   string `json:"id"`
 		Name string `json:"name" binding:"required"`
+		Code string `json:"code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	id := slugify(req.Name)
-	h.pool.Exec(c, `INSERT INTO locations (id, name) VALUES ($1,$2) ON CONFLICT (id) DO UPDATE SET name=$2`, id, req.Name)
-	c.JSON(http.StatusCreated, gin.H{"id": id})
+	id := strings.TrimSpace(req.ID)
+	if id == "" {
+		id = slugify(req.Name)
+	}
+	code := strings.TrimSpace(req.Code)
+	h.pool.Exec(c, `INSERT INTO locations (id, name, code) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET name=$2, code=$3`, id, req.Name, code)
+	c.JSON(http.StatusCreated, gin.H{"id": id, "name": req.Name, "code": code})
 }
 
 func (h *UserHandler) DeleteLocation(c *gin.Context) {

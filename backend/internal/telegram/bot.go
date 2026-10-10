@@ -658,7 +658,7 @@ func (b *Bot) handleWizardInput(ctx context.Context, bt *bot.Bot, u *models.Upda
 		// Ask Category via inline keyboard
 		rows, err := b.pool.Query(ctx, `SELECT name FROM categories ORDER BY name LIMIT 12`)
 		if err != nil {
-			bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal memuat daftar kategori."})
+			b.sendMessage(ctx, bt, chatID, "⚠️ Gagal memuat daftar kategori: "+err.Error(), nil)
 			return
 		}
 		defer rows.Close()
@@ -671,17 +671,19 @@ func (b *Bot) handleWizardInput(ctx context.Context, bt *bot.Bot, u *models.Upda
 				{Text: "📂 " + catName, CallbackData: "wizcat:" + catName},
 			})
 		}
+		if len(kbRows) == 0 {
+			for _, defCat := range []string{"Alkes & Medis", "Elektronik & IT", "Furnitur", "ATK", "Lainnya"} {
+				kbRows = append(kbRows, []models.InlineKeyboardButton{
+					{Text: "📂 " + defCat, CallbackData: "wizcat:" + defCat},
+				})
+			}
+		}
 		kbRows = append(kbRows, []models.InlineKeyboardButton{
 			{Text: "❌ Batalkan", CallbackData: "cmd:batal"},
 		})
 
-		msgText := fmt.Sprintf("📝 *Tambah Barang (Langkah 2/4)*\n\nNama Barang: *%s*\n\nSilakan pilih *Kategori Barang* di bawah:", wiz.Name)
-		bt.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:      chatID,
-			Text:        msgText,
-			ParseMode:   models.ParseModeMarkdown,
-			ReplyMarkup: models.InlineKeyboardMarkup{InlineKeyboard: kbRows},
-		})
+		msgText := fmt.Sprintf("📝 *Tambah Barang (Langkah 2/4)*\n\nNama Barang: *%s*\n\nSilakan pilih *Kategori Barang* di bawah:", escapeMarkdown(wiz.Name))
+		b.sendMessage(ctx, bt, chatID, msgText, models.InlineKeyboardMarkup{InlineKeyboard: kbRows})
 
 	case "stock":
 		// Parse stock & unit, e.g. "10 unit" or "50 strip" or "10"

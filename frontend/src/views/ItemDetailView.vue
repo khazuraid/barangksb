@@ -370,6 +370,8 @@ async function deleteMaintRecord(mId: string) {
           <span class="t-mono text-[12px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
             {{ item.sku }}
           </span>
+          <Tag v-if="item.item_code" severity="info" class="t-mono !text-[10px]" :value="'KODE: ' + item.item_code" />
+          <Tag v-if="item.register_number" severity="secondary" class="t-mono !text-[10px]" :value="'REG: ' + item.register_number" />
           <Tag
             :severity="item.track_stock !== false ? 'warn' : 'info'"
             :value="item.track_stock !== false ? 'BARANG KONSUMABEL' : 'ASET TETAP'"
@@ -390,6 +392,7 @@ async function deleteMaintRecord(mId: string) {
           <span class="flex items-center gap-1.5">
             <i class="pi pi-map-marker text-indigo-500 text-xs" />
             Ruangan: <strong style="color: var(--txt)">{{ item.location }}</strong>
+            <span v-if="item.location_code" class="t-mono text-[11px] text-indigo-500 font-semibold">[{{ item.location_code }}]</span>
           </span>
           <span v-if="item.merk">·</span>
           <span v-if="item.merk">Merk: <strong style="color: var(--txt)">{{ item.merk }}</strong></span>
@@ -665,6 +668,21 @@ async function deleteMaintRecord(mId: string) {
         <div v-if="activeTab === 'spec'" class="p-5">
           <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-[12.5px]">
             <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">No. Kode Barang</span>
+              <span class="t-mono font-bold text-[13px] text-indigo-500 dark:text-indigo-400">{{ item.item_code || '—' }}</span>
+            </div>
+
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Jumlah / No. Register</span>
+              <span class="t-mono font-bold text-[13px]" style="color: var(--txt)">{{ item.register_number || '—' }}</span>
+            </div>
+
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">No. Kode Lokasi</span>
+              <span class="t-mono font-semibold text-[13px]" style="color: var(--txt)">{{ item.location_code || '—' }}</span>
+            </div>
+
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
               <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Merk / Pabrikan</span>
               <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.merk || '—' }}</span>
             </div>
@@ -675,13 +693,28 @@ async function deleteMaintRecord(mId: string) {
             </div>
 
             <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Nomor Seri (Serial Number)</span>
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Nomor Seri Pabrik (SN)</span>
               <span class="t-mono font-bold text-[13px] text-indigo-500 dark:text-indigo-400">{{ item.serial_number || '—' }}</span>
             </div>
 
             <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Tahun Pengadaan</span>
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Ukuran / Dimensi</span>
+              <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.size || '—' }}</span>
+            </div>
+
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Bahan / Material</span>
+              <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.material || '—' }}</span>
+            </div>
+
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Tahun Pembuatan / Pembelian</span>
               <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.procurement_year || '—' }}</span>
+            </div>
+
+            <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Keadaan Barang</span>
+              <span class="font-bold text-[13px]" style="color: var(--txt)">{{ item.condition_status || '—' }}</span>
             </div>
 
             <div class="p-3.5 rounded-lg border flex flex-col gap-1" style="background: var(--panel-2); border-color: var(--line)">
@@ -701,7 +734,7 @@ async function deleteMaintRecord(mId: string) {
 
             <div v-if="item.description" class="p-3.5 rounded-lg border flex flex-col gap-1 sm:col-span-2 lg:col-span-3"
                  style="background: var(--panel-2); border-color: var(--line)">
-              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Catatan &amp; Keterangan Tambahan</span>
+              <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">Keterangan / Catatan Tambahan</span>
               <p class="leading-relaxed text-[12px]" style="color: var(--txt)">{{ item.description }}</p>
             </div>
           </div>

@@ -27,6 +27,7 @@ const form = ref<any>({
   name: '',
   category: '',
   location: '',
+  location_code: '',
   track_stock: true, // true = barang konsumabel/pensil, false = aset tetap/laptop
   unit: 'buah',
   current_stock: 0,
@@ -37,7 +38,11 @@ const form = ref<any>({
   type_model: '',
   serial_number: '',
   procurement_year: '',
-  condition_status: 'Berfungsi',
+  condition_status: 'Baik (B)',
+  size: '',
+  material: '',
+  item_code: '',
+  register_number: '',
   funding_source: '',
   distributor: '',
   akl_akd: '',
@@ -51,8 +56,23 @@ const form = ref<any>({
 const categories = ref<any[]>([])
 const locations = ref<any[]>([])
 const unitOptions = ['buah', 'unit', 'set', 'box', 'rim', 'pack', 'dus', 'botol', 'roll', 'lembar']
-const conditionOptions = ['Berfungsi', 'Rusak Ringan', 'Rusak Berat', 'Perlu Kalibrasi']
-const yearOptions = Array.from({ length: 16 }, (_, i) => String(new Date().getFullYear() - i))
+const conditionOptions = [
+  'Baik (B)',
+  'Kurang Baik (KB)',
+  'Rusak Berat (RB)',
+  'Berfungsi',
+  'Rusak Ringan',
+  'Perlu Kalibrasi',
+]
+const yearOptions = Array.from({ length: 25 }, (_, i) => String(new Date().getFullYear() - i))
+
+function onLocationSelect(locName: string) {
+  form.value.location = locName
+  const found = locations.value.find((l: any) => l.name === locName)
+  if (found && found.code) {
+    form.value.location_code = found.code
+  }
+}
 
 onMounted(async () => {
   try {
@@ -204,9 +224,24 @@ async function submit() {
           </p>
 
           <div class="pt-2 border-t flex flex-col gap-1.5 text-[11.5px]" style="border-color: var(--line)">
+            <div v-if="form.item_code" class="flex items-center justify-between">
+              <span style="color: var(--txt-dim)">No. Kode Barang:</span>
+              <span class="t-mono font-bold text-indigo-500">{{ form.item_code }}</span>
+            </div>
+            <div v-if="form.register_number" class="flex items-center justify-between">
+              <span style="color: var(--txt-dim)">No. Register:</span>
+              <span class="t-mono font-semibold" style="color: var(--txt)">{{ form.register_number }}</span>
+            </div>
             <div class="flex items-center justify-between">
               <span style="color: var(--txt-dim)">Kondisi Fisik:</span>
               <span class="font-semibold" style="color: var(--txt)">{{ form.condition_status }}</span>
+            </div>
+            <div v-if="form.location" class="flex items-center justify-between">
+              <span style="color: var(--txt-dim)">Ruangan:</span>
+              <span class="font-semibold truncate max-w-[170px]" style="color: var(--txt)">
+                <span v-if="form.location_code" class="text-indigo-500 font-mono mr-1">[{{ form.location_code }}]</span>
+                {{ form.location }}
+              </span>
             </div>
             <div v-if="form.track_stock" class="flex items-center justify-between">
               <span style="color: var(--txt-dim)">Satuan:</span>
@@ -305,11 +340,19 @@ async function submit() {
           </div>
         </Panel>
 
-        <!-- 2. Data Pokok Barang -->
-        <Panel title="Data Pokok Barang" icon="pi pi-tag">
+        <!-- 2. Data Pokok & Inventaris Barang (KIR / KIB) -->
+        <Panel title="Data Pokok &amp; Buku Inventaris (KIR / KIB)" icon="pi pi-book">
           <div class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
-            <Field label="Nama Barang" required span hint="Nama spesifik barang atau merek aset">
-              <InputText v-model="form.name" required placeholder="mis. Pensil 2B Joyko / Laptop Lenovo ThinkPad L14" class="w-full !text-[12.5px]" fluid />
+            <Field label="Jenis Barang / Nama Barang" required span hint="Nama spesifik aset atau barang inventaris">
+              <InputText v-model="form.name" required placeholder="mis. Kursi Kerja Putar / Laptop Lenovo ThinkPad / Tensimeter Digital" class="w-full !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="No. Kode Barang" hint="Kode barang standar inventaris daerah/KIB (cth: 02.03.01.02.05)">
+              <InputText v-model="form.item_code" placeholder="mis. 02.03.01.02.05" class="w-full t-mono !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Jumlah Barang / Register" hint="Nomor urut register pencatatan aset (cth: 0001, 0015)">
+              <InputText v-model="form.register_number" placeholder="mis. 0001 / REG-2026-001" class="w-full t-mono !text-[12.5px]" fluid />
             </Field>
 
             <Field label="Kategori Barang" required>
@@ -337,7 +380,39 @@ async function submit() {
                 class="w-full !text-[12.5px]"
                 fluid
                 filter
+                @change="onLocationSelect($event.value)"
               />
+            </Field>
+
+            <Field label="NO. KODE LOKASI" hint="Nomor kode lokasi / ruangan penempatan aset">
+              <InputText v-model="form.location_code" placeholder="mis. 11.02.01" class="w-full t-mono !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Merk / Model">
+              <div class="grid grid-cols-2 gap-2">
+                <InputText v-model="form.merk" placeholder="Merk (mis. Chitose / Lenovo)" class="w-full !text-[12.5px]" fluid />
+                <InputText v-model="form.type_model" placeholder="Model (mis. L-14 / Ergo)" class="w-full !text-[12.5px]" fluid />
+              </div>
+            </Field>
+
+            <Field label="No. Seri Pabrik" hint="Nomor seri unik pabrikan (Serial Number jika ada)">
+              <InputText v-model="form.serial_number" placeholder="Nomor seri pabrik (barcode SN)" class="w-full t-mono !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Ukuran" hint="Dimensi, volume, atau ukuran fisik aset">
+              <InputText v-model="form.size" placeholder="mis. 120 x 80 x 75 cm / 14 inch / 2 Liter" class="w-full !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Bahan" hint="Material utama pembentuk barang">
+              <InputText v-model="form.material" placeholder="mis. Kayu Jati / Besi / Plastik / Aluminium / Kain" class="w-full !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Tahun Pembuatan / Pembelian">
+              <Select v-model="form.procurement_year" :options="yearOptions" showClear placeholder="Pilih tahun" class="w-full !text-[12.5px]" fluid />
+            </Field>
+
+            <Field label="Keadaan Barang" hint="Kondisi fisik aset inventaris saat didaftarkan">
+              <Select v-model="form.condition_status" :options="conditionOptions" class="w-full !text-[12.5px]" fluid />
             </Field>
 
             <!-- Satuan Unit (Hanya untuk Barang Stok / Konsumabel) -->
@@ -345,16 +420,12 @@ async function submit() {
               <Select v-model="form.unit" :options="unitOptions" class="w-full !text-[12.5px]" fluid />
             </Field>
 
-            <Field label="Kondisi Fisik">
-              <Select v-model="form.condition_status" :options="conditionOptions" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
             <!-- Batas Minimum Stok (Hanya untuk Barang Konsumabel) -->
             <Field v-if="form.track_stock" label="Batas Minimum Peringatan (Stok Kritis)" hint="Peringatan otomatis dikirim ke Telegram bila stok ≤ angka ini">
               <InputNumber v-model="form.min_stock" :min="0" showButtons class="w-full !text-[12.5px]" fluid />
             </Field>
 
-            <Field label="Estimasi Harga Satuan (Rp)" hint="Harga beli atau nilai taksir per unit">
+            <Field label="Estimasi Harga Satuan (Rp)" hint="Harga beli atau nilai perolehan per unit">
               <InputNumber
                 v-model="form.price_per_unit"
                 :min="0"
@@ -372,25 +443,9 @@ async function submit() {
           </div>
         </Panel>
 
-        <!-- 3. Spesifikasi Teknis & Pengadaan Aset -->
-        <Panel title="Spesifikasi &amp; Detail Pengadaan" icon="pi pi-clipboard">
+        <!-- 3. Detail Pengadaan & Keterangan -->
+        <Panel title="Detail Pengadaan &amp; Keterangan" icon="pi pi-clipboard">
           <div class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
-            <Field label="Merk / Pabrikan">
-              <InputText v-model="form.merk" placeholder="mis. Joyko / Omron / Lenovo / Canon" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Model / Tipe">
-              <InputText v-model="form.type_model" placeholder="mis. 2B / HEM-7120 / ThinkPad E14 Gen 4" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Nomor Seri (Serial Number)" hint="Identitas unik pabrik (barcode SN)">
-              <InputText v-model="form.serial_number" placeholder="Nomor seri pabrik (jika ada)" class="w-full t-mono !text-[12.5px]" fluid />
-            </Field>
-
-            <Field label="Tahun Pengadaan">
-              <Select v-model="form.procurement_year" :options="yearOptions" showClear placeholder="Pilih tahun" class="w-full !text-[12.5px]" fluid />
-            </Field>
-
             <Field label="Sumber Dana">
               <InputText v-model="form.funding_source" placeholder="mis. APBD / DAK / BLU / Hibah" class="w-full !text-[12.5px]" fluid />
             </Field>
@@ -403,12 +458,12 @@ async function submit() {
               <InputText v-model="form.akl_akd" placeholder="mis. KEMENKES RI AKL 20501812345" class="w-full !text-[12.5px]" fluid />
             </Field>
 
-            <Field label="Catatan / Deskripsi Tambahan" span hint="Rincian kelengkapan aksesoris, spesifikasi, atau info garansi">
+            <Field label="Keterangan / Catatan Tambahan" span hint="Rincian kelengkapan aksesoris, spesifikasi, atau info garansi">
               <Textarea
                 v-model="form.description"
                 rows="3"
                 autoResize
-                placeholder="Tuliskan spesifikasi detail, kelengkapan aksesoris, catatan garansi, atau instruksi pemakaian..."
+                placeholder="Tuliskan keterangan tambahan, kelengkapan aksesoris, catatan garansi, atau instruksi pemakaian..."
                 class="w-full !text-[12.5px]"
                 fluid
               />
