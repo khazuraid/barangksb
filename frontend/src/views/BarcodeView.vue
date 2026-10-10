@@ -25,9 +25,6 @@ const perPageOptions = [
   { label: '24 / hal', value: 24 },
   { label: '48 / hal', value: 48 },
   { label: '96 / hal', value: 96 },
-  { label: '250 / hal', value: 250 },
-  { label: '500 / hal', value: 500 },
-  { label: 'Semua Barang', value: 5000 },
 ]
 
 const q = ref('')
@@ -124,22 +121,13 @@ watch(q, () => {
 watch([categoryFilter, locationFilter, perPage], () => fetchItems(true))
 watch(page, () => fetchItems())
 
-const isShowingAll = computed(() => perPage.value >= 5000 || perPage.value >= total.value)
 const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
 const range = computed(() => {
   if (!total.value) return '0 barang'
-  if (isShowingAll.value) {
-    return `Menampilkan semua ${total.value} barang`
-  }
   const from = page.value * perPage.value + 1
   const to = Math.min(total.value, (page.value + 1) * perPage.value)
   return `${from}–${to} dari ${total.value} barang`
 })
-
-function showAllItems() {
-  perPage.value = 5000
-  page.value = 0
-}
 
 function toggleAllOnPage() {
   const currentPageIds = items.value.map((i) => i.id)
@@ -161,7 +149,7 @@ async function selectAllGlobal() {
         q: q.value,
         cat: categoryFilter.value,
         loc: locationFilter.value,
-        per_page: 5000,
+        per_page: 1000,
       },
     })
     const allIds = (res.data?.data || []).map((i: any) => i.id)
@@ -357,27 +345,6 @@ const sampleItem = computed(() => {
           v-tooltip.top="'Pilih ukuran label / jenis printer'"
         />
 
-        <!-- Tombol Tampilkan Semua / Bagi Halaman -->
-        <Button
-          v-if="!isShowingAll && total > 24"
-          label="Tampilkan Semua"
-          icon="pi pi-expand"
-          size="small"
-          text
-          severity="info"
-          v-tooltip.top="'Tampilkan seluruh barang tanpa pembagian halaman'"
-          @click="showAllItems"
-        />
-        <Button
-          v-else-if="isShowingAll && total > 24"
-          label="Bagi Halaman"
-          icon="pi pi-table"
-          size="small"
-          text
-          severity="secondary"
-          @click="perPage = 24; page = 0"
-        />
-
         <Button
           v-if="q || categoryFilter || locationFilter"
           label="Reset"
@@ -499,16 +466,6 @@ const sampleItem = computed(() => {
       >
         <div class="flex items-center gap-2">
           <span style="color: var(--txt-dim)">{{ range }}</span>
-          <Button
-            v-if="!isShowingAll && total > perPage"
-            label="Lihat Semua Barang"
-            icon="pi pi-eye"
-            size="small"
-            text
-            class="!text-[11.5px] !py-0.5"
-            severity="primary"
-            @click="showAllItems"
-          />
         </div>
         <div class="flex items-center gap-2">
           <Select
@@ -518,25 +475,23 @@ const sampleItem = computed(() => {
             optionValue="value"
             class="!text-[12px] !py-0.5 w-[135px]"
           />
-          <template v-if="!isShowingAll">
-            <Button
-              icon="pi pi-angle-left"
-              size="small"
-              text
-              severity="secondary"
-              :disabled="page === 0"
-              @click="page--"
-            />
-            <span class="t-num font-semibold px-1" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-            <Button
-              icon="pi pi-angle-right"
-              size="small"
-              text
-              severity="secondary"
-              :disabled="page >= lastPage"
-              @click="page++"
-            />
-          </template>
+          <Button
+            icon="pi pi-angle-left"
+            size="small"
+            text
+            severity="secondary"
+            :disabled="page === 0"
+            @click="page--"
+          />
+          <span class="t-num font-semibold px-1" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+          <Button
+            icon="pi pi-angle-right"
+            size="small"
+            text
+            severity="secondary"
+            :disabled="page >= lastPage"
+            @click="page++"
+          />
         </div>
       </div>
     </div>

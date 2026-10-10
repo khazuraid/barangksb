@@ -544,8 +544,10 @@ func (h *ImportHandler) Import(c *gin.Context) {
 	}
 
 	successCount := 0
+	skippedCount := 0
 	failedCount := 0
 	var errorList []string
+	seenKeys := make(map[string]bool)
 
 	for idx, row := range rows {
 		// Lewati baris header
@@ -571,14 +573,6 @@ func (h *ImportHandler) Import(c *gin.Context) {
 		}
 		if location == "" {
 			location = "Gudang Utama"
-		}
-
-		// Pastikan Kategori & Lokasi tersimpan di master data
-		h.ensureCategory(c, category)
-		locCode := getField(row, "location_code", 3)
-		resolvedLocCode := h.ensureLocation(c, location, locCode)
-		if locCode == "" {
-			locCode = resolvedLocCode
 		}
 
 		// Field KIR / KIB
@@ -607,6 +601,53 @@ func (h *ImportHandler) Import(c *gin.Context) {
 		aklAkd := getField(row, "akl_akd", 19)
 		description := getField(row, "description", 20)
 		customSKU := getField(row, "sku", 21)
+
+		// Cek apakah barang sudah ada di sistem (jika sudah ada jangan buat baru)
+		var exists bool
+		var dedupKey string
+		if customSKU != "" {
+			dedupKey = "sku:" + strings.ToLower(customSKU)
+			if seenKeys[dedupKey] {
+				skippedCount++
+				continue
+			}
+			_ = h.pool.QueryRow(c, `SELECT EXISTS(SELECT 1 FROM inventory_items WHERE LOWER(sku) = LOWER($1))`, customSKU).Scan(&exists)
+		} else if itemCode != "" && registerNumber != "" {
+			dedupKey = fmt.Sprintf("reg:%s:%s", itemCode, registerNumber)
+			if seenKeys[dedupKey] {
+				skippedCount++
+				continue
+			}
+			_ = h.pool.QueryRow(c, `SELECT EXISTS(SELECT 1 FROM inventory_items WHERE item_code = $1 AND register_number = $2)`, itemCode, registerNumber).Scan(&exists)
+		} else if serialNumber != "" {
+			dedupKey = "sn:" + serialNumber
+			if seenKeys[dedupKey] {
+				skippedCount++
+				continue
+			}
+			_ = h.pool.QueryRow(c, `SELECT EXISTS(SELECT 1 FROM inventory_items WHERE serial_number = $1)`, serialNumber).Scan(&exists)
+		} else {
+			dedupKey = fmt.Sprintf("name_loc:%s:%s", strings.ToLower(strings.TrimSpace(name)), strings.ToLower(strings.TrimSpace(location)))
+			if seenKeys[dedupKey] {
+				skippedCount++
+				continue
+			}
+			_ = h.pool.QueryRow(c, `SELECT EXISTS(SELECT 1 FROM inventory_items WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND LOWER(TRIM(location)) = LOWER(TRIM($2)))`, name, location).Scan(&exists)
+		}
+
+		if exists {
+			seenKeys[dedupKey] = true
+			skippedCount++
+			continue
+		}
+
+		// Pastikan Kategori & Lokasi tersimpan di master data
+		h.ensureCategory(c, category)
+		locCode := getField(row, "location_code", 3)
+		resolvedLocCode := h.ensureLocation(c, location, locCode)
+		if locCode == "" {
+			locCode = resolvedLocCode
+		}
 
 		// Model pengelolaan stok
 		trackStock := true
@@ -639,15 +680,17 @@ func (h *ImportHandler) Import(c *gin.Context) {
 			failedCount++
 			errorList = append(errorList, fmt.Sprintf("Baris %d (%s): %s", rowNum, name, err.Error()))
 		} else {
+			seenKeys[dedupKey] = true
 			successCount++
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": successCount > 0,
+		"success": successCount > 0 || skippedCount > 0,
 		"count":   successCount,
+		"skipped": skippedCount,
 		"failed":  failedCount,
-		"total":   successCount + failedCount,
+		"total":   successCount + skippedCount + failedCount,
 		"errors":  errorList,
 	})
 }

@@ -93,7 +93,34 @@ func (h *ItemHandler) List(c *gin.Context) {
 	}
 
 	args = append(args, perPage, offset)
-	rows, err := h.pool.Query(c, fmt.Sprintf(`SELECT id::text, sku, name, category, location, current_stock, min_stock, unit, price_per_unit, condition_status, is_available, photo_url, geo_lat, geo_lng, COALESCE(geo_name, ''), COALESCE(track_stock, true), COALESCE(item_code, ''), COALESCE(register_number, ''), COALESCE(size, ''), COALESCE(material, ''), COALESCE(location_code, ''), COALESCE(merk, ''), COALESCE(type_model, '') FROM inventory_items%s %s LIMIT $%d OFFSET $%d`, where, orderClause, len(args)-1, len(args)), args...)
+	queryStr := fmt.Sprintf(`
+		SELECT
+			id::text,
+			COALESCE(sku, ''),
+			COALESCE(name, ''),
+			COALESCE(category, 'Lainnya'),
+			COALESCE(location, 'Gudang Utama'),
+			COALESCE(current_stock, 0),
+			COALESCE(min_stock, 0),
+			COALESCE(unit, 'unit'),
+			COALESCE(price_per_unit, 0),
+			COALESCE(condition_status, 'Baik (B)'),
+			COALESCE(is_available, true),
+			COALESCE(photo_url, ''),
+			geo_lat,
+			geo_lng,
+			COALESCE(geo_name, ''),
+			COALESCE(track_stock, true),
+			COALESCE(item_code, ''),
+			COALESCE(register_number, ''),
+			COALESCE(size, ''),
+			COALESCE(material, ''),
+			COALESCE(location_code, ''),
+			COALESCE(merk, ''),
+			COALESCE(type_model, '')
+		FROM inventory_items%s %s LIMIT $%d OFFSET $%d`, where, orderClause, len(args)-1, len(args))
+
+	rows, err := h.pool.Query(c, queryStr, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -125,10 +152,19 @@ func (h *ItemHandler) List(c *gin.Context) {
 		GeoName        string   `json:"geo_name"`
 		TrackStock     bool     `json:"track_stock"`
 	}
-	items := []itemRow{}
+	items := make([]itemRow, 0, perPage)
 	for rows.Next() {
 		var it itemRow
-		rows.Scan(&it.ID, &it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Condition, &it.IsAvailable, &it.PhotoURL, &it.GeoLat, &it.GeoLng, &it.GeoName, &it.TrackStock, &it.ItemCode, &it.RegisterNumber, &it.Size, &it.Material, &it.LocationCode, &it.Merk, &it.TypeModel)
+		if err := rows.Scan(
+			&it.ID, &it.SKU, &it.Name, &it.Category, &it.Location,
+			&it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit,
+			&it.Condition, &it.IsAvailable, &it.PhotoURL, &it.GeoLat,
+			&it.GeoLng, &it.GeoName, &it.TrackStock, &it.ItemCode,
+			&it.RegisterNumber, &it.Size, &it.Material, &it.LocationCode,
+			&it.Merk, &it.TypeModel,
+		); err != nil {
+			continue
+		}
 		items = append(items, it)
 	}
 

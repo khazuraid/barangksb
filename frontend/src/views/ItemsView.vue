@@ -37,12 +37,10 @@ const categories = ref<any[]>([])
 const locations = ref<any[]>([])
 
 const perPageOptions = [
+  { label: '20 per hal', value: 20 },
   { label: '25 per hal', value: 25 },
   { label: '50 per hal', value: 50 },
   { label: '100 per hal', value: 100 },
-  { label: '250 per hal', value: 250 },
-  { label: '500 per hal', value: 500 },
-  { label: 'Semua Barang', value: 5000 },
 ]
 
 const sortOptions = [
@@ -59,7 +57,7 @@ const importVisible = ref(false)
 const importing = ref(false)
 const importFileInput = ref<HTMLInputElement | null>(null)
 const selectedImportFile = ref<File | null>(null)
-const importResult = ref<{ total: number; count: number; failed: number; errors: string[] } | null>(null)
+const importResult = ref<{ total: number; count: number; skipped?: number; failed: number; errors: string[] } | null>(null)
 
 // --- Maintenance & Calibration state ---
 const maintenanceVisible = ref(false)
@@ -140,23 +138,14 @@ watch(page, () => {
 })
 
 const shown = computed(() => items.value)
-const isShowingAll = computed(() => perPage.value >= 5000 || perPage.value >= total.value)
 const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
 const range = computed(() => {
   if (!total.value) return '0 barang'
-  if (isShowingAll.value) {
-    return `Menampilkan semua ${total.value} barang`
-  }
   const from = page.value * perPage.value + 1
   const to = Math.min(total.value, (page.value + 1) * perPage.value)
   return `${from}–${to} dari ${total.value} barang`
 })
 const lowCount = computed(() => items.value.filter(i => i.current_stock <= i.min_stock).length)
-
-function showAllItems() {
-  perPage.value = 5000
-  page.value = 0
-}
 
 function resetFilters() {
   q.value = ''
@@ -385,27 +374,6 @@ async function deleteMaintRecord(mId: string) {
           </span>
         </button>
 
-        <!-- Tombol Tampilkan Semua / Bagi Halaman -->
-        <Button
-          v-if="!isShowingAll && total > 25"
-          label="Tampilkan Semua"
-          icon="pi pi-expand"
-          size="small"
-          text
-          severity="info"
-          v-tooltip.top="'Tampilkan seluruh barang tanpa pembagian halaman'"
-          @click="showAllItems"
-        />
-        <Button
-          v-else-if="isShowingAll && total > 25"
-          label="Bagi Halaman"
-          icon="pi pi-table"
-          size="small"
-          text
-          severity="secondary"
-          @click="perPage = 25; page = 0"
-        />
-
         <Button
           v-if="q || category || location || onlyLow || sortBy !== 'newest'"
           icon="pi pi-filter-slash"
@@ -625,16 +593,6 @@ async function deleteMaintRecord(mId: string) {
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
-            <Button
-              v-if="!isShowingAll && total > perPage"
-              label="Lihat Semua Barang"
-              icon="pi pi-eye"
-              size="small"
-              text
-              class="!text-[11.5px] !py-0.5"
-              severity="primary"
-              @click="showAllItems"
-            />
           </div>
           <div class="flex items-center gap-2">
             <Select
@@ -644,13 +602,11 @@ async function deleteMaintRecord(mId: string) {
               optionValue="value"
               class="!text-[12px] !py-0.5 w-[135px]"
             />
-            <template v-if="!isShowingAll">
-              <Button icon="pi pi-angle-left" size="small" text severity="secondary"
-                      :disabled="page === 0" @click="page--" />
-              <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-              <Button icon="pi pi-angle-right" size="small" text severity="secondary"
-                      :disabled="page >= lastPage" @click="page++" />
-            </template>
+            <Button icon="pi pi-angle-left" size="small" text severity="secondary"
+                    :disabled="page === 0" @click="page--" />
+            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <Button icon="pi pi-angle-right" size="small" text severity="secondary"
+                    :disabled="page >= lastPage" @click="page++" />
           </div>
         </div>
       </template>
@@ -691,15 +647,16 @@ async function deleteMaintRecord(mId: string) {
 
         <!-- Result Card -->
         <div v-if="importResult" class="p-3 rounded-lg border text-[12px] flex flex-col gap-2"
-             :style="{ background: importResult.count > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--line)' }">
+             :style="{ background: (importResult.count > 0 || (importResult.skipped ?? 0) > 0) ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--line)' }">
           <div class="flex items-center justify-between font-bold">
-            <span :class="importResult.count > 0 ? 'text-emerald-400' : 'text-rose-400'">
-              {{ importResult.count > 0 ? 'Import Selesai' : 'Import Gagal' }}
+            <span :class="(importResult.count > 0 || (importResult.skipped ?? 0) > 0) ? 'text-emerald-400' : 'text-rose-400'">
+              {{ (importResult.count > 0 || (importResult.skipped ?? 0) > 0) ? 'Import Selesai' : 'Import Gagal' }}
             </span>
             <span>Total: {{ importResult.total }} baris</span>
           </div>
-          <div class="flex gap-4 text-[11.5px]">
-            <span class="text-emerald-400 font-semibold">✓ Berhasil: {{ importResult.count }}</span>
+          <div class="flex items-center gap-3 text-[11.5px] flex-wrap">
+            <span class="text-emerald-400 font-semibold">✓ Barang Baru: {{ importResult.count }}</span>
+            <span v-if="importResult.skipped" class="text-amber-400 font-semibold">⚡ Sudah Ada (Dilewati): {{ importResult.skipped }}</span>
             <span class="text-rose-400 font-semibold">✗ Gagal: {{ importResult.failed }}</span>
           </div>
           <div v-if="importResult.errors && importResult.errors.length" class="max-h-32 overflow-y-auto bg-black/60 p-2 rounded text-[11px] font-mono text-rose-300 flex flex-col gap-1">
