@@ -21,13 +21,19 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 			return
 		}
 
+		tokenStr := ""
 		header := c.GetHeader("Authorization")
-		if !strings.HasPrefix(header, "Bearer ") {
+		if strings.HasPrefix(header, "Bearer ") {
+			tokenStr = strings.TrimPrefix(header, "Bearer ")
+		} else if q := c.Query("token"); q != "" {
+			tokenStr = q
+		}
+
+		if tokenStr == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "token required"})
 			c.Abort()
 			return
 		}
-		tokenStr := strings.TrimPrefix(header, "Bearer ")
 		claims, err := auth.ParseToken(secret, tokenStr)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})

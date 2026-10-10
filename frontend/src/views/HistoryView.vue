@@ -75,7 +75,9 @@ const summary = computed(() => {
 })
 
 function exportAs(kind: 'csv' | 'xlsx' | 'pdf') {
-  const url = kind === 'csv' ? '/api/export/tx.csv' : kind === 'xlsx' ? '/api/export/items.xlsx' : '/api/report.pdf'
+  const token = localStorage.getItem('token') || ''
+  const base = kind === 'csv' ? '/api/export/tx.csv' : kind === 'xlsx' ? '/api/export/items.xlsx' : '/api/report.pdf'
+  const url = `${base}?token=${encodeURIComponent(token)}`
   if (typeof window !== 'undefined') {
     window.open(url, '_blank')
   }

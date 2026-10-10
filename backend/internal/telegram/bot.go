@@ -143,6 +143,9 @@ func (b *Bot) Start(ctx context.Context) {
 	// Register callback query handler for inline buttons
 	botInst.RegisterHandler(bot.HandlerTypeCallbackQueryData, "", bot.MatchTypePrefix, b.handleCallback)
 
+	// Register general text handler for conversational wizards, chat mutations, and search
+	botInst.RegisterHandler(bot.HandlerTypeMessageText, "", bot.MatchTypePrefix, b.handleDefault)
+
 	go b.dailyAlert(ctx)
 	go func() {
 		_ = b.SyncBotCommands(ctx)
@@ -172,6 +175,9 @@ func (b *Bot) getWebAppURL(ctx context.Context) string {
 }
 
 func (b *Bot) allowed(chatID int64) bool {
+	if chatID == 0 {
+		return false
+	}
 	if b.chatIDs[chatID] {
 		return true
 	}
@@ -245,7 +251,10 @@ func (b *Bot) autoRegisterSubscriber(ctx context.Context, chat *models.Chat, fro
 		return
 	}
 
-	_, _ = b.pool.Exec(ctx, `
+	bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, _ = b.pool.Exec(bgCtx, `
 		INSERT INTO telegram_subscribers (chat_id, type, title, username, notify_in, notify_out, notify_adjust, notify_low_stock, active)
 		VALUES ($1, $2, $3, $4, TRUE, TRUE, FALSE, TRUE, TRUE)
 		ON CONFLICT (chat_id) DO UPDATE SET
@@ -254,35 +263,105 @@ func (b *Bot) autoRegisterSubscriber(ctx context.Context, chat *models.Chat, fro
 			type = EXCLUDED.type,
 			updated_at = now()`,
 		chatID, chatType, chatTitle, chatUsername)
+
+	// Also register individual user if message originated from a group
+	if from != nil && from.ID != 0 && from.ID != chatID {
+		fromName := strings.TrimSpace(from.FirstName + " " + from.LastName)
+		if fromName == "" {
+			fromName = from.Username
+		}
+		if fromName == "" {
+			fromName = fmt.Sprintf("User %d", from.ID)
+		}
+		_, _ = b.pool.Exec(bgCtx, `
+			INSERT INTO telegram_subscribers (chat_id, type, title, username, notify_in, notify_out, notify_adjust, notify_low_stock, active)
+			VALUES ($1, 'private', $2, $3, TRUE, TRUE, FALSE, TRUE, TRUE)
+			ON CONFLICT (chat_id) DO UPDATE SET
+				title = CASE WHEN EXCLUDED.title != '' AND telegram_subscribers.title = '' THEN EXCLUDED.title ELSE telegram_subscribers.title END,
+				username = CASE WHEN EXCLUDED.username != '' THEN EXCLUDED.username ELSE telegram_subscribers.username END,
+				updated_at = now()`,
+			from.ID, fromName, from.Username)
+	}
 }
 
 // ---- State Machine Helpers ----
 
-func (b *Bot) setWizard(chatID int64, w *wizardState) {
+func (b *Bot) setWizard(chatID int64, w *wizardState, fromID ...int64) {
 	b.wizardMutex.Lock()
 	defer b.wizardMutex.Unlock()
 	w.UpdatedAt = time.Now()
 	b.wizards[chatID] = w
+	for _, f := range fromID {
+		if f != 0 && f != chatID {
+			b.wizards[f] = w
+		}
+	}
 }
 
-func (b *Bot) getWizard(chatID int64) *wizardState {
+func (b *Bot) getWizard(chatID int64, fromID ...int64) *wizardState {
 	b.wizardMutex.RLock()
-	defer b.wizardMutex.RUnlock()
 	w, exists := b.wizards[chatID]
 	if !exists {
+		for _, f := range fromID {
+			if f != 0 {
+				w, exists = b.wizards[f]
+				if exists {
+					break
+				}
+			}
+		}
+	}
+	b.wizardMutex.RUnlock()
+
+	if !exists || w == nil {
 		return nil
 	}
 	if time.Since(w.UpdatedAt) > 15*time.Minute {
-		delete(b.wizards, chatID)
+		b.clearWizard(chatID, fromID...)
 		return nil
 	}
 	return w
 }
 
-func (b *Bot) clearWizard(chatID int64) {
+func (b *Bot) clearWizard(chatID int64, fromID ...int64) {
 	b.wizardMutex.Lock()
 	defer b.wizardMutex.Unlock()
 	delete(b.wizards, chatID)
+	for _, f := range fromID {
+		if f != 0 {
+			delete(b.wizards, f)
+		}
+	}
+}
+
+func escapeMarkdown(s string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"`", "\\`",
+		"[", "\\[",
+	)
+	return replacer.Replace(s)
+}
+
+func (b *Bot) sendMessage(ctx context.Context, bt *bot.Bot, chatID int64, text string, replyMarkup models.ReplyMarkup) (*models.Message, error) {
+	params := &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        text,
+		ParseMode:   models.ParseModeMarkdown,
+		ReplyMarkup: replyMarkup,
+	}
+	msg, err := bt.SendMessage(ctx, params)
+	if err != nil {
+		slog.Warn("telegram send markdown failed, retrying plain text", "err", err, "chatID", chatID)
+		params.ParseMode = ""
+		msg, err = bt.SendMessage(ctx, params)
+		if err != nil {
+			slog.Error("telegram plain text send also failed", "err", err, "chatID", chatID)
+			return nil, err
+		}
+	}
+	return msg, nil
 }
 
 // ---- Keyboards ----
@@ -403,7 +482,11 @@ func (b *Bot) handleStart(ctx context.Context, bt *bot.Bot, u *models.Update) {
 		return
 	}
 	chatID := u.Message.Chat.ID
-	b.clearWizard(chatID)
+	var fromID int64
+	if u.Message.From != nil {
+		fromID = u.Message.From.ID
+	}
+	b.clearWizard(chatID, fromID)
 	b.autoRegisterSubscriber(ctx, &u.Message.Chat, u.Message.From)
 
 	if !b.allowed(chatID) {
@@ -449,7 +532,11 @@ func (b *Bot) handleBatal(ctx context.Context, bt *bot.Bot, u *models.Update) {
 		return
 	}
 	chatID := u.Message.Chat.ID
-	b.clearWizard(chatID)
+	var fromID int64
+	if u.Message.From != nil {
+		fromID = u.Message.From.ID
+	}
+	b.clearWizard(chatID, fromID)
 	bt.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
 		Text:        "❌ *Proses dibatalkan.*\n\nSilakan pilih menu di bawah:",
@@ -518,7 +605,11 @@ func (b *Bot) handleDefault(ctx context.Context, bt *bot.Bot, u *models.Update) 
 	}
 
 	// 2. Check active interactive wizard
-	wiz := b.getWizard(chatID)
+	var fromID int64
+	if u.Message.From != nil {
+		fromID = u.Message.From.ID
+	}
+	wiz := b.getWizard(chatID, fromID)
 	if wiz != nil && !strings.HasPrefix(text, "/") {
 		b.handleWizardInput(ctx, bt, u, wiz, text)
 		return
@@ -553,12 +644,16 @@ func (b *Bot) handleDefault(ctx context.Context, bt *bot.Bot, u *models.Update) 
 // handleWizardInput processes conversational wizard responses
 func (b *Bot) handleWizardInput(ctx context.Context, bt *bot.Bot, u *models.Update, wiz *wizardState, input string) {
 	chatID := u.Message.Chat.ID
+	var fromID int64
+	if u.Message.From != nil {
+		fromID = u.Message.From.ID
+	}
 
 	switch wiz.Step {
 	case "name":
 		wiz.Name = input
 		wiz.Step = "category"
-		b.setWizard(chatID, wiz)
+		b.setWizard(chatID, wiz, fromID)
 
 		// Ask Category via inline keyboard
 		rows, err := b.pool.Query(ctx, `SELECT name FROM categories ORDER BY name LIMIT 12`)
@@ -605,11 +700,11 @@ func (b *Bot) handleWizardInput(ctx context.Context, bt *bot.Bot, u *models.Upda
 
 		wiz.Stock = stock
 		wiz.Unit = unit
-		b.finalizeWizardItem(ctx, bt, chatID, wiz)
+		b.finalizeWizardItem(ctx, bt, chatID, wiz, fromID)
 	}
 }
 
-func (b *Bot) finalizeWizardItem(ctx context.Context, bt *bot.Bot, chatID int64, wiz *wizardState) {
+func (b *Bot) finalizeWizardItem(ctx context.Context, bt *bot.Bot, chatID int64, wiz *wizardState, fromID ...int64) {
 	sku := b.generateSKU(ctx, wiz.Category)
 
 	var id string
@@ -619,7 +714,7 @@ func (b *Bot) finalizeWizardItem(ctx context.Context, bt *bot.Bot, chatID int64,
 		 RETURNING id::text`,
 		sku, wiz.Name, wiz.Category, wiz.Location, wiz.Stock, wiz.Unit).Scan(&id)
 
-	b.clearWizard(chatID)
+	b.clearWizard(chatID, fromID...)
 
 	if err != nil {
 		bt.SendMessage(ctx, &bot.SendMessageParams{
@@ -1027,11 +1122,15 @@ func (b *Bot) handleTambah(ctx context.Context, bt *bot.Bot, u *models.Update) {
 		return
 	}
 	chatID := u.Message.Chat.ID
+	var fromID int64
+	if u.Message.From != nil {
+		fromID = u.Message.From.ID
+	}
 	raw := strings.TrimSpace(strings.TrimPrefix(u.Message.Text, "/tambah"))
 
 	// If no parameters: start Interactive Wizard
 	if raw == "" {
-		b.setWizard(chatID, &wizardState{Step: "name"})
+		b.setWizard(chatID, &wizardState{Step: "name"}, fromID)
 		text := "📝 *Tambah Barang Baru (Langkah 1/4)*\n\n" +
 			"Silakan ketik *Nama Barang* yang ingin didaftarkan:\n" +
 			"(Ketik `/batal` kapan saja untuk membatalkan)"
@@ -1786,11 +1885,11 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 	// 1. Wizard category selection
 	if strings.HasPrefix(data, "wizcat:") {
 		catName := strings.TrimPrefix(data, "wizcat:")
-		wiz := b.getWizard(chatID)
+		wiz := b.getWizard(chatID, cb.From.ID)
 		if wiz != nil {
 			wiz.Category = catName
 			wiz.Step = "location"
-			b.setWizard(chatID, wiz)
+			b.setWizard(chatID, wiz, cb.From.ID)
 
 			rows, err := b.pool.Query(ctx, `SELECT name FROM locations ORDER BY name LIMIT 12`)
 			if err != nil {
@@ -1820,11 +1919,11 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 	// 2. Wizard location selection
 	if strings.HasPrefix(data, "wizloc:") {
 		locName := strings.TrimPrefix(data, "wizloc:")
-		wiz := b.getWizard(chatID)
+		wiz := b.getWizard(chatID, cb.From.ID)
 		if wiz != nil {
 			wiz.Location = locName
 			wiz.Step = "stock"
-			b.setWizard(chatID, wiz)
+			b.setWizard(chatID, wiz, cb.From.ID)
 
 			msgText := fmt.Sprintf("🔢 *Tambah Barang (Langkah 4/4)*\n\nNama: *%s*\nKategori: *%s*\nRuangan: *%s*\n\nSilakan ketik *Jumlah Stok Awal & Satuan* pada chat.\nContoh: `10 unit` atau `5 box` atau `1`", wiz.Name, wiz.Category, wiz.Location)
 			b.editMessage(ctx, bt, chatID, msgID, msgText, b.buildBackKeyboard())
@@ -1843,11 +1942,11 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 		b.editMessage(ctx, bt, chatID, msgID, intro, b.buildMenuKeyboard(ctx))
 
 	case action == "batal":
-		b.clearWizard(chatID)
+		b.clearWizard(chatID, cb.From.ID)
 		b.editMessage(ctx, bt, chatID, msgID, "❌ Proses dibatalkan.", b.buildMenuKeyboard(ctx))
 
 	case action == "tambah_wizard":
-		b.setWizard(chatID, &wizardState{Step: "name"})
+		b.setWizard(chatID, &wizardState{Step: "name"}, cb.From.ID)
 		text := "📝 *Tambah Barang Baru (Langkah 1/4)*\n\n" +
 			"Silakan ketik *Nama Barang* yang ingin didaftarkan pada chat:\n" +
 			"(Atau klik Batalkan di bawah)"

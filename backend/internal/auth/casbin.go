@@ -47,8 +47,8 @@ p, petugas, /api/barcode/*, GET
 p, petugas, /api/upload, POST
 p, petugas, /api/export/*, GET
 p, petugas, /api/report*, GET
-p, petugas, /api/adjust/bulk, POST
-p, petugas, /api/audit, GET
+p, petugas, /api/adjust/*, *
+p, petugas, /api/audit*, *
 p, petugas, /api/settings/telegram*, *
 `
 
