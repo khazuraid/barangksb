@@ -21,7 +21,14 @@ const loading = ref(true)
 
 const page = ref(0)
 const perPage = ref(24)
-const perPageOptions = [12, 24, 48, 96]
+const perPageOptions = [
+  { label: '24 / hal', value: 24 },
+  { label: '48 / hal', value: 48 },
+  { label: '96 / hal', value: 96 },
+  { label: '250 / hal', value: 250 },
+  { label: '500 / hal', value: 500 },
+  { label: 'Semua Barang', value: 5000 },
+]
 
 const q = ref('')
 const categoryFilter = ref('')
@@ -105,15 +112,34 @@ onMounted(async () => {
   locationsRaw.value = l.data || []
 })
 
-watch([page, perPage], () => fetchItems())
+// Debounced live search
+let searchDebounce: any = null
+watch(q, () => {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => {
+    fetchItems(true)
+  }, 350)
+})
 
+watch([categoryFilter, locationFilter, perPage], () => fetchItems(true))
+watch(page, () => fetchItems())
+
+const isShowingAll = computed(() => perPage.value >= 5000 || perPage.value >= total.value)
 const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
 const range = computed(() => {
   if (!total.value) return '0 barang'
+  if (isShowingAll.value) {
+    return `Menampilkan semua ${total.value} barang`
+  }
   const from = page.value * perPage.value + 1
   const to = Math.min(total.value, (page.value + 1) * perPage.value)
-  return `${from}–${to} dari ${total.value}`
+  return `${from}–${to} dari ${total.value} barang`
 })
+
+function showAllItems() {
+  perPage.value = 5000
+  page.value = 0
+}
 
 function toggleAllOnPage() {
   const currentPageIds = items.value.map((i) => i.id)
@@ -124,6 +150,37 @@ function toggleAllOnPage() {
     const toAdd = currentPageIds.filter((id) => !selected.value.includes(id))
     selected.value.push(...toAdd)
   }
+}
+
+const selectingAllGlobal = ref(false)
+async function selectAllGlobal() {
+  selectingAllGlobal.value = true
+  try {
+    const res = await api.get('/items', {
+      params: {
+        q: q.value,
+        cat: categoryFilter.value,
+        loc: locationFilter.value,
+        per_page: 5000,
+      },
+    })
+    const allIds = (res.data?.data || []).map((i: any) => i.id)
+    selected.value = Array.from(new Set([...selected.value, ...allIds]))
+    toast.add({
+      severity: 'success',
+      summary: 'Seluruh Label Dipilih',
+      detail: `${selected.value.length} label dipilih untuk siap dicetak`,
+      life: 2500,
+    })
+  } catch {
+    toast.add({ severity: 'error', summary: 'Gagal memilih semua barang', life: 2500 })
+  } finally {
+    selectingAllGlobal.value = false
+  }
+}
+
+function clearSelection() {
+  selected.value = []
 }
 
 const isAllOnPageSelected = computed(() => {
@@ -245,10 +302,17 @@ const sampleItem = computed(() => {
           <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
           <InputText
             v-model="q"
-            placeholder="Cari nama atau SKU…"
-            class="w-full !pl-8 !text-[12px] !py-1.5"
-            @keyup.enter="fetchItems(true)"
+            placeholder="Cari nama, SKU, atau merk…"
+            class="w-full !pl-8 !pr-7 !text-[12px] !py-1.5"
           />
+          <button
+            v-if="q"
+            type="button"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-200 text-xs p-1"
+            @click="q = ''"
+          >
+            <i class="pi pi-times" />
+          </button>
         </div>
 
         <Select
@@ -259,7 +323,6 @@ const sampleItem = computed(() => {
           showClear
           placeholder="Semua Kategori"
           class="!text-[12px] !py-0.5 w-[160px]"
-          @change="fetchItems(true)"
           filter
         />
 
@@ -271,7 +334,6 @@ const sampleItem = computed(() => {
           showClear
           placeholder="Semua Lokasi"
           class="!text-[12px] !py-0.5 w-[160px]"
-          @change="fetchItems(true)"
           filter
         />
 
@@ -295,12 +357,25 @@ const sampleItem = computed(() => {
           v-tooltip.top="'Pilih ukuran label / jenis printer'"
         />
 
+        <!-- Tombol Tampilkan Semua / Bagi Halaman -->
         <Button
-          icon="pi pi-search"
+          v-if="!isShowingAll && total > 24"
+          label="Tampilkan Semua"
+          icon="pi pi-expand"
           size="small"
+          text
+          severity="info"
+          v-tooltip.top="'Tampilkan seluruh barang tanpa pembagian halaman'"
+          @click="showAllItems"
+        />
+        <Button
+          v-else-if="isShowingAll && total > 24"
+          label="Bagi Halaman"
+          icon="pi pi-table"
+          size="small"
+          text
           severity="secondary"
-          outlined
-          @click="fetchItems(true)"
+          @click="perPage = 24; page = 0"
         />
 
         <Button
@@ -314,14 +389,33 @@ const sampleItem = computed(() => {
         />
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <Button
-          :label="isAllOnPageSelected ? 'Batal pilih hal. ini' : 'Pilih semua di hal. ini'"
+          :label="isAllOnPageSelected ? 'Batal pilih hal. ini' : 'Pilih semua hal. ini'"
           icon="pi pi-check-square"
           text
           size="small"
           severity="secondary"
           @click="toggleAllOnPage"
+        />
+        <Button
+          v-if="total > items.length"
+          :label="`Pilih Semua (${total} barang)`"
+          icon="pi pi-check-circle"
+          text
+          size="small"
+          severity="info"
+          :loading="selectingAllGlobal"
+          @click="selectAllGlobal"
+        />
+        <Button
+          v-if="selected.length"
+          label="Kosongkan"
+          icon="pi pi-times"
+          text
+          size="small"
+          severity="danger"
+          @click="clearSelection"
         />
         <Tag :value="selected.length + ' dipilih'" severity="warn" class="!text-[11px]" />
         <Button
@@ -403,26 +497,46 @@ const sampleItem = computed(() => {
         class="panel p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-[12px]"
         style="background: var(--paper-1); border-color: var(--line)"
       >
-        <span style="color: var(--txt-dim)">{{ range }}</span>
         <div class="flex items-center gap-2">
-          <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-0.5 w-[95px]" />
+          <span style="color: var(--txt-dim)">{{ range }}</span>
           <Button
-            icon="pi pi-angle-left"
+            v-if="!isShowingAll && total > perPage"
+            label="Lihat Semua Barang"
+            icon="pi pi-eye"
             size="small"
             text
-            severity="secondary"
-            :disabled="page === 0"
-            @click="page--"
+            class="!text-[11.5px] !py-0.5"
+            severity="primary"
+            @click="showAllItems"
           />
-          <span class="t-num font-semibold px-1" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-          <Button
-            icon="pi pi-angle-right"
-            size="small"
-            text
-            severity="secondary"
-            :disabled="page >= lastPage"
-            @click="page++"
+        </div>
+        <div class="flex items-center gap-2">
+          <Select
+            v-model="perPage"
+            :options="perPageOptions"
+            optionLabel="label"
+            optionValue="value"
+            class="!text-[12px] !py-0.5 w-[135px]"
           />
+          <template v-if="!isShowingAll">
+            <Button
+              icon="pi pi-angle-left"
+              size="small"
+              text
+              severity="secondary"
+              :disabled="page === 0"
+              @click="page--"
+            />
+            <span class="t-num font-semibold px-1" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <Button
+              icon="pi pi-angle-right"
+              size="small"
+              text
+              severity="secondary"
+              :disabled="page >= lastPage"
+              @click="page++"
+            />
+          </template>
         </div>
       </div>
     </div>

@@ -53,9 +53,11 @@ type itemReq struct {
 }
 
 func (h *ItemHandler) List(c *gin.Context) {
-	q := c.Query("q")
-	cat := c.Query("cat")
-	loc := c.Query("loc")
+	q := strings.TrimSpace(c.Query("q"))
+	cat := strings.TrimSpace(c.Query("cat"))
+	loc := strings.TrimSpace(c.Query("loc"))
+	sortBy := strings.TrimSpace(c.DefaultQuery("sort", "newest"))
+	lowStockOnly := c.Query("low_stock") == "true"
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if page < 1 { page = 1 }
 	perPage := configPerPage(c)
@@ -64,17 +66,34 @@ func (h *ItemHandler) List(c *gin.Context) {
 	where := " WHERE TRUE"
 	args := []any{}
 	if q != "" {
-		where += fmt.Sprintf(` AND (name ILIKE $%d OR sku ILIKE $%d OR location ILIKE $%d OR item_code ILIKE $%d OR register_number ILIKE $%d OR serial_number ILIKE $%d)`, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1)
+		where += fmt.Sprintf(` AND (name ILIKE $%d OR sku ILIKE $%d OR location ILIKE $%d OR location_code ILIKE $%d OR item_code ILIKE $%d OR register_number ILIKE $%d OR serial_number ILIKE $%d OR COALESCE(merk, '') ILIKE $%d OR COALESCE(type_model, '') ILIKE $%d OR COALESCE(description, '') ILIKE $%d)`, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1, len(args)+1)
 		args = append(args, "%"+q+"%")
 	}
 	if cat != "" { where += fmt.Sprintf(` AND category = $%d`, len(args)+1); args = append(args, cat) }
 	if loc != "" { where += fmt.Sprintf(` AND location = $%d`, len(args)+1); args = append(args, loc) }
+	if lowStockOnly { where += ` AND current_stock <= min_stock AND COALESCE(track_stock, true) = true` }
 
 	var total int
 	h.pool.QueryRow(c, `SELECT count(*) FROM inventory_items`+where, args...).Scan(&total)
 
+	orderClause := "ORDER BY created_at DESC, name ASC"
+	switch sortBy {
+	case "name_asc", "name":
+		orderClause = "ORDER BY name ASC"
+	case "name_desc":
+		orderClause = "ORDER BY name DESC"
+	case "stock_asc":
+		orderClause = "ORDER BY current_stock ASC, name ASC"
+	case "stock_desc":
+		orderClause = "ORDER BY current_stock DESC, name ASC"
+	case "oldest":
+		orderClause = "ORDER BY created_at ASC"
+	case "newest":
+		orderClause = "ORDER BY created_at DESC, name ASC"
+	}
+
 	args = append(args, perPage, offset)
-	rows, err := h.pool.Query(c, fmt.Sprintf(`SELECT id::text, sku, name, category, location, current_stock, min_stock, unit, price_per_unit, condition_status, is_available, photo_url, geo_lat, geo_lng, COALESCE(geo_name, ''), COALESCE(track_stock, true), COALESCE(item_code, ''), COALESCE(register_number, ''), COALESCE(size, ''), COALESCE(material, ''), COALESCE(location_code, '') FROM inventory_items%s ORDER BY name LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
+	rows, err := h.pool.Query(c, fmt.Sprintf(`SELECT id::text, sku, name, category, location, current_stock, min_stock, unit, price_per_unit, condition_status, is_available, photo_url, geo_lat, geo_lng, COALESCE(geo_name, ''), COALESCE(track_stock, true), COALESCE(item_code, ''), COALESCE(register_number, ''), COALESCE(size, ''), COALESCE(material, ''), COALESCE(location_code, ''), COALESCE(merk, ''), COALESCE(type_model, '') FROM inventory_items%s %s LIMIT $%d OFFSET $%d`, where, orderClause, len(args)-1, len(args)), args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -99,6 +118,8 @@ func (h *ItemHandler) List(c *gin.Context) {
 		RegisterNumber string   `json:"register_number"`
 		Size           string   `json:"size"`
 		Material       string   `json:"material"`
+		Merk           string   `json:"merk"`
+		TypeModel      string   `json:"type_model"`
 		GeoLat         *float64 `json:"geo_lat"`
 		GeoLng         *float64 `json:"geo_lng"`
 		GeoName        string   `json:"geo_name"`
@@ -107,7 +128,7 @@ func (h *ItemHandler) List(c *gin.Context) {
 	items := []itemRow{}
 	for rows.Next() {
 		var it itemRow
-		rows.Scan(&it.ID, &it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Condition, &it.IsAvailable, &it.PhotoURL, &it.GeoLat, &it.GeoLng, &it.GeoName, &it.TrackStock, &it.ItemCode, &it.RegisterNumber, &it.Size, &it.Material, &it.LocationCode)
+		rows.Scan(&it.ID, &it.SKU, &it.Name, &it.Category, &it.Location, &it.CurrentStock, &it.MinStock, &it.Unit, &it.PricePerUnit, &it.Condition, &it.IsAvailable, &it.PhotoURL, &it.GeoLat, &it.GeoLng, &it.GeoName, &it.TrackStock, &it.ItemCode, &it.RegisterNumber, &it.Size, &it.Material, &it.LocationCode, &it.Merk, &it.TypeModel)
 		items = append(items, it)
 	}
 

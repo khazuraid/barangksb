@@ -60,7 +60,7 @@ watch(query, (val) => {
   debounceTimer = setTimeout(async () => {
     loadingSearch.value = true
     try {
-      const res = await api.get('/items', { params: { q, per_page: 5 } })
+      const res = await api.get('/items', { params: { q, per_page: 8 } })
       searchResults.value = res.data.data || []
     } catch {
       searchResults.value = []

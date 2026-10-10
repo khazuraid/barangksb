@@ -13,13 +13,18 @@ func fmtSprintf(format string, args ...any) string {
 }
 
 func configPerPage(c *gin.Context) int {
-	pp, _ := strconv.Atoi(c.DefaultQuery("per_page", "25"))
-	switch pp {
-	case 25, 50, 100:
-		return pp
-	default:
+	val := strings.TrimSpace(c.DefaultQuery("per_page", "25"))
+	if val == "all" || val == "-1" || val == "semua" || c.Query("all") == "true" {
+		return 10000
+	}
+	pp, err := strconv.Atoi(val)
+	if err != nil || pp <= 0 {
 		return 25
 	}
+	if pp > 10000 {
+		return 10000
+	}
+	return pp
 }
 
 type paginatedResp struct {

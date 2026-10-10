@@ -29,12 +29,30 @@ const q = ref('')
 const category = ref('')
 const location = ref('')
 const onlyLow = ref(false)
+const sortBy = ref('newest')
 const loading = ref(true)
 const viewMode = ref<'table' | 'grid'>('table')
 
 const categories = ref<any[]>([])
 const locations = ref<any[]>([])
-const perPageOptions = [25, 50, 100]
+
+const perPageOptions = [
+  { label: '25 per hal', value: 25 },
+  { label: '50 per hal', value: 50 },
+  { label: '100 per hal', value: 100 },
+  { label: '250 per hal', value: 250 },
+  { label: '500 per hal', value: 500 },
+  { label: 'Semua Barang', value: 5000 },
+]
+
+const sortOptions = [
+  { label: 'Terkini / Terbaru', value: 'newest' },
+  { label: 'Nama (A–Z)', value: 'name_asc' },
+  { label: 'Nama (Z–A)', value: 'name_desc' },
+  { label: 'Stok Terbanyak', value: 'stock_desc' },
+  { label: 'Stok Terdikit', value: 'stock_asc' },
+  { label: 'Paling Lama', value: 'oldest' },
+]
 
 // --- Import Excel / CSV state ---
 const importVisible = ref(false)
@@ -68,32 +86,86 @@ async function fetchItems() {
   loading.value = true
   try {
     const res = await api.get('/items', {
-      params: { q: q.value, cat: category.value, loc: location.value, page: page.value + 1, per_page: perPage.value },
+      params: {
+        q: q.value,
+        cat: category.value,
+        loc: location.value,
+        sort: sortBy.value,
+        low_stock: onlyLow.value ? 'true' : undefined,
+        page: page.value + 1,
+        per_page: perPage.value,
+      },
     })
-    items.value = res.data.data
-    total.value = res.data.total
-
-  } finally { loading.value = false }
+    items.value = res.data?.data || []
+    total.value = res.data?.total || 0
+  } finally {
+    loading.value = false
+  }
 }
+
 async function fetchFilters() {
   const [c, l] = await Promise.all([api.get('/categories'), api.get('/locations')])
-  categories.value = c.data
-  locations.value = l.data
+  categories.value = c.data || []
+  locations.value = l.data || []
 }
-onMounted(() => { fetchItems(); fetchFilters() })
-watch([page, perPage], fetchItems)
 
-const shown = computed(() => onlyLow.value ? items.value.filter(i => i.current_stock <= i.min_stock) : items.value)
+onMounted(() => {
+  fetchItems()
+  fetchFilters()
+})
+
+// Debounced live search
+let searchDebounce: any = null
+watch(q, () => {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => {
+    page.value = 0
+    fetchItems()
+  }, 350)
+})
+
+// Auto-fetch and reset page on filter change
+watch([category, location, sortBy, onlyLow], () => {
+  page.value = 0
+  fetchItems()
+})
+
+watch(perPage, () => {
+  page.value = 0
+  fetchItems()
+})
+
+watch(page, () => {
+  fetchItems()
+})
+
+const shown = computed(() => items.value)
+const isShowingAll = computed(() => perPage.value >= 5000 || perPage.value >= total.value)
 const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
 const range = computed(() => {
   if (!total.value) return '0 barang'
-  return `${page.value * perPage.value + 1}–${Math.min(total.value, (page.value + 1) * perPage.value)} dari ${total.value}`
+  if (isShowingAll.value) {
+    return `Menampilkan semua ${total.value} barang`
+  }
+  const from = page.value * perPage.value + 1
+  const to = Math.min(total.value, (page.value + 1) * perPage.value)
+  return `${from}–${to} dari ${total.value} barang`
 })
 const lowCount = computed(() => items.value.filter(i => i.current_stock <= i.min_stock).length)
 
+function showAllItems() {
+  perPage.value = 5000
+  page.value = 0
+}
+
 function resetFilters() {
-  q.value = ''; category.value = ''; location.value = ''; onlyLow.value = false
-  page.value = 0; fetchItems()
+  q.value = ''
+  category.value = ''
+  location.value = ''
+  onlyLow.value = false
+  sortBy.value = 'newest'
+  page.value = 0
+  fetchItems()
 }
 
 function remove(item: any) {
@@ -251,10 +323,17 @@ async function deleteMaintRecord(mId: string) {
           <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
           <InputText
             v-model="q"
-            placeholder="Cari nama, SKU, atau ruangan…"
-            class="w-full !pl-8 !text-[12px] !py-1.5"
-            @keyup.enter="page = 0; fetchItems()"
+            placeholder="Cari nama, SKU, kode barang, merk, lokasi…"
+            class="w-full !pl-8 !pr-7 !text-[12px] !py-1.5"
           />
+          <button
+            v-if="q"
+            type="button"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-200 text-xs p-1"
+            @click="q = ''"
+          >
+            <i class="pi pi-times" />
+          </button>
         </div>
 
         <!-- Filter Kategori -->
@@ -266,7 +345,6 @@ async function deleteMaintRecord(mId: string) {
           showClear
           placeholder="Kategori"
           class="!text-[12px] !py-0.5 w-[150px]"
-          @change="page = 0; fetchItems()"
           filter
         />
 
@@ -279,8 +357,17 @@ async function deleteMaintRecord(mId: string) {
           showClear
           placeholder="Ruangan"
           class="!text-[12px] !py-0.5 w-[140px]"
-          @change="page = 0; fetchItems()"
           filter
+        />
+
+        <!-- Urutan / Sorting -->
+        <Select
+          v-model="sortBy"
+          :options="sortOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Urutan"
+          class="!text-[12px] !py-0.5 w-[160px]"
         />
 
         <!-- Chip filter stok menipis -->
@@ -289,7 +376,7 @@ async function deleteMaintRecord(mId: string) {
           :class="onlyLow
             ? 'bg-rose-500/20 text-rose-300 border-rose-500/50'
             : 'bg-paper-2 text-ink-300 border-line hover:border-acc-500/40'"
-          @click="onlyLow = !onlyLow; page = 0; fetchItems()"
+          @click="onlyLow = !onlyLow"
         >
           <i class="pi pi-exclamation-triangle text-[10px]" :class="onlyLow ? 'text-rose-400' : 'text-amber-400'" />
           <span>Stok Menipis</span>
@@ -298,8 +385,29 @@ async function deleteMaintRecord(mId: string) {
           </span>
         </button>
 
+        <!-- Tombol Tampilkan Semua / Bagi Halaman -->
         <Button
-          v-if="q || category || location || onlyLow"
+          v-if="!isShowingAll && total > 25"
+          label="Tampilkan Semua"
+          icon="pi pi-expand"
+          size="small"
+          text
+          severity="info"
+          v-tooltip.top="'Tampilkan seluruh barang tanpa pembagian halaman'"
+          @click="showAllItems"
+        />
+        <Button
+          v-else-if="isShowingAll && total > 25"
+          label="Bagi Halaman"
+          icon="pi pi-table"
+          size="small"
+          text
+          severity="secondary"
+          @click="perPage = 25; page = 0"
+        />
+
+        <Button
+          v-if="q || category || location || onlyLow || sortBy !== 'newest'"
           icon="pi pi-filter-slash"
           text
           rounded
@@ -515,14 +623,34 @@ async function deleteMaintRecord(mId: string) {
 
       <template #footer>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
           <div class="flex items-center gap-2">
-            <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
-            <Button icon="pi pi-angle-left" size="small" text severity="secondary"
-                    :disabled="page === 0" @click="page--" />
-            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-            <Button icon="pi pi-angle-right" size="small" text severity="secondary"
-                    :disabled="page >= lastPage" @click="page++" />
+            <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+            <Button
+              v-if="!isShowingAll && total > perPage"
+              label="Lihat Semua Barang"
+              icon="pi pi-eye"
+              size="small"
+              text
+              class="!text-[11.5px] !py-0.5"
+              severity="primary"
+              @click="showAllItems"
+            />
+          </div>
+          <div class="flex items-center gap-2">
+            <Select
+              v-model="perPage"
+              :options="perPageOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="!text-[12px] !py-0.5 w-[135px]"
+            />
+            <template v-if="!isShowingAll">
+              <Button icon="pi pi-angle-left" size="small" text severity="secondary"
+                      :disabled="page === 0" @click="page--" />
+              <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+              <Button icon="pi pi-angle-right" size="small" text severity="secondary"
+                      :disabled="page >= lastPage" @click="page++" />
+            </template>
           </div>
         </div>
       </template>

@@ -39,7 +39,7 @@ const selectedItem = computed(() => items.value.find(i => i.id === form.value.it
 async function loadItems() {
   loadingItems.value = true
   try {
-    const res = await api.get('/items', { params: { per_page: 100 } })
+    const res = await api.get('/items', { params: { per_page: 5000 } })
     items.value = res.data.data
   } finally { loadingItems.value = false }
 }
