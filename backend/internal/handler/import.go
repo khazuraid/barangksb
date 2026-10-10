@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,19 +17,21 @@ import (
 )
 
 type ImportHandler struct {
-	pool    *pgxpool.Pool
-	itemH   *ItemHandler
+	pool  *pgxpool.Pool
+	itemH *ItemHandler
 }
 
 func NewImportHandler(pool *pgxpool.Pool, itemH *ItemHandler) *ImportHandler {
 	return &ImportHandler{pool: pool, itemH: itemH}
 }
 
+// Header standar yang sepenuhnya selaras dengan formulir barang
 var importHeaders = []string{
-	"Nama Barang", "Kategori", "Lokasi", "Stok", "Satuan",
-	"Batas Minimum", "Harga Satuan", "Kondisi", "Merk", "Model Tipe",
-	"Nomor Seri", "Tahun Pengadaan", "Sumber Dana", "Distributor",
-	"AKL/AKD", "Keterangan",
+	"Jenis Barang / Nama Barang", "Kategori", "Ruangan / Lokasi", "No. Kode Lokasi",
+	"No. Kode Barang", "No. Register", "Merk", "Model / Tipe", "No. Seri Pabrik",
+	"Ukuran", "Bahan", "Tahun Pembuatan / Pembelian", "Keadaan Barang",
+	"Jumlah / Stok", "Satuan", "Batas Minimum Stok", "Estimasi Harga Satuan",
+	"Sumber Dana", "Distributor / Rekanan", "Izin Edar AKL / AKD", "Keterangan", "SKU",
 }
 
 // GET /api/items/template
@@ -42,15 +45,30 @@ func (h *ImportHandler) DownloadTemplate(c *gin.Context) {
 		w.Write([]byte("\xEF\xBB\xBF")) // UTF-8 BOM for Excel
 		cw := csv.NewWriter(w)
 		cw.Write(importHeaders)
+
+		// Baris Contoh 1: Aset Mebel / KIR KIB
 		cw.Write([]string{
-			"Tensimeter Digital", "Peralatan Medis & Alkes (AKL/AKD)", "Ruang Rawat Inap",
-			"5", "unit", "2", "850000", "Berfungsi", "Omron", "HEM-7120",
-			"SN-123456", "2024", "APBD", "PT Medika Nusantara", "AKL 20501812345", "Kondisi prima",
+			"Kursi Kerja Putar Ergonomis", "Mebel & Furniture Kantor", "Ruang Tata Usaha", "11.02.01",
+			"02.06.01.02.05", "0001", "Chitose", "Ergo-X", "CHT-2024-889",
+			"60 x 60 x 95 cm", "Besi & Busa Fabric", "2024", "Baik (B)",
+			"1", "unit", "0", "1450000",
+			"APBD", "PT Sarana Mandiri", "", "Pengadaan Meubelair Ruang TU TA 2024", "",
 		})
+		// Baris Contoh 2: Peralatan Medis & Alkes (AKL/AKD)
 		cw.Write([]string{
-			"Laptop Admin Kantor", "Elektronik & IT Perkantoran", "Ruang Tata Usaha",
-			"3", "unit", "1", "12500000", "Berfungsi", "Lenovo", "ThinkPad E14",
-			"LR-987654", "2025", "BOS / Operasional", "PT Multi Sarana", "", "Lengkap dengan adaptor",
+			"Tensimeter Digital", "Peralatan Medis & Alkes (AKL/AKD)", "Poli Umum", "11.03.02",
+			"02.07.01.01.12", "0012", "Omron", "HEM-7120", "OMR-SN-99120",
+			"12 x 10 x 8 cm", "Plastik ABS", "2024", "Baik (B)",
+			"1", "unit", "0", "850000",
+			"DAK Non Fisik", "PT Medika Jaya", "KEMENKES RI AKL 20501812345", "Lengkap manset M & adaptor", "",
+		})
+		// Baris Contoh 3: Barang Habis Pakai / Konsumabel
+		cw.Write([]string{
+			"Kertas HVS A4 80gr", "Alat Tulis Kantor & Kertas", "Gudang Utama", "11.01.01",
+			"", "", "PaperOne", "A4 80 GSM", "",
+			"210 x 297 mm", "Kertas", "2025", "Baik (B)",
+			"50", "rim", "10", "55000",
+			"BOS / Operasional", "CV Prima Stationery", "", "Dus isi 5 rim", "",
 		})
 		cw.Flush()
 		return
@@ -66,25 +84,42 @@ func (h *ImportHandler) DownloadTemplate(c *gin.Context) {
 		f.SetCellValue(sheet, cell, hd)
 	}
 
-	// Sample Row 1
+	// Baris Contoh 1: Aset Mebel / KIR KIB
 	sample1 := []any{
-		"Tensimeter Digital", "Peralatan Medis & Alkes (AKL/AKD)", "Ruang Rawat Inap",
-		5, "unit", 2, 850000, "Berfungsi", "Omron", "HEM-7120",
-		"SN-123456", "2024", "APBD", "PT Medika Nusantara", "AKL 20501812345", "Kondisi prima",
+		"Kursi Kerja Putar Ergonomis", "Mebel & Furniture Kantor", "Ruang Tata Usaha", "11.02.01",
+		"02.06.01.02.05", "0001", "Chitose", "Ergo-X", "CHT-2024-889",
+		"60 x 60 x 95 cm", "Besi & Busa Fabric", "2024", "Baik (B)",
+		1, "unit", 0, 1450000,
+		"APBD", "PT Sarana Mandiri", "", "Pengadaan Meubelair Ruang TU TA 2024", "",
 	}
 	for i, val := range sample1 {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 2)
 		f.SetCellValue(sheet, cell, val)
 	}
 
-	// Sample Row 2
+	// Baris Contoh 2: Peralatan Medis & Alkes (AKL/AKD)
 	sample2 := []any{
-		"Laptop Admin Kantor", "Elektronik & IT Perkantoran", "Ruang Tata Usaha",
-		3, "unit", 1, 12500000, "Berfungsi", "Lenovo", "ThinkPad E14",
-		"LR-987654", "2025", "BOS / Operasional", "PT Multi Sarana", "", "Lengkap dengan adaptor",
+		"Tensimeter Digital", "Peralatan Medis & Alkes (AKL/AKD)", "Poli Umum", "11.03.02",
+		"02.07.01.01.12", "0012", "Omron", "HEM-7120", "OMR-SN-99120",
+		"12 x 10 x 8 cm", "Plastik ABS", "2024", "Baik (B)",
+		1, "unit", 0, 850000,
+		"DAK Non Fisik", "PT Medika Jaya", "KEMENKES RI AKL 20501812345", "Lengkap manset M & adaptor", "",
 	}
 	for i, val := range sample2 {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 3)
+		f.SetCellValue(sheet, cell, val)
+	}
+
+	// Baris Contoh 3: Barang Habis Pakai / Konsumabel
+	sample3 := []any{
+		"Kertas HVS A4 80gr", "Alat Tulis Kantor & Kertas", "Gudang Utama", "11.01.01",
+		"", "", "PaperOne", "A4 80 GSM", "",
+		"210 x 297 mm", "Kertas", "2025", "Baik (B)",
+		50, "rim", 10, 55000,
+		"BOS / Operasional", "CV Prima Stationery", "", "Dus isi 5 rim", "",
+	}
+	for i, val := range sample3 {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 4)
 		f.SetCellValue(sheet, cell, val)
 	}
 
@@ -96,7 +131,7 @@ func (h *ImportHandler) DownloadTemplate(c *gin.Context) {
 	})
 	endCell, _ := excelize.CoordinatesToCellName(len(importHeaders), 1)
 	f.SetCellStyle(sheet, "A1", endCell, headerStyle)
-	f.SetRowHeight(sheet, 1, 25)
+	f.SetRowHeight(sheet, 1, 26)
 
 	// Set column widths
 	for i := 1; i <= len(importHeaders); i++ {
@@ -108,6 +143,176 @@ func (h *ImportHandler) DownloadTemplate(c *gin.Context) {
 	f.Write(&buf)
 	c.Header("Content-Disposition", `attachment; filename="template_import_inventaris.xlsx"`)
 	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
+}
+
+// Pemetaan alias header fleksibel (tidak peka huruf besar/kecil atau variasi nama)
+var headerAliases = map[string]string{
+	// Nama
+	"namabarang":            "name",
+	"jenisbarangnamabarang": "name",
+	"jenisbarang":           "name",
+	"nama":                  "name",
+	"itemname":              "name",
+
+	// Kategori
+	"kategori":       "category",
+	"kategoribarang": "category",
+	"category":       "category",
+
+	// Lokasi
+	"ruanganlokasi": "location",
+	"lokasi":        "location",
+	"ruangan":       "location",
+	"location":      "location",
+
+	// Kode Lokasi
+	"nokodelokasi": "location_code",
+	"kodelokasi":   "location_code",
+	"locationcode": "location_code",
+
+	// Kode Barang
+	"nokodebarang": "item_code",
+	"kodebarang":   "item_code",
+	"itemcode":     "item_code",
+
+	// Register
+	"noregister":           "register_number",
+	"register":             "register_number",
+	"jumlahbarangregister": "register_number",
+	"nomorregister":        "register_number",
+	"registernumber":       "register_number",
+
+	// Merk
+	"merk":  "merk",
+	"brand": "merk",
+
+	// Model / Tipe
+	"modeltipe": "type_model",
+	"model":     "type_model",
+	"tipe":      "type_model",
+	"typemodel": "type_model",
+
+	// Serial Number
+	"noseripabrik": "serial_number",
+	"nomorseri":    "serial_number",
+	"seri":         "serial_number",
+	"serialnumber": "serial_number",
+	"sn":           "serial_number",
+
+	// Ukuran
+	"ukuran":  "size",
+	"dimensi": "size",
+	"size":    "size",
+
+	// Bahan
+	"bahan":    "material",
+	"material": "material",
+
+	// Tahun
+	"tahunpembuatanpembelian": "procurement_year",
+	"tahunpengadaan":          "procurement_year",
+	"tahunpembuatan":          "procurement_year",
+	"tahunpembelian":          "procurement_year",
+	"tahun":                   "procurement_year",
+	"procurementyear":         "procurement_year",
+
+	// Kondisi
+	"keadaanbarang":   "condition",
+	"kondisi":         "condition",
+	"kondisibarang":   "condition",
+	"condition":       "condition",
+	"conditionstatus": "condition",
+
+	// Stok
+	"jumlahstok":   "stock",
+	"stok":         "stock",
+	"jumlah":       "stock",
+	"stock":        "stock",
+	"currentstock": "stock",
+	"qty":          "stock",
+
+	// Satuan
+	"satuan":     "unit",
+	"satuanunit": "unit",
+	"unit":       "unit",
+
+	// Min Stok
+	"batasminimumstok": "min_stock",
+	"batasminimum":     "min_stock",
+	"minimumstok":      "min_stock",
+	"minstock":         "min_stock",
+
+	// Harga
+	"estimasihargasatuan": "price",
+	"hargasatuan":         "price",
+	"harga":               "price",
+	"price":               "price",
+	"priceperunit":        "price",
+
+	// Sumber Dana
+	"sumberdana":    "funding_source",
+	"fundingsource": "funding_source",
+
+	// Distributor
+	"distributorrekanan": "distributor",
+	"distributor":        "distributor",
+	"rekanan":            "distributor",
+	"vendor":             "distributor",
+
+	// AKL/AKD
+	"izinedaraklakd": "akl_akd",
+	"aklakd":         "akl_akd",
+	"izinedar":       "akl_akd",
+
+	// Keterangan
+	"keterangan":  "description",
+	"catatan":     "description",
+	"deskripsi":   "description",
+	"description": "description",
+
+	// SKU
+	"sku":       "sku",
+	"skukustom": "sku",
+
+	// Model Pengelolaan
+	"jenispengelolaan": "management_type",
+	"modelpengelolaan": "management_type",
+	"trackstock":       "management_type",
+}
+
+func normalizeHeader(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func normalizeCondition(c string) string {
+	c = strings.TrimSpace(c)
+	if c == "" {
+		return "Baik (B)"
+	}
+	low := strings.ToLower(c)
+	switch {
+	case strings.Contains(low, "rusak berat") || low == "rb":
+		return "Rusak Berat (RB)"
+	case strings.Contains(low, "kurang baik") || low == "kb":
+		return "Kurang Baik (KB)"
+	case strings.Contains(low, "rusak ringan") || low == "rr":
+		return "Rusak Ringan"
+	case strings.Contains(low, "kalibrasi"):
+		return "Perlu Kalibrasi"
+	case strings.Contains(low, "berfungsi"):
+		return "Berfungsi"
+	case strings.Contains(low, "baik") || low == "b":
+		return "Baik (B)"
+	default:
+		return c
+	}
 }
 
 // POST /api/items/import
@@ -171,12 +376,32 @@ func (h *ImportHandler) Import(c *gin.Context) {
 		return
 	}
 
+	// Buat peta kolom dari baris header pertama
+	colMap := make(map[string]int)
+	for i, col := range rows[0] {
+		norm := normalizeHeader(col)
+		if field, ok := headerAliases[norm]; ok {
+			colMap[field] = i
+		}
+	}
+
+	// Helper membaca isi kolom berdasarkan alias atau urutan bawaan
+	getField := func(row []string, field string, fallbackIdx int) string {
+		if idx, ok := colMap[field]; ok && idx < len(row) {
+			return strings.TrimSpace(row[idx])
+		}
+		if fallbackIdx >= 0 && fallbackIdx < len(row) {
+			return strings.TrimSpace(row[fallbackIdx])
+		}
+		return ""
+	}
+
 	successCount := 0
 	failedCount := 0
 	var errorList []string
 
 	for idx, row := range rows {
-		// Skip header row
+		// Lewati baris header
 		if idx == 0 {
 			continue
 		}
@@ -185,9 +410,9 @@ func (h *ImportHandler) Import(c *gin.Context) {
 			continue
 		}
 
-		name := strings.TrimSpace(getCol(row, 0))
-		category := strings.TrimSpace(getCol(row, 1))
-		location := strings.TrimSpace(getCol(row, 2))
+		name := getField(row, "name", 0)
+		category := getField(row, "category", 1)
+		location := getField(row, "location", 2)
 
 		if name == "" {
 			failedCount++
@@ -201,44 +426,67 @@ func (h *ImportHandler) Import(c *gin.Context) {
 			location = "Gudang Utama"
 		}
 
-		// Ensure category exists
+		// Pastikan Kategori & Lokasi tersimpan di master data
 		h.ensureCategory(c, category)
-		// Ensure location exists
-		h.ensureLocation(c, location)
+		locCode := getField(row, "location_code", 3)
+		resolvedLocCode := h.ensureLocation(c, location, locCode)
+		if locCode == "" {
+			locCode = resolvedLocCode
+		}
 
-		stock := parseInt32(getCol(row, 3), 0)
-		unit := strings.TrimSpace(getCol(row, 4))
+		// Field KIR / KIB
+		itemCode := getField(row, "item_code", 4)
+		registerNumber := getField(row, "register_number", 5)
+		merk := getField(row, "merk", 6)
+		typeModel := getField(row, "type_model", 7)
+		serialNumber := getField(row, "serial_number", 8)
+		size := getField(row, "size", 9)
+		material := getField(row, "material", 10)
+		procurementYear := getField(row, "procurement_year", 11)
+		condition := normalizeCondition(getField(row, "condition", 12))
+
+		// Stok & Satuan
+		stock := parseInt32(getField(row, "stock", 13), 0)
+		unit := getField(row, "unit", 14)
 		if unit == "" {
 			unit = "buah"
 		}
-		minStock := parseInt32(getCol(row, 5), 0)
-		price := parseInt64(getCol(row, 6), 0)
-		condition := strings.TrimSpace(getCol(row, 7))
-		if condition == "" {
-			condition = "Berfungsi"
-		}
-		merk := strings.TrimSpace(getCol(row, 8))
-		typeModel := strings.TrimSpace(getCol(row, 9))
-		serialNumber := strings.TrimSpace(getCol(row, 10))
-		procurementYear := strings.TrimSpace(getCol(row, 11))
-		fundingSource := strings.TrimSpace(getCol(row, 12))
-		distributor := strings.TrimSpace(getCol(row, 13))
-		aklAkd := strings.TrimSpace(getCol(row, 14))
-		description := strings.TrimSpace(getCol(row, 15))
+		minStock := parseInt32(getField(row, "min_stock", 15), 0)
+		price := parseInt64(getField(row, "price", 16), 0)
 
-		// Auto-generate SKU
-		sku := generateSKU(h.itemH, c, category)
+		// Pengadaan & Keterangan
+		fundingSource := getField(row, "funding_source", 17)
+		distributor := getField(row, "distributor", 18)
+		aklAkd := getField(row, "akl_akd", 19)
+		description := getField(row, "description", 20)
+		customSKU := getField(row, "sku", 21)
+
+		// Model pengelolaan stok
+		trackStock := true
+		if mgmt := strings.ToLower(getField(row, "management_type", -1)); mgmt != "" {
+			if strings.Contains(mgmt, "aset") || strings.Contains(mgmt, "tetap") || strings.Contains(mgmt, "mandiri") || strings.Contains(mgmt, "false") {
+				trackStock = false
+			}
+		}
+
+		// Tentukan SKU (gunakan custom jika terisi, atau auto-generate)
+		sku := customSKU
+		if sku == "" {
+			sku = generateSKU(h.itemH, c, category)
+		}
 
 		_, err := h.pool.Exec(c, `
 			INSERT INTO inventory_items (
-				sku, name, category, location, current_stock, min_stock, unit,
+				sku, name, category, location, location_code, current_stock, min_stock, unit,
 				price_per_unit, condition_status, merk, type_model, serial_number,
-				procurement_year, funding_source, distributor, akl_akd, description
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-		`, sku, name, category, location, stock, minStock, unit,
+				procurement_year, funding_source, distributor, akl_akd, description,
+				size, material, item_code, register_number, track_stock
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+		`, sku, name, category, location, nullable(locCode), stock, minStock, unit,
 			price, condition, nullable(merk), nullable(typeModel), nullable(serialNumber),
 			nullable(procurementYear), nullable(fundingSource), nullable(distributor),
-			nullable(aklAkd), nullable(description))
+			nullable(aklAkd), nullable(description), nullable(size), nullable(material),
+			nullable(itemCode), nullable(registerNumber), trackStock)
 
 		if err != nil {
 			failedCount++
@@ -262,24 +510,36 @@ func (h *ImportHandler) ensureCategory(c *gin.Context, catName string) {
 	h.pool.QueryRow(c, `SELECT count(*) FROM categories WHERE name=$1`, catName).Scan(&count)
 	if count == 0 {
 		id := strings.ToLower(strings.ReplaceAll(catName, " ", "-"))
-		h.pool.Exec(c, `INSERT INTO categories (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, id, catName)
+		var idCount int
+		h.pool.QueryRow(c, `SELECT count(*) FROM categories WHERE id=$1`, id).Scan(&idCount)
+		if idCount > 0 {
+			id = fmt.Sprintf("%s-%d", id, time.Now().UnixNano()%10000)
+		}
+		h.pool.Exec(c, `INSERT INTO categories (id, name) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`, id, catName)
 	}
 }
 
-func (h *ImportHandler) ensureLocation(c *gin.Context, locName string) {
-	var count int
-	h.pool.QueryRow(c, `SELECT count(*) FROM locations WHERE name=$1`, locName).Scan(&count)
-	if count == 0 {
+func (h *ImportHandler) ensureLocation(c *gin.Context, locName string, locCode string) string {
+	var codeFromDB string
+	err := h.pool.QueryRow(c, `SELECT COALESCE(code, '') FROM locations WHERE name=$1`, locName).Scan(&codeFromDB)
+	if err != nil {
 		id := strings.ToLower(strings.ReplaceAll(locName, " ", "-"))
-		h.pool.Exec(c, `INSERT INTO locations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, id, locName)
+		var idCount int
+		h.pool.QueryRow(c, `SELECT count(*) FROM locations WHERE id=$1`, id).Scan(&idCount)
+		if idCount > 0 {
+			id = fmt.Sprintf("%s-%d", id, time.Now().UnixNano()%10000)
+		}
+		h.pool.Exec(c, `INSERT INTO locations (id, name, code) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`, id, locName, locCode)
+		return locCode
 	}
-}
-
-func getCol(row []string, idx int) string {
-	if idx < len(row) {
-		return row[idx]
+	if locCode != "" && codeFromDB == "" {
+		h.pool.Exec(c, `UPDATE locations SET code=$2 WHERE name=$1`, locName, locCode)
+		return locCode
 	}
-	return ""
+	if locCode == "" {
+		return codeFromDB
+	}
+	return locCode
 }
 
 func parseInt32(s string, def int32) int32 {

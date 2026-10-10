@@ -68,7 +68,6 @@ const conditionOptions = [
   'Rusak Ringan',
   'Perlu Kalibrasi',
 ]
-const yearOptions = Array.from({ length: 25 }, (_, i) => String(new Date().getFullYear() - i))
 
 function onLocationSelect(locName: string) {
   form.value.location = locName
@@ -457,12 +456,12 @@ async function submit() {
         <!-- 3. Buku Inventaris (KIR / KIB) - Opsi On/Off -->
         <Panel title="Buku Inventaris (KIR / KIB)" icon="pi pi-book">
           <template #actions>
-            <div class="flex items-center gap-2">
+            <label class="flex items-center gap-2 cursor-pointer select-none" @click.stop>
               <span class="text-[11.5px] font-semibold" :style="{ color: enableKIR ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
                 {{ enableKIR ? 'Aktif' : 'Nonaktif' }}
               </span>
               <ToggleSwitch v-model="enableKIR" />
-            </div>
+            </label>
           </template>
 
           <div v-if="enableKIR" class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
@@ -501,30 +500,31 @@ async function submit() {
               <InputText v-model="form.material" placeholder="mis. Kayu Jati / Besi / Plastik / Aluminium / Kain" class="w-full !text-[12.5px]" fluid />
             </Field>
 
-            <Field label="Tahun Pembuatan / Pembelian" span>
-              <Select v-model="form.procurement_year" :options="yearOptions" showClear placeholder="Pilih tahun pembuatan / pembelian" class="w-full !text-[12.5px]" fluid />
+            <Field label="Tahun Pembuatan / Pembelian" span hint="Tahun pembuatan pabrik atau tahun perolehan/pembelian barang">
+              <InputText v-model="form.procurement_year" placeholder="mis. 2024 / 2021" class="w-full t-mono !text-[12.5px]" fluid />
             </Field>
           </div>
 
-          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3"
-               style="background: var(--panel-2); border-color: var(--line)">
+          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer hover:border-indigo-400 transition-colors"
+               style="background: var(--panel-2); border-color: var(--line)"
+               @click="enableKIR = true">
             <div class="flex items-center gap-2.5 text-[12px]" style="color: var(--txt-dim)">
-              <i class="pi pi-info-circle text-indigo-500 text-sm" />
+              <i class="pi pi-info-circle text-indigo-500 text-sm shrink-0" />
               <span>Opsi format inventaris KIR/KIB (Kode Barang, Register, Kode Lokasi, Merk, Seri, Ukuran, Bahan, Tahun, Kondisi) sedang nonaktif.</span>
             </div>
-            <Button label="Aktifkan Opsi KIR/KIB" icon="pi pi-plus" size="small" text severity="primary" @click="enableKIR = true" />
+            <Button label="Nyalakan (ON)" icon="pi pi-power-off" size="small" severity="primary" @click.stop="enableKIR = true" />
           </div>
         </Panel>
 
         <!-- 4. Detail Pengadaan & Keterangan - Opsi On/Off -->
         <Panel title="Detail Pengadaan &amp; Keterangan" icon="pi pi-clipboard">
           <template #actions>
-            <div class="flex items-center gap-2">
+            <label class="flex items-center gap-2 cursor-pointer select-none" @click.stop>
               <span class="text-[11.5px] font-semibold" :style="{ color: enableProcurement ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
                 {{ enableProcurement ? 'Aktif' : 'Nonaktif' }}
               </span>
               <ToggleSwitch v-model="enableProcurement" />
-            </div>
+            </label>
           </template>
 
           <div v-if="enableProcurement" class="grid sm:grid-cols-2 gap-3.5 text-[12.5px]">
@@ -552,13 +552,14 @@ async function submit() {
             </Field>
           </div>
 
-          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3"
-               style="background: var(--panel-2); border-color: var(--line)">
+          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer hover:border-indigo-400 transition-colors"
+               style="background: var(--panel-2); border-color: var(--line)"
+               @click="enableProcurement = true">
             <div class="flex items-center gap-2.5 text-[12px]" style="color: var(--txt-dim)">
-              <i class="pi pi-info-circle text-indigo-500 text-sm" />
+              <i class="pi pi-info-circle text-indigo-500 text-sm shrink-0" />
               <span>Opsi detail pengadaan (Sumber Dana, Rekanan Vendor, AKL/AKD) &amp; catatan keterangan tambahan sedang nonaktif.</span>
             </div>
-            <Button label="Aktifkan Pengadaan" icon="pi pi-plus" size="small" text severity="primary" @click="enableProcurement = true" />
+            <Button label="Nyalakan (ON)" icon="pi pi-power-off" size="small" severity="primary" @click.stop="enableProcurement = true" />
           </div>
         </Panel>
 

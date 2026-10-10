@@ -529,20 +529,24 @@ async function deleteMaintRecord(mId: string) {
     </Panel>
 
     <!-- Modal Dialog: Import Excel / CSV -->
-    <Dialog v-model:visible="importVisible" modal header="Import Master Barang (Excel / CSV)" :style="{ width: '560px' }" class="p-fluid">
+    <Dialog v-model:visible="importVisible" modal header="Import Master Barang (Excel / CSV)" :style="{ width: '620px' }" class="p-fluid">
       <div class="flex flex-col gap-4 text-[12.5px] pt-1">
-        <div class="p-3 rounded-lg border flex flex-col gap-2" style="background: var(--paper-2); border-color: var(--line)">
+        <div class="p-3.5 rounded-lg border flex flex-col gap-2.5" style="background: var(--paper-2); border-color: var(--line)">
           <div class="font-bold flex items-center gap-1.5 text-acc-500">
             <i class="pi pi-info-circle text-[13px]" /> Langkah 1: Unduh Format Template
           </div>
           <p class="text-[11.5px] text-ink-300 leading-relaxed">
-            Gunakan template spreadsheet resmi agar kolom terpetakan otomatis ke sistem (SKU akan dibuat otomatis jika dikosongkan).
+            Template spreadsheet resmi kini mendukung seluruh kolom formulir barang, termasuk format Buku Inventaris KIR/KIB (Kode Lokasi, Kode Barang, Register, Merk, Seri, Ukuran, Bahan, Tahun, Kondisi) serta detail pengadaan.
           </p>
-          <div class="flex gap-2 pt-1">
+          <div class="flex flex-wrap gap-2 pt-1">
             <Button label="Unduh Template Excel (.xlsx)" icon="pi pi-file-excel" size="small" severity="success"
                     @click="downloadTemplate('xlsx')" />
-            <Button label="Unduh CSV (.csv)" icon="pi pi-file" size="small" severity="secondary" outlined
+            <Button label="Unduh Template CSV (.csv)" icon="pi pi-file" size="small" severity="secondary" outlined
                     @click="downloadTemplate('csv')" />
+          </div>
+          <div class="text-[11px] text-ink-400 border-t pt-2 mt-1 flex flex-col gap-1" style="border-color: var(--line)">
+            <div><strong>Kolom Didukung:</strong> Nama Barang, Kategori, Lokasi, No. Kode Lokasi, No. Kode Barang, Register, Merk, Model, No. Seri, Ukuran, Bahan, Tahun, Kondisi, Stok, Satuan, Min Stok, Harga, Sumber Dana, Distributor, AKL/AKD, Keterangan, SKU.</div>
+            <div class="text-indigo-400"><em>*SKU kustom opsional (otomatis dibuatkan jika kosong). Kolom kosong pada format KIR/KIB tetap valid untuk barang habis pakai.</em></div>
           </div>
         </div>
 
