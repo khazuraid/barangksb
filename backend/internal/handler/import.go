@@ -74,6 +74,57 @@ func (h *ImportHandler) DownloadTemplate(c *gin.Context) {
 		return
 	}
 
+	// Ambil kategori dari database
+	catRows, err := h.pool.Query(c, `SELECT name FROM categories ORDER BY name`)
+	var categories []string
+	if err == nil {
+		for catRows.Next() {
+			var catName string
+			if catRows.Scan(&catName) == nil && catName != "" {
+				categories = append(categories, catName)
+			}
+		}
+		catRows.Close()
+	}
+	if len(categories) == 0 {
+		categories = []string{
+			"Peralatan Medis & Alkes (AKL/AKD)",
+			"Elektronik & IT Perkantoran",
+			"Furnitur & Perlengkapan Ruangan",
+			"ATK (Alat Tulis Kantor)",
+			"Alat Laboratorium & Diagnostik",
+			"Pantri & Fasilitas Umum",
+			"Kebersihan & Sanitasi",
+			"Keamanan & K3",
+			"Lainnya",
+		}
+	}
+
+	// Ambil lokasi dari database
+	locRows, err := h.pool.Query(c, `SELECT name, COALESCE(code, '') FROM locations ORDER BY name`)
+	type locRef struct {
+		Name string
+		Code string
+	}
+	var locations []locRef
+	if err == nil {
+		for locRows.Next() {
+			var l locRef
+			if locRows.Scan(&l.Name, &l.Code) == nil && l.Name != "" {
+				locations = append(locations, l)
+			}
+		}
+		locRows.Close()
+	}
+	if len(locations) == 0 {
+		locations = []locRef{
+			{Name: "Gudang Utama", Code: "11.01.01"},
+			{Name: "Ruang Tata Usaha", Code: "11.02.01"},
+			{Name: "Poli Umum", Code: "11.03.02"},
+			{Name: "Ruang Rawat Inap", Code: "11.04.01"},
+		}
+	}
+
 	// Excel XLSX Template
 	f := excelize.NewFile()
 	sheet := "Template_Barang"
@@ -137,6 +188,94 @@ func (h *ImportHandler) DownloadTemplate(c *gin.Context) {
 	for i := 1; i <= len(importHeaders); i++ {
 		colName, _ := excelize.ColumnNumberToName(i)
 		f.SetColWidth(sheet, colName, colName, 22)
+	}
+
+	// Buat Sheet Referensi untuk Drop Down Kategori & Ruangan
+	refSheet := "Data_Referensi"
+	f.NewSheet(refSheet)
+
+	f.SetCellValue(refSheet, "A1", "Daftar Kategori")
+	f.SetCellValue(refSheet, "B1", "Daftar Ruangan / Lokasi")
+	f.SetCellValue(refSheet, "C1", "No. Kode Lokasi")
+	f.SetCellValue(refSheet, "D1", "Keadaan Barang")
+	f.SetCellValue(refSheet, "E1", "Satuan Standar")
+
+	refHeaderStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "#FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#334155"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+	f.SetCellStyle(refSheet, "A1", "E1", refHeaderStyle)
+	f.SetRowHeight(refSheet, 1, 24)
+
+	for i, cat := range categories {
+		cell, _ := excelize.CoordinatesToCellName(1, i+2)
+		f.SetCellValue(refSheet, cell, cat)
+	}
+
+	for i, loc := range locations {
+		cellName, _ := excelize.CoordinatesToCellName(2, i+2)
+		f.SetCellValue(refSheet, cellName, loc.Name)
+		cellCode, _ := excelize.CoordinatesToCellName(3, i+2)
+		f.SetCellValue(refSheet, cellCode, loc.Code)
+	}
+
+	conditions := []string{
+		"Baik (B)",
+		"Kurang Baik (KB)",
+		"Rusak Berat (RB)",
+		"Berfungsi",
+		"Rusak Ringan",
+		"Perlu Kalibrasi",
+	}
+	for i, cond := range conditions {
+		cell, _ := excelize.CoordinatesToCellName(4, i+2)
+		f.SetCellValue(refSheet, cell, cond)
+	}
+
+	units := []string{
+		"buah", "unit", "set", "box", "rim", "pack", "dus", "botol", "roll", "lembar",
+	}
+	for i, u := range units {
+		cell, _ := excelize.CoordinatesToCellName(5, i+2)
+		f.SetCellValue(refSheet, cell, u)
+	}
+
+	f.SetColWidth(refSheet, "A", "A", 35)
+	f.SetColWidth(refSheet, "B", "B", 30)
+	f.SetColWidth(refSheet, "C", "C", 16)
+	f.SetColWidth(refSheet, "D", "D", 22)
+	f.SetColWidth(refSheet, "E", "E", 18)
+
+	// Tambahkan Dropdown Validasi Data pada Template_Barang
+	// 1. Dropdown Kategori di kolom B (baris 2 s/d 500)
+	dvCat := excelize.NewDataValidation(true)
+	dvCat.SetSqref("B2:B500")
+	dvCat.SetSqrefDropList(fmt.Sprintf("Data_Referensi!$A$2:$A$%d", len(categories)+1))
+	f.AddDataValidation(sheet, dvCat)
+
+	// 2. Dropdown Ruangan / Lokasi di kolom C (baris 2 s/d 500)
+	dvLoc := excelize.NewDataValidation(true)
+	dvLoc.SetSqref("C2:C500")
+	dvLoc.SetSqrefDropList(fmt.Sprintf("Data_Referensi!$B$2:$B$%d", len(locations)+1))
+	f.AddDataValidation(sheet, dvLoc)
+
+	// 3. Dropdown Keadaan Barang di kolom M (baris 2 s/d 500)
+	dvCond := excelize.NewDataValidation(true)
+	dvCond.SetSqref("M2:M500")
+	dvCond.SetSqrefDropList(fmt.Sprintf("Data_Referensi!$D$2:$D$%d", len(conditions)+1))
+	f.AddDataValidation(sheet, dvCond)
+
+	// 4. Dropdown Satuan di kolom O (baris 2 s/d 500)
+	dvUnit := excelize.NewDataValidation(true)
+	dvUnit.SetSqref("O2:O500")
+	dvUnit.SetSqrefDropList(fmt.Sprintf("Data_Referensi!$E$2:$E$%d", len(units)+1))
+	f.AddDataValidation(sheet, dvUnit)
+
+	// Set sheet aktif kembali ke Template_Barang
+	templateIdx, _ := f.GetSheetIndex(sheet)
+	if templateIdx >= 0 {
+		f.SetActiveSheet(templateIdx)
 	}
 
 	var buf bytes.Buffer
@@ -363,7 +502,15 @@ func (h *ImportHandler) Import(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "file Excel tidak memiliki sheet"})
 			return
 		}
-		records, err := xlFile.GetRows(sheets[0])
+		// Prioritaskan sheet data item (abaikan sheet referensi dropdown)
+		dataSheet := sheets[0]
+		for _, s := range sheets {
+			if s != "Data_Referensi" {
+				dataSheet = s
+				break
+			}
+		}
+		records, err := xlFile.GetRows(dataSheet)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca baris sheet: " + err.Error()})
 			return

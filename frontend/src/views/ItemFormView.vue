@@ -25,6 +25,7 @@ const photoUploaderRef = ref<any>(null)
 
 const enableKIR = ref(false)
 const enableProcurement = ref(false)
+const enablePrice = ref(false)
 
 const form = ref<any>({
   sku: '',
@@ -113,6 +114,11 @@ onMounted(async () => {
       ) {
         enableProcurement.value = true
       }
+
+      // Auto-aktifkan opsi harga jika barang memiliki nilai harga satuan
+      if (res.data.price_per_unit && res.data.price_per_unit > 0) {
+        enablePrice.value = true
+      }
     }
   } catch {
     toast.add({ severity: 'error', summary: 'Gagal memuat data barang', life: 3500 })
@@ -157,6 +163,9 @@ async function submit() {
     form.value.distributor = ''
     form.value.akl_akd = ''
     form.value.description = ''
+  }
+  if (!enablePrice.value) {
+    form.value.price_per_unit = 0
   }
 
   loading.value = true
@@ -300,6 +309,10 @@ async function submit() {
               <span style="color: var(--txt-dim)">Batas Min. Stok:</span>
               <span class="font-semibold text-amber-500">{{ form.min_stock }} {{ form.unit }}</span>
             </div>
+            <div v-if="enablePrice && form.price_per_unit > 0" class="flex items-center justify-between">
+              <span style="color: var(--txt-dim)">Estimasi Harga:</span>
+              <span class="font-semibold text-emerald-500">Rp {{ Number(form.price_per_unit).toLocaleString('id-ID') }}</span>
+            </div>
           </div>
         </div>
 
@@ -435,17 +448,44 @@ async function submit() {
               <InputNumber v-model="form.min_stock" :min="0" showButtons class="w-full !text-[12.5px]" fluid />
             </Field>
 
-            <Field label="Estimasi Harga Satuan (Rp)" hint="Harga beli atau nilai perolehan per unit">
-              <InputNumber
-                v-model="form.price_per_unit"
-                :min="0"
-                mode="currency"
-                currency="IDR"
-                locale="id-ID"
-                class="w-full !text-[12.5px]"
-                fluid
-              />
-            </Field>
+            <!-- Estimasi Harga Satuan (Rp) - Opsi On/Off -->
+            <div class="flex flex-col gap-1.5 min-w-0">
+              <div class="flex items-center justify-between">
+                <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
+                  Estimasi Harga Satuan (Rp)
+                </span>
+                <label class="flex items-center gap-1.5 cursor-pointer select-none" @click.stop>
+                  <span class="text-[11px] font-semibold" :style="{ color: enablePrice ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
+                    {{ enablePrice ? 'Aktif' : 'Nonaktif' }}
+                  </span>
+                  <ToggleSwitch v-model="enablePrice" />
+                </label>
+              </div>
+
+              <div v-if="enablePrice" class="flex flex-col gap-1">
+                <InputNumber
+                  v-model="form.price_per_unit"
+                  :min="0"
+                  mode="currency"
+                  currency="IDR"
+                  locale="id-ID"
+                  class="w-full !text-[12.5px]"
+                  fluid
+                />
+                <span class="text-[11px]" style="color: var(--txt-dim)">Harga beli atau nilai perolehan per unit</span>
+              </div>
+              <div
+                v-else
+                class="p-2.5 rounded-lg border text-[11.5px] flex items-center justify-between gap-2 cursor-pointer hover:border-indigo-400 transition-colors"
+                style="background: var(--panel-2); border-color: var(--line)"
+                @click="enablePrice = true"
+              >
+                <span style="color: var(--txt-dim)">Pencatatan estimasi harga nonaktif (Rp 0)</span>
+                <button type="button" class="text-indigo-500 font-semibold text-[11px] hover:underline" @click.stop="enablePrice = true">
+                  Nyalakan
+                </button>
+              </div>
+            </div>
 
             <Field label="SKU Kustom (Opsional)" hint="Kosongkan untuk penomoran otomatis sistem">
               <InputText v-model="form.sku" :placeholder="skuPreview" class="w-full t-mono !text-[12.5px]" fluid />
