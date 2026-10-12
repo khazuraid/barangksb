@@ -72,19 +72,48 @@ async function downloadImage(url: string, filename = 'foto_geotag.jpg') {
 
 const maintenances = computed(() => item.value?.maintenances || [])
 
+function formatRupiah(val: number) {
+  if (!val) return '—'
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val)
+}
+
 function rows() {
-  return [
-    ['Kategori', item.value?.category],
-    ['Lokasi', item.value?.location],
-    ['Stok Tersedia', `${item.value?.current_stock} ${item.value?.unit}`],
-    ['Batas Minimum', `${item.value?.min_stock} ${item.value?.unit}`],
-    ['Merk', item.value?.merk],
-    ['Model / Tipe', item.value?.type_model],
-    ['Serial Number', item.value?.serial_number],
-    ['Tahun Pengadaan', item.value?.procurement_year],
-    ['Sumber Dana', item.value?.funding_source],
-    ['Akl / Akd', item.value?.akl_akd],
-  ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+  const it = item.value
+  if (!it) return []
+  const r: [string, any][] = [
+    ['Kategori', it.category],
+    ['Ruangan / Lokasi', it.location],
+  ]
+  if (it.location_code) {
+    r.push(['Kode Lokasi', it.location_code])
+  }
+  if (it.track_stock !== false) {
+    r.push(['Stok Tersedia', `${it.current_stock} ${it.unit}`])
+    r.push(['Batas Minimum', `${it.min_stock} ${it.unit}`])
+  } else {
+    r.push(['Model Pengelolaan', 'Aset Tetap / Unit Mandiri (BMD)'])
+    if (it.item_code) {
+      r.push(['No. Kode Barang', it.item_code])
+    }
+    if (it.register_number) {
+      r.push(['No. Register', it.register_number])
+    }
+  }
+  r.push(
+    ['Keadaan Barang', it.condition_status],
+    ['Merk', it.merk],
+    ['Model / Tipe', it.type_model],
+    ['Serial Number (SN)', it.serial_number],
+    ['Ukuran / Dimensi', it.size],
+    ['Bahan / Material', it.material],
+    ['Tahun Pengadaan', it.procurement_year],
+    ['Sumber Dana', it.funding_source],
+    ['Distributor / Vendor', it.distributor],
+    ['Izin Edar (AKL/AKD)', it.akl_akd],
+    ['Estimasi Nilai Satuan', it.price_per_unit ? formatRupiah(it.price_per_unit) : null],
+    ['Keterangan', it.description]
+  )
+  return r.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '' && String(v) !== '—')
 }
 </script>
 
@@ -187,14 +216,31 @@ function rows() {
                    style="border-color: var(--line)" />
             </div>
             <div class="flex flex-wrap gap-1.5 mt-3.5">
+              <Tag
+                :severity="item.track_stock !== false ? 'warn' : 'info'"
+                :value="item.track_stock !== false ? 'KONSUMABEL' : 'ASET TETAP'"
+                class="!text-[10px]"
+              />
+              <Tag v-if="item.item_code" severity="info" class="t-mono !text-[10px]" :value="'KODE: ' + item.item_code" />
+              <Tag v-if="item.register_number" severity="secondary" class="t-mono !text-[10px]" :value="'REG: ' + item.register_number" />
               <StatusChip :kind="item.condition_status" />
               <Tag v-if="item.is_available" severity="success" value="TERSEDIA" icon="pi pi-check" />
               <Tag v-else severity="danger" value="TIDAK TERSEDIA" />
             </div>
           </div>
 
-          <!-- stock hero -->
-          <div class="grid grid-cols-2 gap-px" style="background: var(--line-soft)">
+          <!-- Unit Fisik Terpindai Callout (jika QR adalah unit spesifik) -->
+          <div v-if="item.scanned_unit" class="p-3 bg-indigo-500/10 border-b border-indigo-500/20 text-[11.5px] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="pi pi-check-circle text-indigo-400" />
+              <span>Unit Terpindai: <strong>Unit {{ item.scanned_unit.unit_number }}</strong> (Reg: {{ item.scanned_unit.register_number || '—' }})</span>
+            </div>
+            <span class="t-mono text-[10.5px] text-indigo-400 font-semibold">{{ item.scanned_unit.barcode }}</span>
+          </div>
+
+          <!-- stock / asset hero -->
+          <!-- A: Barang Konsumabel -->
+          <div v-if="item.track_stock !== false" class="grid grid-cols-2 gap-px" style="background: var(--line-soft)">
             <div class="p-4" style="background: var(--panel-2)">
               <div class="t-label">Stok Saat Ini</div>
               <div class="t-num text-[28px] font-extrabold mt-1 leading-none"
@@ -207,6 +253,25 @@ function rows() {
               <div class="t-label">Batas Minimum</div>
               <div class="t-num text-[28px] font-extrabold mt-1 leading-none text-ink-300">{{ item.min_stock }}</div>
               <div class="text-[11px] text-ink-400 mt-1">{{ item.min_stock > item.current_stock ? 'Stok menipis' : 'Stok aman' }}</div>
+            </div>
+          </div>
+
+          <!-- B: Aset Tetap / BMD -->
+          <div v-else class="grid grid-cols-2 gap-px" style="background: var(--line-soft)">
+            <div class="p-4" style="background: var(--panel-2)">
+              <div class="t-label">Kondisi Fisik</div>
+              <div class="text-[16px] font-extrabold mt-1 leading-snug"
+                   :class="item.condition_status === 'Baik (B)' || item.condition_status === 'Berfungsi' ? 'text-sig-ok' : 'text-sig-bad'">
+                {{ item.condition_status }}
+              </div>
+              <div class="text-[11px] text-ink-400 mt-1">Status kelaikan unit</div>
+            </div>
+            <div class="p-4" style="background: var(--panel-2)">
+              <div class="t-label">Total Unit Fisik</div>
+              <div class="t-num text-[28px] font-extrabold mt-1 leading-none text-acc-500">
+                {{ item.units?.length || item.current_stock || 1 }}
+              </div>
+              <div class="text-[11px] text-ink-400 mt-1">Aset terdaftar di sistem</div>
             </div>
           </div>
 
@@ -293,8 +358,23 @@ function rows() {
         </div>
 
         <div class="flex gap-2 mt-4">
-          <Button label="Buka Panel" icon="pi pi-sign-in" size="small" class="flex-1"
-                  @click="router.push('/')" />
+          <Button
+            v-if="isLoggedIn && item.id"
+            label="Buka Rincian Lengkap"
+            icon="pi pi-external-link"
+            size="small"
+            class="flex-1"
+            severity="primary"
+            @click="router.push('/items/' + item.id)"
+          />
+          <Button
+            v-else
+            label="Buka Panel"
+            icon="pi pi-sign-in"
+            size="small"
+            class="flex-1"
+            @click="router.push('/')"
+          />
           <Button label="Daftar Barang" icon="pi pi-box" size="small" severity="secondary" outlined
                   class="flex-1" @click="router.push('/items')" />
         </div>

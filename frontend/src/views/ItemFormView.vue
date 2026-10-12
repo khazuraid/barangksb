@@ -26,6 +26,7 @@ const photoUploaderRef = ref<any>(null)
 const enableKIR = ref(false)
 const enableProcurement = ref(false)
 const enablePrice = ref(false)
+const initialUnits = ref(1)
 const copiedFromSource = ref<any>(null)
 
 function resetToEmptyForm() {
@@ -63,6 +64,7 @@ function resetToEmptyForm() {
   enableKIR.value = false
   enableProcurement.value = false
   enablePrice.value = false
+  initialUnits.value = 1
   router.replace({ path: '/items/new' })
   toast.add({
     severity: 'info',
@@ -294,7 +296,11 @@ async function submit() {
       toast.add({ severity: 'success', summary: 'Perubahan disimpan', detail: form.value.name, life: 2500 })
       router.push('/items/' + route.params.id)
     } else {
-      const res = await api.post('/items', form.value)
+      const payload: any = { ...form.value }
+      if (!form.value.track_stock) {
+        payload.initial_units = initialUnits.value || 1
+      }
+      const res = await api.post('/items', payload)
       toast.add({ severity: 'success', summary: 'Barang berhasil didaftarkan', detail: `SKU ${res.data.sku}`, life: 3000 })
       router.push('/items/' + res.data.id)
     }
@@ -549,6 +555,63 @@ async function submit() {
               <span style="color: var(--txt-dim)">
                 Barang stok akan didaftarkan dengan stok awal 0. Penambahan stok dapat dicatat langsung setelah disimpan pada halaman detail melalui tombol <strong style="color: var(--txt)">+ Tambah Stok Masuk</strong> berbukti foto geotag.
               </span>
+            </div>
+
+            <!-- Opsi Unit Fisik Aset Tetap / BMD (Selaras dengan Tab Daftar Unit Fisik) -->
+            <div
+              v-if="!form.track_stock && !isEdit"
+              class="p-3.5 rounded-xl border flex flex-col gap-3"
+              style="background: rgba(99, 102, 241, 0.06); border-color: rgba(99, 102, 241, 0.25)"
+            >
+              <div class="flex items-start gap-2.5 text-[12px]">
+                <i class="pi pi-clone text-indigo-500 text-sm mt-0.5 shrink-0" />
+                <div class="flex flex-col gap-0.5">
+                  <span class="font-bold" style="color: var(--txt)">Pencatatan Multi-Unit Fisik (Aset Tetap / BMD)</span>
+                  <span style="color: var(--txt-dim)" class="text-[11.5px] leading-relaxed">
+                    Untuk barang sejenis dalam satu ruangan (contoh: <strong>5 unit Meja / Kursi</strong> dengan No. Kode Barang sama), tentukan jumlah unit di bawah. Sistem akan mendaftarkan unit-unit tersebut, dan setiap unit dapat dilengkapi nomor seri, barcode, serta foto fisik masing-masing di tab <strong>Daftar Unit Fisik</strong> setelah disimpan.
+                  </span>
+                </div>
+              </div>
+
+              <div class="grid sm:grid-cols-2 gap-3 pt-2.5 border-t" style="border-color: rgba(99, 102, 241, 0.15)">
+                <div class="flex flex-col gap-1">
+                  <label class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
+                    Jumlah Unit Fisik Awal
+                  </label>
+                  <InputNumber
+                    v-model="initialUnits"
+                    :min="1"
+                    :max="500"
+                    showButtons
+                    buttonLayout="horizontal"
+                    decrementButtonClass="p-button-secondary"
+                    incrementButtonClass="p-button-secondary"
+                    incrementButtonIcon="pi pi-plus"
+                    decrementButtonIcon="pi pi-minus"
+                    class="w-full !text-[12.5px]"
+                    fluid
+                  />
+                  <span class="text-[10.5px]" style="color: var(--txt-dim)">
+                    Unit 1 s/d {{ initialUnits }} otomatis dibuat berurutan.
+                  </span>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
+                    No. Register Awal (Opsional)
+                  </label>
+                  <InputText
+                    v-model="form.register_number"
+                    placeholder="mis. 0001"
+                    class="w-full t-mono !text-[12.5px]"
+                    fluid
+                    @input="enableKIR = true"
+                  />
+                  <span class="text-[10.5px]" style="color: var(--txt-dim)">
+                    Urutan register berikutnya otomatis diteruskan (0001, 0002, dst.).
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </Panel>

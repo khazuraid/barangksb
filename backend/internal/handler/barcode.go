@@ -34,10 +34,15 @@ func (h *BarcodeHandler) PNG(c *gin.Context) {
 	format := c.DefaultQuery("fmt", "qr")
 
 	var sku string
-	err := h.pool.QueryRow(c, `SELECT sku FROM inventory_items WHERE id::text=$1`, id).Scan(&sku)
+	err := h.pool.QueryRow(c, `SELECT sku FROM inventory_items WHERE id::text=$1 OR sku=$1`, id).Scan(&sku)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
+		var unitBc string
+		errUnit := h.pool.QueryRow(c, `SELECT barcode FROM item_units WHERE id::text=$1 OR barcode=$1`, id).Scan(&unitBc)
+		if errUnit != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		sku = unitBc
 	}
 
 	content := sku
@@ -67,45 +72,177 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 	id := c.Param("id")
 
 	var resp struct {
-		Sku             string `json:"sku"`
-		Name            string `json:"name"`
-		Category        string `json:"category"`
-		Location        string `json:"location"`
-		CurrentStock    int32  `json:"current_stock"`
-		MinStock        int32  `json:"min_stock"`
-		Unit            string `json:"unit"`
-		ConditionStatus string `json:"condition_status"`
-		IsAvailable     bool   `json:"is_available"`
-		Merk            string `json:"merk"`
-		TypeModel       string `json:"type_model"`
-		SerialNumber    string `json:"serial_number"`
-		ProcurementYear string `json:"procurement_year"`
-		FundingSource   string `json:"funding_source"`
-		AklAkd          string `json:"akl_akd"`
+		ID              string   `json:"id"`
+		Sku             string   `json:"sku"`
+		Name            string   `json:"name"`
+		Category        string   `json:"category"`
+		Location        string   `json:"location"`
+		LocationCode    string   `json:"location_code"`
+		CurrentStock    int32    `json:"current_stock"`
+		MinStock        int32    `json:"min_stock"`
+		Unit            string   `json:"unit"`
+		PricePerUnit    int64    `json:"price_per_unit"`
+		ConditionStatus string   `json:"condition_status"`
+		IsAvailable     bool     `json:"is_available"`
+		TrackStock      bool     `json:"track_stock"`
+		ItemCode        string   `json:"item_code"`
+		RegisterNumber  string   `json:"register_number"`
+		Size            string   `json:"size"`
+		Material        string   `json:"material"`
+		Merk            string   `json:"merk"`
+		TypeModel       string   `json:"type_model"`
+		SerialNumber    string   `json:"serial_number"`
+		ProcurementYear string   `json:"procurement_year"`
+		FundingSource   string   `json:"funding_source"`
+		Distributor     string   `json:"distributor"`
+		AklAkd          string   `json:"akl_akd"`
+		Description     string   `json:"description"`
 		PhotoURL        string   `json:"photo_url"`
 		GeoLat          *float64 `json:"geo_lat"`
 		GeoLng          *float64 `json:"geo_lng"`
+		GeoAcc          *float64 `json:"geo_acc"`
+		GeoName         string   `json:"geo_name"`
+		ScannedUnit     *gin.H   `json:"scanned_unit,omitempty"`
+		Units           []gin.H  `json:"units,omitempty"`
 		Maintenances    []gin.H  `json:"maintenances"`
 	}
 
+	// 1. Check if scanned param is an individual unit in item_units (by id or barcode)
+	var unitRow struct {
+		ID              string
+		ItemID          string
+		UnitNumber      int
+		RegisterNumber  string
+		Barcode         string
+		SerialNumber    string
+		ConditionStatus string
+		Location        string
+		LocationCode    string
+		PhotoURL        string
+		GeoLat          *float64
+		GeoLng          *float64
+		GeoAcc          *float64
+		GeoName         string
+		Notes           string
+	}
+	isUnit := false
+	errUnit := h.pool.QueryRow(c, `
+		SELECT id::text, item_id::text, unit_number, COALESCE(register_number, ''), COALESCE(barcode, ''),
+		       COALESCE(serial_number, ''), COALESCE(condition_status, 'Baik (B)'), COALESCE(location, ''),
+		       COALESCE(location_code, ''), COALESCE(photo_url, ''), geo_lat, geo_lng, geo_acc,
+		       COALESCE(geo_name, ''), COALESCE(notes, '')
+		FROM item_units WHERE id::text=$1 OR barcode=$1
+	`, id).Scan(&unitRow.ID, &unitRow.ItemID, &unitRow.UnitNumber, &unitRow.RegisterNumber, &unitRow.Barcode,
+		&unitRow.SerialNumber, &unitRow.ConditionStatus, &unitRow.Location, &unitRow.LocationCode,
+		&unitRow.PhotoURL, &unitRow.GeoLat, &unitRow.GeoLng, &unitRow.GeoAcc, &unitRow.GeoName, &unitRow.Notes)
+	if errUnit == nil {
+		isUnit = true
+		uMap := gin.H{
+			"id":               unitRow.ID,
+			"item_id":          unitRow.ItemID,
+			"unit_number":      unitRow.UnitNumber,
+			"register_number":  unitRow.RegisterNumber,
+			"barcode":          unitRow.Barcode,
+			"serial_number":    unitRow.SerialNumber,
+			"condition_status": unitRow.ConditionStatus,
+			"location":         unitRow.Location,
+			"location_code":    unitRow.LocationCode,
+			"photo_url":        unitRow.PhotoURL,
+			"geo_lat":          unitRow.GeoLat,
+			"geo_lng":          unitRow.GeoLng,
+			"geo_acc":          unitRow.GeoAcc,
+			"geo_name":         unitRow.GeoName,
+			"notes":            unitRow.Notes,
+		}
+		resp.ScannedUnit = &uMap
+		id = unitRow.ItemID // Switch to parent item for full specs
+	}
+
+	// 2. Fetch master inventory item
 	err := h.pool.QueryRow(c,
-		`SELECT sku, name, category, location, current_stock, min_stock, unit,
-		        COALESCE(condition_status, 'Berfungsi'), is_available, COALESCE(merk, ''), COALESCE(type_model, ''), COALESCE(serial_number, ''),
-		        COALESCE(procurement_year, ''), COALESCE(funding_source, ''), COALESCE(akl_akd, ''), COALESCE(photo_url, ''),
-		        geo_lat, geo_lng
-		 FROM inventory_items WHERE id::text=$1`, id).
-		Scan(&resp.Sku, &resp.Name, &resp.Category, &resp.Location,
-			&resp.CurrentStock, &resp.MinStock, &resp.Unit,
-			&resp.ConditionStatus, &resp.IsAvailable, &resp.Merk,
-			&resp.TypeModel, &resp.SerialNumber, &resp.ProcurementYear,
-			&resp.FundingSource, &resp.AklAkd, &resp.PhotoURL,
-			&resp.GeoLat, &resp.GeoLng)
+		`SELECT id::text, sku, name, category, location, COALESCE(location_code, ''),
+		        current_stock, min_stock, unit, COALESCE(price_per_unit, 0),
+		        COALESCE(condition_status, 'Berfungsi'), is_available, COALESCE(track_stock, true),
+		        COALESCE(item_code, ''), COALESCE(register_number, ''), COALESCE(size, ''),
+		        COALESCE(material, ''), COALESCE(merk, ''), COALESCE(type_model, ''),
+		        COALESCE(serial_number, ''), COALESCE(procurement_year, ''), COALESCE(funding_source, ''),
+		        COALESCE(distributor, ''), COALESCE(akl_akd, ''), COALESCE(description, ''),
+		        COALESCE(photo_url, ''), geo_lat, geo_lng, geo_acc, COALESCE(geo_name, '')
+		 FROM inventory_items WHERE id::text=$1 OR sku=$1`, id).
+		Scan(&resp.ID, &resp.Sku, &resp.Name, &resp.Category, &resp.Location, &resp.LocationCode,
+			&resp.CurrentStock, &resp.MinStock, &resp.Unit, &resp.PricePerUnit,
+			&resp.ConditionStatus, &resp.IsAvailable, &resp.TrackStock,
+			&resp.ItemCode, &resp.RegisterNumber, &resp.Size,
+			&resp.Material, &resp.Merk, &resp.TypeModel,
+			&resp.SerialNumber, &resp.ProcurementYear, &resp.FundingSource,
+			&resp.Distributor, &resp.AklAkd, &resp.Description,
+			&resp.PhotoURL, &resp.GeoLat, &resp.GeoLng, &resp.GeoAcc, &resp.GeoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
 		return
 	}
 
-	// Fetch maintenance history for public view
+	// If a unit was scanned, override specific fields with unit's specific values
+	if isUnit {
+		if unitRow.RegisterNumber != "" {
+			resp.RegisterNumber = unitRow.RegisterNumber
+		}
+		if unitRow.Barcode != "" {
+			resp.Sku = unitRow.Barcode
+		}
+		if unitRow.SerialNumber != "" {
+			resp.SerialNumber = unitRow.SerialNumber
+		}
+		if unitRow.ConditionStatus != "" {
+			resp.ConditionStatus = unitRow.ConditionStatus
+		}
+		if unitRow.Location != "" {
+			resp.Location = unitRow.Location
+		}
+		if unitRow.LocationCode != "" {
+			resp.LocationCode = unitRow.LocationCode
+		}
+		if unitRow.PhotoURL != "" {
+			resp.PhotoURL = unitRow.PhotoURL
+			resp.GeoLat = unitRow.GeoLat
+			resp.GeoLng = unitRow.GeoLng
+			resp.GeoAcc = unitRow.GeoAcc
+			resp.GeoName = unitRow.GeoName
+		}
+	}
+
+	// 3. Fetch physical units if fixed asset
+	resp.Units = []gin.H{}
+	if !resp.TrackStock {
+		uRows, uErr := h.pool.Query(c, `
+			SELECT id::text, unit_number, COALESCE(register_number, ''), COALESCE(barcode, ''),
+			       COALESCE(serial_number, ''), COALESCE(condition_status, 'Baik (B)'),
+			       COALESCE(location, ''), COALESCE(photo_url, '')
+			FROM item_units
+			WHERE item_id::text = $1
+			ORDER BY unit_number ASC
+		`, resp.ID)
+		if uErr == nil {
+			defer uRows.Close()
+			for uRows.Next() {
+				var uid, reg, bc, sn, cond, loc, ph string
+				var unum int
+				uRows.Scan(&uid, &unum, &reg, &bc, &sn, &cond, &loc, &ph)
+				resp.Units = append(resp.Units, gin.H{
+					"id":               uid,
+					"unit_number":      unum,
+					"register_number":  reg,
+					"barcode":          bc,
+					"serial_number":    sn,
+					"condition_status": cond,
+					"location":         loc,
+					"photo_url":        ph,
+				})
+			}
+		}
+	}
+
+	// 4. Fetch maintenance history for public view
 	mRows, err := h.pool.Query(c, `
 		SELECT service_type, service_date::text,
 		       COALESCE(vendor_or_technician, ''), COALESCE(description, ''),
@@ -113,7 +250,7 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 		FROM item_maintenances
 		WHERE item_id::text = $1
 		ORDER BY service_date DESC, created_at DESC
-	`, id)
+	`, resp.ID)
 	resp.Maintenances = []gin.H{}
 	if err == nil {
 		defer mRows.Close()
@@ -184,6 +321,23 @@ func (h *BarcodeHandler) Sheet(c *gin.Context) {
 			SELECT name, COALESCE(sku, ''), COALESCE(location, ''), COALESCE(category, '')
 			FROM inventory_items WHERE id::text=$1
 		`, id).Scan(&it.Name, &it.SKU, &it.Location, &it.Category)
+		if err != nil {
+			var uName, uBc, uLoc, uCat string
+			var uNum int
+			errU := h.pool.QueryRow(c, `
+				SELECT i.name, u.unit_number, COALESCE(u.barcode, ''), COALESCE(u.location, i.location, ''), COALESCE(i.category, '')
+				FROM item_units u
+				JOIN inventory_items i ON u.item_id = i.id
+				WHERE u.id::text=$1 OR u.barcode=$1
+			`, id).Scan(&uName, &uNum, &uBc, &uLoc, &uCat)
+			if errU == nil {
+				it.Name = fmt.Sprintf("%s (U%d)", uName, uNum)
+				it.SKU = uBc
+				it.Location = uLoc
+				it.Category = uCat
+				err = nil
+			}
+		}
 		if err == nil {
 			items = append(items, it)
 		}

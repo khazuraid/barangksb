@@ -50,6 +50,27 @@ type itemReq struct {
 	GeoName         string   `json:"geo_name"`
 	IsAvailable     bool     `json:"is_available"`
 	TrackStock      *bool    `json:"track_stock"`
+	InitialUnits    int32    `json:"initial_units,omitempty"`
+}
+
+type ItemUnit struct {
+	ID              string   `json:"id"`
+	ItemID          string   `json:"item_id"`
+	UnitNumber      int      `json:"unit_number"`
+	RegisterNumber  string   `json:"register_number"`
+	Barcode         string   `json:"barcode"`
+	SerialNumber    string   `json:"serial_number"`
+	ConditionStatus string   `json:"condition_status"`
+	Location        string   `json:"location"`
+	LocationCode    string   `json:"location_code"`
+	PhotoURL        string   `json:"photo_url"`
+	GeoLat          *float64 `json:"geo_lat"`
+	GeoLng          *float64 `json:"geo_lng"`
+	GeoAcc          *float64 `json:"geo_acc"`
+	GeoName         string   `json:"geo_name"`
+	Notes           string   `json:"notes"`
+	CreatedAt       string   `json:"created_at,omitempty"`
+	UpdatedAt       string   `json:"updated_at,omitempty"`
 }
 
 func (h *ItemHandler) List(c *gin.Context) {
@@ -207,7 +228,11 @@ func (h *ItemHandler) Create(c *gin.Context) {
 	}
 	initialStock := req.CurrentStock
 	if !trackStock {
-		initialStock = 1
+		if req.InitialUnits > 1 {
+			initialStock = req.InitialUnits
+		} else {
+			initialStock = 1
+		}
 	}
 	var id string
 	err := h.pool.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, location_code, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, size, material, item_code, register_number, geo_lat, geo_lng, geo_acc, geo_name, track_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id::text`,
@@ -221,6 +246,48 @@ func (h *ItemHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// If fixed asset, automatically seed initial physical units
+	if !trackStock {
+		unitsCount := int(req.InitialUnits)
+		if unitsCount < 1 {
+			unitsCount = 1
+		}
+		startReg := 1
+		if req.RegisterNumber != "" {
+			if parsed, e := strconv.Atoi(strings.TrimLeft(req.RegisterNumber, "0")); e == nil && parsed > 0 {
+				startReg = parsed
+			}
+		}
+		for i := 1; i <= unitsCount; i++ {
+			unitNum := i
+			regStr := fmt.Sprintf("%04d", startReg+i-1)
+			if unitsCount == 1 && req.RegisterNumber != "" {
+				regStr = req.RegisterNumber
+			}
+			unitBarcode := fmt.Sprintf("%s-U%d", sku, unitNum)
+			if unitsCount == 1 && sku != "" {
+				unitBarcode = sku
+			}
+			var unitPhoto *string
+			var uLat, uLng, uAcc *float64
+			var uGeoName *string
+			if i == 1 && req.PhotoURL != "" {
+				unitPhoto = nullable(req.PhotoURL)
+				uLat = req.GeoLat
+				uLng = req.GeoLng
+				uAcc = req.GeoAcc
+				uGeoName = nullable(req.GeoName)
+			}
+			var uSerial *string
+			if i == 1 && req.SerialNumber != "" {
+				uSerial = nullable(req.SerialNumber)
+			}
+			_, _ = h.pool.Exec(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code, photo_url, geo_lat, geo_lng, geo_acc, geo_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+				id, unitNum, regStr, unitBarcode, uSerial, nullable(req.ConditionStatus), req.Location, nullable(req.LocationCode), unitPhoto, uLat, uLng, uAcc, uGeoName)
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{"id": id, "sku": sku})
 }
 
@@ -284,6 +351,16 @@ func (h *ItemHandler) Delete(c *gin.Context) {
 			DeleteUploadedPhoto(p)
 		}
 		maintPhotos.Close()
+	}
+
+	unitPhotos, errUnitPhotos := h.pool.Query(c, `SELECT photo_url FROM item_units WHERE item_id::text=$1 AND photo_url IS NOT NULL AND photo_url != ''`, id)
+	if errUnitPhotos == nil {
+		for unitPhotos.Next() {
+			var up string
+			unitPhotos.Scan(&up)
+			DeleteUploadedPhoto(up)
+		}
+		unitPhotos.Close()
 	}
 
 	// 2. Delete related transactions, maintenance records, and the item from database
@@ -385,4 +462,128 @@ func generateSKU(h *ItemHandler, c *gin.Context, category string) string {
 
 func getCurrentYear() int {
 	return time.Now().Year()
+}
+
+// Physical Units (Item Units) Handlers
+
+func (h *ItemHandler) ListUnits(c *gin.Context) {
+	id := c.Param("id")
+	rows, err := h.pool.Query(c, `SELECT id::text, item_id::text, unit_number, COALESCE(register_number, ''), COALESCE(barcode, ''), COALESCE(serial_number, ''), COALESCE(condition_status, 'Baik (B)'), COALESCE(location, ''), COALESCE(location_code, ''), COALESCE(photo_url, ''), geo_lat, geo_lng, geo_acc, COALESCE(geo_name, ''), COALESCE(notes, ''), created_at::text, updated_at::text FROM item_units WHERE item_id::text=$1 ORDER BY unit_number ASC, created_at ASC`, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	units := []ItemUnit{}
+	for rows.Next() {
+		var u ItemUnit
+		err := rows.Scan(&u.ID, &u.ItemID, &u.UnitNumber, &u.RegisterNumber, &u.Barcode, &u.SerialNumber, &u.ConditionStatus, &u.Location, &u.LocationCode, &u.PhotoURL, &u.GeoLat, &u.GeoLng, &u.GeoAcc, &u.GeoName, &u.Notes, &u.CreatedAt, &u.UpdatedAt)
+		if err == nil {
+			units = append(units, u)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": units, "total": len(units)})
+}
+
+func (h *ItemHandler) CreateUnit(c *gin.Context) {
+	id := c.Param("id")
+	var req ItemUnit
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify item exists and get default metadata
+	var itemSKU, itemLoc, itemLocCode, itemCond string
+	err := h.pool.QueryRow(c, `SELECT sku, location, COALESCE(location_code, ''), COALESCE(condition_status, 'Baik (B)') FROM inventory_items WHERE id::text=$1`, id).
+		Scan(&itemSKU, &itemLoc, &itemLocCode, &itemCond)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
+		return
+	}
+
+	var maxUnitNum int
+	_ = h.pool.QueryRow(c, `SELECT COALESCE(MAX(unit_number), 0) FROM item_units WHERE item_id::text=$1`, id).Scan(&maxUnitNum)
+	nextUnitNum := maxUnitNum + 1
+
+	if req.UnitNumber <= 0 {
+		req.UnitNumber = nextUnitNum
+	}
+	if strings.TrimSpace(req.Barcode) == "" {
+		req.Barcode = fmt.Sprintf("%s-U%d", itemSKU, req.UnitNumber)
+	}
+	if strings.TrimSpace(req.RegisterNumber) == "" {
+		req.RegisterNumber = fmt.Sprintf("%04d", req.UnitNumber)
+	}
+	if strings.TrimSpace(req.Location) == "" {
+		req.Location = itemLoc
+	}
+	if strings.TrimSpace(req.LocationCode) == "" {
+		req.LocationCode = itemLocCode
+	}
+	if strings.TrimSpace(req.ConditionStatus) == "" {
+		req.ConditionStatus = itemCond
+	}
+
+	var unitID string
+	err = h.pool.QueryRow(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code, photo_url, geo_lat, geo_lng, geo_acc, geo_name, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id::text`,
+		id, req.UnitNumber, req.RegisterNumber, req.Barcode, nullable(req.SerialNumber), req.ConditionStatus, req.Location, nullable(req.LocationCode), nullable(req.PhotoURL), req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), nullable(req.Notes)).
+		Scan(&unitID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Sync current_stock to total physical units count
+	_, _ = h.pool.Exec(c, `UPDATE inventory_items SET current_stock = (SELECT COUNT(*) FROM item_units WHERE item_id::text=$1) WHERE id::text=$1`, id)
+
+	req.ID = unitID
+	req.ItemID = id
+	c.JSON(http.StatusCreated, req)
+}
+
+func (h *ItemHandler) UpdateUnit(c *gin.Context) {
+	id := c.Param("id")
+	unitID := c.Param("unitId")
+	var req ItemUnit
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	_, err := h.pool.Exec(c, `UPDATE item_units SET register_number=$3, barcode=$4, serial_number=$5, condition_status=$6, location=$7, location_code=$8, photo_url=$9, geo_lat=$10, geo_lng=$11, geo_acc=$12, geo_name=$13, notes=$14, updated_at=now() WHERE id::text=$1 AND item_id::text=$2`,
+		unitID, id, req.RegisterNumber, req.Barcode, nullable(req.SerialNumber), req.ConditionStatus, req.Location, nullable(req.LocationCode), nullable(req.PhotoURL), req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), nullable(req.Notes))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "updated"})
+}
+
+func (h *ItemHandler) DeleteUnit(c *gin.Context) {
+	id := c.Param("id")
+	unitID := c.Param("unitId")
+
+	// Delete photo if exists
+	var photo string
+	_ = h.pool.QueryRow(c, `SELECT COALESCE(photo_url, '') FROM item_units WHERE id::text=$1 AND item_id::text=$2`, unitID, id).Scan(&photo)
+	if photo != "" {
+		DeleteUploadedPhoto(photo)
+	}
+
+	tag, err := h.pool.Exec(c, `DELETE FROM item_units WHERE id::text=$1 AND item_id::text=$2`, unitID, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "unit tidak ditemukan"})
+		return
+	}
+
+	// Sync current_stock to total physical units count
+	_, _ = h.pool.Exec(c, `UPDATE inventory_items SET current_stock = (SELECT COUNT(*) FROM item_units WHERE item_id::text=$1) WHERE id::text=$1`, id)
+
+	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }

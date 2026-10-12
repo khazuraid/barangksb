@@ -159,6 +159,11 @@ func main() {
 	api.PUT("/items/:id", itemH.Update)
 	api.DELETE("/items/:id", itemH.Delete)
 
+	api.GET("/items/:id/units", itemH.ListUnits)
+	api.POST("/items/:id/units", itemH.CreateUnit)
+	api.PUT("/items/:id/units/:unitId", itemH.UpdateUnit)
+	api.DELETE("/items/:id/units/:unitId", itemH.DeleteUnit)
+
 	api.GET("/items/:id/maintenance", maintH.ListByItem)
 	api.POST("/items/:id/maintenance", maintH.Create)
 	api.DELETE("/items/:id/maintenance/:mId", maintH.Delete)

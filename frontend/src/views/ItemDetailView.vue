@@ -51,10 +51,137 @@ const maintenanceList = ref<any[]>([])
 const loadingMaint = ref(false)
 const showMaintModal = ref(false)
 const submittingMaint = ref(false)
-const activeTab = ref<'stock_history' | 'spec' | 'maintenance'>('spec')
+const activeTab = ref<'stock_history' | 'units' | 'spec' | 'maintenance'>('spec')
+
+// Physical Units State (Aset Tetap / BMD Multi-Unit)
+const unitsList = ref<any[]>([])
+const loadingUnits = ref(false)
+const showUnitModal = ref(false)
+const editingUnitId = ref<string | null>(null)
+const submittingUnit = ref(false)
+const unitPhotoRef = ref<any>(null)
+const unitForm = ref({
+  unit_number: 1,
+  register_number: '',
+  barcode: '',
+  serial_number: '',
+  condition_status: 'Baik (B)',
+  location: '',
+  location_code: '',
+  notes: '',
+  photo_url: '',
+  geo_lat: null as number | null,
+  geo_lng: null as number | null,
+  geo_acc: null as number | null,
+  geo_name: '',
+})
+
+async function fetchUnits() {
+  const currentId = route.params.id as string
+  if (!currentId || currentId === 'undefined') return
+  loadingUnits.value = true
+  try {
+    const res = await api.get(`/items/${currentId}/units`)
+    unitsList.value = res.data?.data || []
+  } catch {
+    unitsList.value = []
+  } finally {
+    loadingUnits.value = false
+  }
+}
+
+function openAddUnitModal() {
+  editingUnitId.value = null
+  const nextNum = (unitsList.value?.length || 0) + 1
+  unitForm.value = {
+    unit_number: nextNum,
+    register_number: String(nextNum).padStart(4, '0'),
+    barcode: `${item.value?.sku || 'ITEM'}-U${nextNum}`,
+    serial_number: '',
+    condition_status: item.value?.condition_status || 'Baik (B)',
+    location: item.value?.location || '',
+    location_code: item.value?.location_code || '',
+    notes: '',
+    photo_url: '',
+    geo_lat: null,
+    geo_lng: null,
+    geo_acc: null,
+    geo_name: '',
+  }
+  showUnitModal.value = true
+}
+
+function openEditUnitModal(u: any) {
+  editingUnitId.value = u.id
+  unitForm.value = {
+    unit_number: u.unit_number,
+    register_number: u.register_number,
+    barcode: u.barcode,
+    serial_number: u.serial_number || '',
+    condition_status: u.condition_status || 'Baik (B)',
+    location: u.location || item.value?.location || '',
+    location_code: u.location_code || '',
+    notes: u.notes || '',
+    photo_url: u.photo_url || '',
+    geo_lat: u.geo_lat,
+    geo_lng: u.geo_lng,
+    geo_acc: u.geo_acc,
+    geo_name: u.geo_name || '',
+  }
+  showUnitModal.value = true
+}
+
+async function submitUnit() {
+  submittingUnit.value = true
+  try {
+    if (unitPhotoRef.value?.hasPendingPhoto) {
+      const url = await unitPhotoRef.value.uploadPending()
+      if (url) {
+        unitForm.value.photo_url = url
+      }
+    }
+    const currentId = route.params.id as string
+    if (editingUnitId.value) {
+      await api.put(`/items/${currentId}/units/${editingUnitId.value}`, unitForm.value)
+      toast.add({ severity: 'success', summary: 'Unit fisik diperbarui', life: 2500 })
+    } else {
+      await api.post(`/items/${currentId}/units`, unitForm.value)
+      toast.add({ severity: 'success', summary: 'Unit fisik berhasil ditambahkan', life: 2500 })
+    }
+    showUnitModal.value = false
+    await fetchUnits()
+    await fetchItem()
+  } catch (e: any) {
+    toast.add({ severity: 'error', summary: 'Gagal menyimpan unit', detail: e.response?.data?.error || e.message, life: 3500 })
+  } finally {
+    submittingUnit.value = false
+  }
+}
+
+function confirmDeleteUnit(u: any) {
+  confirm.require({
+    message: `Hapus unit fisik Unit #${u.unit_number} (Reg: ${u.register_number || u.barcode})? Tindakan ini tidak dapat dibatalkan.`,
+    header: 'Konfirmasi Hapus Unit Fisik',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    acceptLabel: 'Hapus Unit',
+    rejectLabel: 'Batal',
+    accept: async () => {
+      try {
+        const currentId = route.params.id as string
+        await api.delete(`/items/${currentId}/units/${u.id}`)
+        toast.add({ severity: 'success', summary: 'Unit fisik dihapus', life: 2500 })
+        await fetchUnits()
+        await fetchItem()
+      } catch (e: any) {
+        toast.add({ severity: 'error', summary: 'Gagal menghapus unit', detail: e.response?.data?.error || e.message, life: 3500 })
+      }
+    },
+  })
+}
 
 const serviceTypeOptions = ['Servis Rutin', 'Kalibrasi', 'Perbaikan', 'Pemeriksaan Berkala', 'Penggantian Suku Cadang']
-const conditionOptions = ['Berfungsi', 'Rusak Ringan', 'Rusak Berat', 'Perlu Kalibrasi']
+const conditionOptions = ['Baik (B)', 'Kurang Baik (KB)', 'Rusak Berat (RB)', 'Berfungsi', 'Rusak Ringan', 'Perlu Kalibrasi']
 const maintForm = ref({
   service_type: 'Servis Rutin',
   service_date: new Date().toISOString().split('T')[0],
@@ -76,11 +203,11 @@ async function fetchItem() {
   try {
     const res = await api.get(`/items/${currentId}`)
     item.value = res.data
-    maintForm.value.update_condition = res.data.condition_status || 'Berfungsi'
+    maintForm.value.update_condition = res.data.condition_status || 'Baik (B)'
     if (res.data.track_stock !== false) {
       activeTab.value = 'stock_history'
     } else {
-      activeTab.value = 'spec'
+      activeTab.value = 'units'
     }
   } catch {
     toast.add({ severity: 'error', summary: 'Barang tidak ditemukan', life: 3000 })
@@ -145,6 +272,8 @@ onMounted(async () => {
     fetchSiblingUnits()
     if (item.value.track_stock !== false) {
       fetchStockHistory()
+    } else {
+      fetchUnits()
     }
   }
 })
@@ -159,6 +288,8 @@ watch(
         fetchSiblingUnits()
         if (item.value.track_stock !== false) {
           fetchStockHistory()
+        } else {
+          fetchUnits()
         }
       }
     }
@@ -176,7 +307,7 @@ const googleMapsUrl = computed(() => {
 
 const totalAssetValue = computed(() => {
   if (!item.value) return 0
-  const qty = item.value.track_stock !== false ? (item.value.current_stock || 0) : 1
+  const qty = item.value.track_stock !== false ? (item.value.current_stock || 0) : (unitsList.value?.length || item.value.current_stock || 1)
   const price = Number(item.value.price_per_unit) || 0
   return qty * price
 })
@@ -353,15 +484,23 @@ async function deleteMaintRecord(mId: string) {
           />
         </template>
 
-        <!-- Service button for fixed asset -->
-        <Button
-          v-else
-          label="Catat Servis"
-          icon="pi pi-wrench"
-          size="small"
-          severity="warn"
-          @click="showMaintModal = true"
-        />
+        <!-- Action buttons for fixed asset -->
+        <template v-else>
+          <Button
+            label="+ Tambah Unit Fisik"
+            icon="pi pi-plus"
+            size="small"
+            severity="primary"
+            @click="openAddUnitModal"
+          />
+          <Button
+            label="Catat Servis"
+            icon="pi pi-wrench"
+            size="small"
+            severity="warn"
+            @click="showMaintModal = true"
+          />
+        </template>
 
         <Button
           label="Edit Data"
@@ -372,10 +511,11 @@ async function deleteMaintRecord(mId: string) {
           @click="router.push('/items/' + route.params.id + '/edit')"
         />
         <Button
-          label="+ Tambah Unit"
-          icon="pi pi-plus"
+          label="Salin Spesifikasi"
+          icon="pi pi-copy"
           size="small"
-          severity="primary"
+          severity="secondary"
+          outlined
           @click="router.push({ path: '/items/new', query: { copy_from: route.params.id } })"
         />
         <Button
@@ -627,6 +767,24 @@ async function deleteMaintRecord(mId: string) {
             </span>
           </button>
 
+          <!-- Tab 1B: Daftar Unit Fisik (Hanya Aset Tetap / Non-Konsumabel) -->
+          <button
+            v-if="item.track_stock === false"
+            class="py-3 px-4 flex items-center justify-center gap-2 transition-colors cursor-pointer border-b-2 whitespace-nowrap"
+            :class="activeTab === 'units'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent hover:text-slate-900 dark:hover:text-slate-100'"
+            :style="activeTab === 'units' ? { background: 'var(--panel)' } : { color: 'var(--txt-dim)' }"
+            @click="activeTab = 'units'"
+          >
+            <i class="pi pi-th-large text-xs" />
+            <span>Daftar Unit Fisik</span>
+            <span v-if="unitsList.length"
+                  class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+              {{ unitsList.length }}
+            </span>
+          </button>
+
           <!-- Tab 2: Spesifikasi Lengkap -->
           <button
             class="py-3 px-4 flex items-center justify-center gap-2 transition-colors cursor-pointer border-b-2 whitespace-nowrap"
@@ -738,6 +896,99 @@ async function deleteMaintRecord(mId: string) {
                 <span class="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                   <i class="pi pi-check-circle text-[10px]" /> Bukti GPS Tervalidasi
                 </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTENT TAB 1B: Daftar Unit Fisik (Aset Tetap / BMD Multi-Unit) -->
+        <div v-if="activeTab === 'units'" class="p-5 flex flex-col gap-4">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div class="font-bold text-[13px]" style="color: var(--txt)">Daftar Unit Fisik Terdaftar</div>
+              <div class="text-[11.5px]" style="color: var(--txt-dim)">
+                Setiap unit fisik memiliki nomor register, barcode, dan foto stempel GPS tersendiri
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <Button label="+ Tambah Unit Fisik" icon="pi pi-plus" size="small" severity="primary" @click="openAddUnitModal" />
+            </div>
+          </div>
+
+          <div v-if="loadingUnits" class="py-12 text-center">
+            <i class="pi pi-spin pi-spinner text-xl text-indigo-500" />
+          </div>
+
+          <EmptyState
+            v-else-if="!unitsList.length"
+            icon="pi pi-th-large"
+            title="Belum ada unit fisik terpisah"
+            sub="Tambahkan unit fisik untuk mengelola nomor register, serial number, barcode, dan foto masing-masing unit."
+          >
+            <Button label="+ Tambah Unit Fisik Pertama" icon="pi pi-plus" size="small" severity="primary" class="mt-2" @click="openAddUnitModal" />
+          </EmptyState>
+
+          <div v-else class="flex flex-col gap-3">
+            <div
+              v-for="u in unitsList"
+              :key="u.id"
+              class="p-4 rounded-xl border flex flex-col gap-2.5 transition-colors"
+              style="background: var(--panel-2); border-color: var(--line)"
+            >
+              <div class="flex items-start justify-between gap-3 flex-wrap">
+                <div class="flex items-center gap-2.5 flex-wrap">
+                  <span class="px-2.5 py-0.5 rounded text-[11px] font-bold border bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800">
+                    Unit #{{ u.unit_number }}
+                  </span>
+
+                  <span v-if="u.register_number" class="px-2 py-0.5 rounded text-[11px] font-bold border t-mono bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700">
+                    Reg: {{ u.register_number }}
+                  </span>
+
+                  <span class="font-bold text-[13px] t-mono text-indigo-500 dark:text-indigo-400">
+                    {{ u.barcode }}
+                  </span>
+
+                  <StatusChip :kind="u.condition_status" />
+                </div>
+
+                <div class="flex items-center gap-1.5 ml-auto">
+                  <a :href="`/api/barcode/${u.barcode}.png?fmt=qr&size=300`" target="_blank" rel="noopener noreferrer">
+                    <Button icon="pi pi-qrcode" size="small" text severity="secondary" v-tooltip.top="'Lihat / Cetak QR'" class="!p-1.5" />
+                  </a>
+                  <Button icon="pi pi-pencil" size="small" text severity="info" v-tooltip.top="'Edit Unit'" class="!p-1.5" @click="openEditUnitModal(u)" />
+                  <Button icon="pi pi-trash" size="small" text severity="danger" v-tooltip.top="'Hapus Unit'" class="!p-1.5" @click="confirmDeleteUnit(u)" />
+                </div>
+              </div>
+
+              <!-- Location, Serial Number, Notes -->
+              <div class="grid sm:grid-cols-3 gap-2 text-[12px] pt-1" style="color: var(--txt-dim)">
+                <div v-if="u.location" class="flex items-center gap-1.5">
+                  <i class="pi pi-building text-[11px] text-indigo-400" />
+                  <span>Ruangan: <strong style="color: var(--txt)">{{ u.location }}</strong></span>
+                </div>
+                <div v-if="u.serial_number" class="flex items-center gap-1.5">
+                  <i class="pi pi-hashtag text-[11px] text-indigo-400" />
+                  <span>SN: <strong class="t-mono" style="color: var(--txt)">{{ u.serial_number }}</strong></span>
+                </div>
+                <div v-if="u.notes" class="sm:col-span-3 italic text-[11.5px]" style="color: var(--txt)">
+                  "{{ u.notes }}"
+                </div>
+              </div>
+
+              <!-- Photo with Geotag if exists -->
+              <div v-if="u.photo_url" class="mt-1 pt-2 border-t flex items-center justify-between flex-wrap gap-2" style="border-color: var(--line)">
+                <button
+                  class="text-[11.5px] font-semibold text-indigo-500 hover:underline flex items-center gap-1.5 cursor-pointer"
+                  @click="lightboxUrl = u.photo_url; photoLightbox = true"
+                >
+                  <i class="pi pi-camera text-xs" />
+                  <span>Lihat Foto Geotag Unit #{{ u.unit_number }}</span>
+                </button>
+                <div v-if="u.geo_lat != null && u.geo_lng != null" class="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 t-mono">
+                  <i class="pi pi-map-marker text-[10px]" />
+                  <span>GPS: {{ u.geo_lat.toFixed(5) }}, {{ u.geo_lng.toFixed(5) }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -990,6 +1241,95 @@ async function deleteMaintRecord(mId: string) {
             :severity="stockModalType === 'IN' ? 'success' : 'danger'"
             :loading="submittingStock"
             @click="submitStockMovement"
+          />
+        </div>
+      </div>
+    </Dialog>
+
+    <!-- Modal Form: Tambah / Edit Unit Fisik (Aset Tetap / BMD Multi-Unit) -->
+    <Dialog
+      v-model:visible="showUnitModal"
+      modal
+      :header="editingUnitId ? 'Edit Unit Fisik' : 'Tambah Unit Fisik Baru'"
+      :style="{ width: '560px' }"
+      class="p-fluid"
+    >
+      <div class="flex flex-col gap-3.5 text-[12.5px] pt-1">
+        <div class="p-3 rounded-lg border text-[12px] flex items-center justify-between"
+             style="background: rgba(99, 102, 241, 0.08); border-color: var(--line)">
+          <div>
+            <div class="text-[11px]" style="color: var(--txt-dim)">Nama Barang (Spesifikasi Sama):</div>
+            <div class="font-bold text-[13px]" style="color: var(--txt)">{{ item?.name }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[11px]" style="color: var(--txt-dim)">No. Kode Barang:</div>
+            <div class="font-bold text-[13px] t-mono text-indigo-500">{{ item?.item_code || '—' }}</div>
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Nomor Urut Unit *</span>
+            <InputNumber v-model="unitForm.unit_number" :min="1" :max="9999" showButtons class="w-full !text-[12px]" />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">No. Register *</span>
+            <InputText v-model="unitForm.register_number" placeholder="mis. 0001" class="w-full t-mono !text-[12px]" />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Kode Barcode / QR Unit *</span>
+            <InputText v-model="unitForm.barcode" placeholder="mis. BARANG-U1" class="w-full t-mono !text-[12px]" />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Kondisi Fisik Unit</span>
+            <Select v-model="unitForm.condition_status" :options="conditionOptions" class="w-full !text-[12px]" />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Nomor Seri Pabrik (SN)</span>
+            <InputText v-model="unitForm.serial_number" placeholder="Nomor seri pada fisik barang" class="w-full t-mono !text-[12px]" />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Ruangan / Lokasi Unit</span>
+            <InputText v-model="unitForm.location" placeholder="mis. Ruang Sanitasi" class="w-full !text-[12px]" />
+          </label>
+
+          <label class="flex flex-col gap-1 sm:col-span-2">
+            <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Catatan Khusus Unit Ini</span>
+            <Textarea v-model="unitForm.notes" rows="2" placeholder="Catatan kondisi, penempatan khusus, atau keterangan lain..." class="w-full !text-[12px]" />
+          </label>
+
+          <!-- Upload Foto Geotag Unit Fisik -->
+          <div class="sm:col-span-2">
+            <PhotoUploader
+              ref="unitPhotoRef"
+              :defer-upload="true"
+              v-model="unitForm.photo_url"
+              v-model:geo-lat="unitForm.geo_lat"
+              v-model:geo-lng="unitForm.geo_lng"
+              v-model:geo-acc="unitForm.geo_acc"
+              v-model:geo-name="unitForm.geo_name"
+              :item-name="item?.name"
+              :location-name="unitForm.location || item?.location"
+              label="Foto Fisik Unit Berstempel Geotag (GPS Map Camera)"
+              hint="Foto fisik unit ini dengan cap GPS Map Camera sebagai identitas otentik"
+            />
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t" style="border-color: var(--line)">
+          <Button label="Batal" size="small" severity="secondary" text @click="showUnitModal = false" />
+          <Button
+            :label="editingUnitId ? 'Simpan Perubahan' : 'Tambah Unit'"
+            icon="pi pi-check"
+            size="small"
+            severity="primary"
+            :loading="submittingUnit"
+            @click="submitUnit"
           />
         </div>
       </div>
