@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import { useConfirm } from 'primevue/useconfirm'
@@ -118,15 +118,52 @@ async function fetchStockHistory() {
   }
 }
 
+const siblingUnits = ref<any[]>([])
+const loadingSiblings = ref(false)
+
+async function fetchSiblingUnits() {
+  if (!item.value?.item_code) {
+    siblingUnits.value = []
+    return
+  }
+  loadingSiblings.value = true
+  try {
+    const res = await api.get('/items', { params: { q: item.value.item_code, per_page: 100 } })
+    const list = res.data?.data || []
+    siblingUnits.value = list.filter((i: any) => i.item_code && i.item_code === item.value.item_code)
+  } catch {
+    siblingUnits.value = []
+  } finally {
+    loadingSiblings.value = false
+  }
+}
+
 onMounted(async () => {
   await fetchItem()
   if (item.value) {
     fetchMaintenance()
+    fetchSiblingUnits()
     if (item.value.track_stock !== false) {
       fetchStockHistory()
     }
   }
 })
+
+watch(
+  () => route.params.id,
+  async (newId) => {
+    if (newId && newId !== 'undefined') {
+      await fetchItem()
+      if (item.value) {
+        fetchMaintenance()
+        fetchSiblingUnits()
+        if (item.value.track_stock !== false) {
+          fetchStockHistory()
+        }
+      }
+    }
+  }
+)
 
 const hasCoords = computed(() => {
   return item.value && item.value.geo_lat != null && item.value.geo_lng != null
@@ -335,6 +372,13 @@ async function deleteMaintRecord(mId: string) {
           @click="router.push('/items/' + route.params.id + '/edit')"
         />
         <Button
+          label="+ Tambah Unit"
+          icon="pi pi-plus"
+          size="small"
+          severity="primary"
+          @click="router.push({ path: '/items/new', query: { copy_from: route.params.id } })"
+        />
+        <Button
           label="Label QR"
           icon="pi pi-qrcode"
           size="small"
@@ -396,6 +440,41 @@ async function deleteMaintRecord(mId: string) {
           </span>
           <span v-if="item.merk">·</span>
           <span v-if="item.merk">Merk: <strong style="color: var(--txt)">{{ item.merk }}</strong></span>
+        </div>
+      </div>
+
+      <!-- Sibling Units Strip (Jika ada lebih dari 1 unit dengan No. Kode Barang sama) -->
+      <div v-if="siblingUnits.length > 1" class="panel p-3.5 flex flex-col gap-2.5">
+        <div class="flex items-center justify-between flex-wrap gap-2 text-[12px]">
+          <span class="font-bold flex items-center gap-1.5" style="color: var(--txt)">
+            <i class="pi pi-clone text-indigo-500" />
+            Unit Terdaftar (No. Kode Barang: <span class="t-mono text-indigo-500">{{ item.item_code }}</span>)
+            <Tag severity="info" class="!text-[10px]" :value="`${siblingUnits.length} Unit Fisik`" />
+          </span>
+          <Button
+            label="+ Tambah Unit Lagi"
+            icon="pi pi-plus"
+            size="small"
+            text
+            severity="primary"
+            class="!text-xs !p-1"
+            @click="router.push({ path: '/items/new', query: { copy_from: route.params.id } })"
+          />
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button
+            v-for="u in siblingUnits"
+            :key="u.id"
+            class="px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 cursor-pointer transition-all"
+            :class="u.id === item.id
+              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 font-bold text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-500'
+              : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'"
+            @click="u.id !== item.id && router.push('/items/' + u.id)"
+          >
+            <i :class="u.id === item.id ? 'pi pi-check-circle text-indigo-500' : 'pi pi-box text-slate-400'" class="text-[11px]" />
+            <span>{{ u.register_number ? 'Reg: ' + u.register_number : (u.sku || u.name) }}</span>
+            <span class="text-[10px] opacity-70">· {{ u.location }}</span>
+          </button>
         </div>
       </div>
 

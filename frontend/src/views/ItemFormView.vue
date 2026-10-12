@@ -26,6 +26,51 @@ const photoUploaderRef = ref<any>(null)
 const enableKIR = ref(false)
 const enableProcurement = ref(false)
 const enablePrice = ref(false)
+const copiedFromSource = ref<any>(null)
+
+function resetToEmptyForm() {
+  copiedFromSource.value = null
+  form.value = {
+    sku: '',
+    name: '',
+    category: '',
+    location: '',
+    location_code: '',
+    track_stock: true,
+    unit: 'buah',
+    current_stock: 0,
+    min_stock: 0,
+    price_per_unit: 0,
+    description: '',
+    merk: '',
+    type_model: '',
+    serial_number: '',
+    procurement_year: '',
+    condition_status: 'Baik (B)',
+    size: '',
+    material: '',
+    item_code: '',
+    register_number: '',
+    funding_source: '',
+    distributor: '',
+    akl_akd: '',
+    photo_url: '',
+    geo_lat: null,
+    geo_lng: null,
+    geo_acc: null,
+    geo_name: '',
+  }
+  enableKIR.value = false
+  enableProcurement.value = false
+  enablePrice.value = false
+  router.replace({ path: '/items/new' })
+  toast.add({
+    severity: 'info',
+    summary: 'Mode Salin Dibatalkan',
+    detail: 'Formulir dikembalikan ke form baru kosong (tidak tambah unit).',
+    life: 2500,
+  })
+}
 
 const form = ref<any>({
   sku: '',
@@ -119,6 +164,72 @@ onMounted(async () => {
       if (res.data.price_per_unit && res.data.price_per_unit > 0) {
         enablePrice.value = true
       }
+    } else if (route.query.copy_from) {
+      try {
+        const res = await api.get(`/items/${route.query.copy_from}`)
+        const src = res.data
+        copiedFromSource.value = src
+
+        // Salin spesifikasi pokok & No. Kode Barang
+        form.value.name = src.name ?? ''
+        form.value.category = src.category ?? ''
+        form.value.location = src.location ?? ''
+        form.value.location_code = src.location_code ?? ''
+        form.value.track_stock = false // Selalu unit mandiri / aset tetap
+        form.value.unit = src.unit || 'unit'
+        form.value.current_stock = 1
+        form.value.min_stock = 0
+        form.value.price_per_unit = src.price_per_unit ?? 0
+        form.value.description = src.description ?? ''
+        form.value.merk = src.merk ?? ''
+        form.value.type_model = src.type_model ?? ''
+        form.value.procurement_year = src.procurement_year ?? ''
+        form.value.condition_status = src.condition_status || 'Baik (B)'
+        form.value.size = src.size ?? ''
+        form.value.material = src.material ?? ''
+        form.value.item_code = src.item_code ?? '' // No. Kode Barang SAMA PERSIS
+        form.value.funding_source = src.funding_source ?? ''
+        form.value.distributor = src.distributor ?? ''
+        form.value.akl_akd = src.akl_akd ?? ''
+
+        // Auto-increment No. Register jika berupa angka
+        if (src.register_number && /^\d+$/.test(src.register_number)) {
+          const nextNum = parseInt(src.register_number, 10) + 1
+          form.value.register_number = String(nextNum).padStart(src.register_number.length, '0')
+        } else {
+          form.value.register_number = ''
+        }
+
+        // Field fisik unik dikosongkan agar pengguna input data unit ke-2
+        form.value.sku = ''
+        form.value.serial_number = ''
+        form.value.photo_url = ''
+        form.value.geo_lat = null
+        form.value.geo_lng = null
+        form.value.geo_acc = null
+        form.value.geo_name = ''
+
+        if (
+          src.item_code ||
+          src.register_number ||
+          src.location_code ||
+          src.merk ||
+          src.type_model ||
+          src.size ||
+          src.material ||
+          src.procurement_year
+        ) {
+          enableKIR.value = true
+        }
+        if (src.funding_source || src.distributor || src.akl_akd || src.description) {
+          enableProcurement.value = true
+        }
+        if (src.price_per_unit && src.price_per_unit > 0) {
+          enablePrice.value = true
+        }
+      } catch {
+        toast.add({ severity: 'warn', summary: 'Gagal memuat barang sumber salin', life: 3000 })
+      }
     }
   } catch {
     toast.add({ severity: 'error', summary: 'Gagal memuat data barang', life: 3500 })
@@ -210,10 +321,10 @@ async function submit() {
           size="small"
           severity="secondary"
           text
-          @click="router.push(isEdit ? '/items/' + route.params.id : '/items')"
+          @click="router.push(isEdit ? '/items/' + route.params.id : (copiedFromSource ? '/items/' + copiedFromSource.id : '/items'))"
         />
         <Button
-          :label="isEdit ? 'Simpan Perubahan' : 'Simpan Barang'"
+          :label="isEdit ? 'Simpan Perubahan' : (copiedFromSource ? 'Simpan Unit Baru' : 'Simpan Barang')"
           icon="pi pi-check"
           size="small"
           :loading="loading"
@@ -222,6 +333,46 @@ async function submit() {
         />
       </template>
     </PageHeader>
+
+    <!-- Banner Pilihan Salin Unit Sejenis & Opsi Batal/Tidak Tambah Unit -->
+    <div
+      v-if="!loadingData && copiedFromSource"
+      class="panel p-4 mb-4 flex flex-wrap items-center justify-between gap-3 border-l-4 border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 shadow-xs"
+    >
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-indigo-500 text-white grid place-items-center shrink-0">
+          <i class="pi pi-clone text-base" />
+        </div>
+        <div class="text-[12.5px]">
+          <div class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span>Mode: Tambah Unit Sejenis</span>
+            <Tag severity="info" class="!text-[10px]" value="SALIN SPESIFIKASI" />
+          </div>
+          <div class="text-slate-600 dark:text-slate-400 mt-0.5">
+            Spesifikasi disalin dari: <strong class="text-indigo-600 dark:text-indigo-400">{{ copiedFromSource.name }}</strong>
+            <span v-if="copiedFromSource.item_code" class="t-mono font-semibold"> (No. Kode: {{ copiedFromSource.item_code }})</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <Button
+          label="Tidak Tambah Unit (Form Kosong)"
+          icon="pi pi-times"
+          size="small"
+          severity="secondary"
+          outlined
+          @click="resetToEmptyForm"
+        />
+        <Button
+          label="Kembali ke Rincian"
+          icon="pi pi-arrow-left"
+          size="small"
+          severity="secondary"
+          text
+          @click="router.push('/items/' + copiedFromSource.id)"
+        />
+      </div>
+    </div>
 
     <!-- Loading Skeleton -->
     <div v-if="loadingData" class="panel p-16 grid place-items-center">
@@ -611,11 +762,20 @@ async function submit() {
             size="small"
             severity="secondary"
             text
-            @click="router.push(isEdit ? '/items/' + route.params.id : '/items')"
+            @click="router.push(isEdit ? '/items/' + route.params.id : (copiedFromSource ? '/items/' + copiedFromSource.id : '/items'))"
           />
           <div class="flex items-center gap-2">
             <Button
-              :label="isEdit ? 'Simpan Perubahan' : 'Daftarkan Barang'"
+              v-if="copiedFromSource"
+              label="Batal Salin (Form Kosong)"
+              icon="pi pi-times"
+              size="small"
+              severity="secondary"
+              outlined
+              @click="resetToEmptyForm"
+            />
+            <Button
+              :label="isEdit ? 'Simpan Perubahan' : (copiedFromSource ? 'Simpan Unit Baru' : 'Daftarkan Barang')"
               icon="pi pi-check"
               size="small"
               :loading="loading"
