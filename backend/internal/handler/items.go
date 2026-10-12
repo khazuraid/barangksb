@@ -269,9 +269,9 @@ func (h *ItemHandler) Create(c *gin.Context) {
 			if unitsCount == 1 && sku != "" {
 				unitBarcode = sku
 			}
-			var unitPhoto *string
+			var unitPhoto any
 			var uLat, uLng, uAcc *float64
-			var uGeoName *string
+			var uGeoName any
 			if i == 1 && req.PhotoURL != "" {
 				unitPhoto = nullable(req.PhotoURL)
 				uLat = req.GeoLat
@@ -279,7 +279,7 @@ func (h *ItemHandler) Create(c *gin.Context) {
 				uAcc = req.GeoAcc
 				uGeoName = nullable(req.GeoName)
 			}
-			var uSerial *string
+			var uSerial any
 			if i == 1 && req.SerialNumber != "" {
 				uSerial = nullable(req.SerialNumber)
 			}
