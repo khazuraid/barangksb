@@ -12,12 +12,14 @@ import Dialog from 'primevue/dialog'
 import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import LabelDesignerModal from '@/components/LabelDesignerModal.vue'
 
 const toast = useToast()
 const items = ref<any[]>([])
 const total = ref(0)
 const selected = ref<string[]>([])
 const loading = ref(true)
+const showCustomDesigner = ref(false)
 
 const page = ref(0)
 const perPage = ref(24)
@@ -248,13 +250,23 @@ const sampleItem = computed(() => {
       sub="Cetak label aset siap tempel untuk printer thermal roll (58mm/80mm), stiker label berbagai ukuran (50x30, 40x30, 60x40, 100x50), dan kertas lembar A4"
     >
       <template #actions>
-        <Button
-          label="Pratinjau &amp; Cetak Label"
-          icon="pi pi-print"
-          size="small"
-          :disabled="!selected.length"
-          @click="openPrintDialog"
-        />
+        <div class="flex items-center gap-2">
+          <Button
+            label="Desain Kustom (Drag &amp; Drop)"
+            icon="pi pi-palette"
+            size="small"
+            severity="info"
+            outlined
+            @click="showCustomDesigner = true"
+          />
+          <Button
+            label="Pratinjau &amp; Cetak Label"
+            icon="pi pi-print"
+            size="small"
+            :disabled="!selected.length"
+            @click="openPrintDialog"
+          />
+        </div>
       </template>
     </PageHeader>
 
@@ -385,6 +397,14 @@ const sampleItem = computed(() => {
           @click="clearSelection"
         />
         <Tag :value="selected.length + ' dipilih'" severity="warn" class="!text-[11px]" />
+        <Button
+          label="Desain Kustom"
+          icon="pi pi-palette"
+          size="small"
+          severity="info"
+          outlined
+          @click="showCustomDesigner = true"
+        />
         <Button
           label="Cetak"
           icon="pi pi-print"
@@ -753,6 +773,14 @@ const sampleItem = computed(() => {
           />
           <div class="flex items-center gap-2">
             <Button
+              label="🎨 Desain Kustom (Drag &amp; Drop)"
+              icon="pi pi-palette"
+              size="small"
+              severity="info"
+              outlined
+              @click="printModalVisible = false; showCustomDesigner = true"
+            />
+            <Button
               label="Buka di Tab Baru"
               icon="pi pi-external-link"
               size="small"
@@ -770,5 +798,12 @@ const sampleItem = computed(() => {
         </div>
       </template>
     </Dialog>
+
+    <!-- Custom Visual Drag-and-Drop Label Designer -->
+    <LabelDesignerModal
+      v-model:visible="showCustomDesigner"
+      :items="items"
+      :selectedIds="selected"
+    />
   </div>
 </template>
