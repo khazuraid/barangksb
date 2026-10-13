@@ -77,7 +77,7 @@ const AVAILABLE_FIELDS = [
 const DEFAULT_PRESETS: LabelTemplate[] = [
   {
     id: 'preset_tj_103',
-    name: '🌟 Tom & Jerry No. 103 (64 × 32 mm · Rekomendasi)',
+    name: '🌟 T&J 103 (64 × 32 mm)',
     widthMm: 64,
     heightMm: 32,
     elements: [
@@ -92,7 +92,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
   },
   {
     id: 'preset_50x30',
-    name: '🏷️ Stiker Rol Standar (50 × 30 mm)',
+    name: '🏷️ Stiker Rol (50 × 30 mm)',
     widthMm: 50,
     heightMm: 30,
     elements: [
@@ -118,7 +118,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
   },
   {
     id: 'preset_70x50',
-    name: '🏷️ Stiker Aset BMD Lengkap (70 × 50 mm)',
+    name: '🏷️ Kartu Aset BMD (70 × 50 mm)',
     widthMm: 70,
     heightMm: 50,
     elements: [
@@ -511,11 +511,11 @@ function printLabels() {
     :contentStyle="{ padding: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }"
     @update:visible="emit('update:visible', $event)"
   >
-    <!-- TOP TOOLBAR: Clean, Professional, Light -->
-    <div class="px-4 py-2.5 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs select-none shadow-xs">
+    <!-- TOP TOOLBAR: Clean, Professional, Light, No Overlap -->
+    <div class="px-3.5 py-2 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2.5 text-xs select-none shadow-xs">
       <!-- Left: Preset & Size Controls -->
-      <div class="flex items-center gap-2.5 flex-wrap">
-        <div class="flex items-center gap-1.5">
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-1.5 shrink-0">
           <span class="text-slate-500 font-semibold">Preset:</span>
           <Select
             :modelValue="activeTemplate.id"
@@ -523,7 +523,7 @@ function printLabels() {
             optionLabel="name"
             optionValue="id"
             placeholder="Pilih Preset..."
-            class="!w-[280px] !text-xs !py-0.5"
+            class="!w-[260px] sm:!w-[310px] !text-xs !py-0.5"
             @update:modelValue="(val) => {
               const found = templates.find((t) => t.id === val)
               if (found) applyPreset(found)
@@ -531,25 +531,29 @@ function printLabels() {
           />
         </div>
 
-        <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200">
-          <span class="text-slate-500 text-[11px] font-medium px-1">Ukuran:</span>
-          <InputNumber
-            v-model="activeTemplate.widthMm"
-            :min="20"
-            :max="210"
-            suffix=" mm"
-            class="!w-[76px] !text-xs"
-            inputClass="!py-0.5 !text-xs !bg-white !text-slate-800 text-center font-mono font-semibold"
-          />
-          <span class="text-slate-400 font-bold">&times;</span>
-          <InputNumber
-            v-model="activeTemplate.heightMm"
-            :min="10"
-            :max="297"
-            suffix=" mm"
-            class="!w-[76px] !text-xs"
-            inputClass="!py-0.5 !text-xs !bg-white !text-slate-800 text-center font-mono font-semibold"
-          />
+        <!-- Ukuran Width x Height in mm (Clean native inputs without suffix collision) -->
+        <div class="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-200 shrink-0">
+          <span class="text-slate-500 text-[11px] font-semibold">Ukuran:</span>
+          <div class="flex items-center gap-1">
+            <input
+              type="number"
+              v-model.number="activeTemplate.widthMm"
+              min="20"
+              max="210"
+              class="w-13 text-center font-mono font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 px-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+              title="Lebar stiker (mm)"
+            />
+            <span class="text-slate-400 font-bold">&times;</span>
+            <input
+              type="number"
+              v-model.number="activeTemplate.heightMm"
+              min="10"
+              max="297"
+              class="w-13 text-center font-mono font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 px-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+              title="Tinggi stiker (mm)"
+            />
+            <span class="text-slate-500 text-[11px] font-medium pl-0.5">mm</span>
+          </div>
         </div>
 
         <Button
@@ -559,7 +563,7 @@ function printLabels() {
           text
           severity="secondary"
           v-tooltip.top="'Kembalikan tata letak ke preset awal'"
-          class="!text-xs !py-1"
+          class="!text-xs !py-1 shrink-0"
           @click="resetLayout"
         />
       </div>
@@ -567,7 +571,7 @@ function printLabels() {
       <!-- Right: View Controls & Print Action -->
       <div class="flex items-center gap-2 flex-wrap">
         <!-- Zoom Controller -->
-        <div class="flex items-center bg-slate-100 rounded-md border border-slate-200 px-1 py-0.5">
+        <div class="flex items-center bg-slate-100 rounded-md border border-slate-200 px-1 py-0.5 shrink-0">
           <button
             type="button"
             class="px-2 py-0.5 text-slate-600 hover:text-slate-900 font-bold"
@@ -576,7 +580,7 @@ function printLabels() {
           >
             -
           </button>
-          <span class="text-xs font-mono font-semibold text-slate-700 w-12 text-center">
+          <span class="text-xs font-mono font-semibold text-slate-700 w-11 text-center">
             {{ Math.round(zoom * 45) }}%
           </span>
           <button
@@ -590,7 +594,7 @@ function printLabels() {
         </div>
 
         <!-- Snap Grid Toggle -->
-        <label class="flex items-center gap-1.5 cursor-pointer text-slate-600 text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1.5 rounded-md border border-slate-200">
+        <label class="flex items-center gap-1.5 cursor-pointer text-slate-600 text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-md border border-slate-200 shrink-0">
           <Checkbox v-model="snapGrid" binary />
           <span>Snap 0.5mm</span>
         </label>
@@ -601,36 +605,37 @@ function printLabels() {
           label="Simpan Template"
           size="small"
           severity="secondary"
-          class="!text-xs !py-1"
+          class="!text-xs !py-1 shrink-0"
           @click="saveCurrentAsNewTemplate"
         />
 
         <!-- Export / Import -->
-        <Button icon="pi pi-download" text rounded size="small" severity="secondary" v-tooltip.top="'Ekspor JSON Template'" @click="exportJSON" />
-        <label class="cursor-pointer p-1.5 rounded-md hover:bg-slate-100 text-slate-600" v-tooltip.top="'Impor File JSON'">
+        <Button icon="pi pi-download" text rounded size="small" severity="secondary" v-tooltip.top="'Ekspor JSON Template'" class="shrink-0" @click="exportJSON" />
+        <label class="cursor-pointer p-1.5 rounded-md hover:bg-slate-100 text-slate-600 shrink-0" v-tooltip.top="'Impor File JSON'">
           <i class="pi pi-upload text-sm" />
           <input type="file" accept=".json" class="hidden" @change="importJSON" />
         </label>
 
-        <span class="h-4 w-px bg-slate-200 mx-1" />
+        <span class="h-4 w-px bg-slate-200 mx-0.5 shrink-0" />
 
-        <!-- Print Action -->
-        <div class="flex items-center gap-1.5">
-          <InputNumber
-            v-model="copies"
-            :min="1"
-            :max="50"
-            prefix="&times; "
-            class="!w-[65px] !text-xs"
-            inputClass="!py-1 !text-xs !bg-slate-50 !text-slate-800 text-center font-bold"
-            v-tooltip.top="'Jumlah rangkap cetak per barang'"
-          />
+        <!-- Print Action: Copies + Cetak Button -->
+        <div class="flex items-center gap-1.5 shrink-0">
+          <div class="flex items-center gap-1 bg-slate-50 px-1.5 py-1 rounded-md border border-slate-200" title="Jumlah rangkap cetak per barang">
+            <span class="text-slate-500 text-[11px] font-medium">&times;</span>
+            <input
+              type="number"
+              v-model.number="copies"
+              min="1"
+              max="50"
+              class="w-10 text-center font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+            />
+          </div>
           <Button
             label="Cetak Label Ini"
             icon="pi pi-print"
             size="small"
             severity="success"
-            class="!text-xs !py-1 font-bold shadow-xs"
+            class="!text-xs !py-1.5 !px-3 font-bold shadow-xs shrink-0"
             @click="printLabels"
           />
         </div>
