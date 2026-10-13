@@ -942,7 +942,7 @@ function printLabels() {
       </div>
 
       <!-- RIGHT COLUMN: PROPERTIES INSPECTOR -->
-      <div class="w-72 border-l border-slate-200 bg-white p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
+      <div class="w-80 shrink-0 border-l border-slate-200 bg-white p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
         <div class="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between pb-2 border-b border-slate-200">
           <span>Pengaturan Elemen</span>
           <Tag v-if="activeElement" :value="activeElement.type.toUpperCase()" severity="info" class="!text-[9px] !py-0" />
@@ -956,7 +956,7 @@ function printLabels() {
           </div>
 
           <!-- 2. Form Field Selector & Prefix -->
-          <div v-if="activeElement.type === 'field'" class="flex flex-col gap-2 p-2 bg-slate-50 rounded-md border border-slate-200">
+          <div v-if="activeElement.type === 'field'" class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
             <div class="flex flex-col gap-1">
               <label class="text-slate-600 font-semibold text-[11px]">Field dari Formulir</label>
               <Select
@@ -980,7 +980,7 @@ function printLabels() {
           </div>
 
           <!-- 3. Logo Controls -->
-          <div v-if="activeElement.type === 'logo'" class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-md border border-slate-200">
+          <div v-if="activeElement.type === 'logo'" class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
             <label class="text-[11px] text-slate-700 font-bold">File Gambar Logo</label>
             <div v-if="activeElement.logoUrl" class="flex items-center gap-2">
               <img :src="activeElement.logoUrl" class="w-12 h-12 object-contain bg-white rounded p-1 border border-slate-300" alt="Preview" />
@@ -1003,34 +1003,80 @@ function printLabels() {
             </label>
           </div>
 
-          <!-- 4. Dimension & Position (mm) -->
-          <div class="p-2.5 bg-slate-50 rounded-md border border-slate-200 flex flex-col gap-2">
+          <!-- 4. Dimension & Position (mm) - Clean Native Inputs, Never Overflow -->
+          <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2.5">
             <span class="text-[11px] font-bold text-slate-700">Posisi &amp; Ukuran (mm)</span>
             <div class="grid grid-cols-2 gap-2">
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] text-slate-500 font-mono">Posisi X</label>
-                <InputNumber v-model="activeElement.x" :min="0" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+                <label class="text-[10.5px] text-slate-500 font-medium">Posisi X</label>
+                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
+                  <input
+                    type="number"
+                    v-model.number="activeElement.x"
+                    :min="0"
+                    :step="0.5"
+                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
+                  />
+                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
+                </div>
               </div>
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] text-slate-500 font-mono">Posisi Y</label>
-                <InputNumber v-model="activeElement.y" :min="0" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+                <label class="text-[10.5px] text-slate-500 font-medium">Posisi Y</label>
+                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
+                  <input
+                    type="number"
+                    v-model.number="activeElement.y"
+                    :min="0"
+                    :step="0.5"
+                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
+                  />
+                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
+                </div>
               </div>
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] text-slate-500 font-mono">Lebar (W)</label>
-                <InputNumber v-model="activeElement.w" :min="2" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+                <label class="text-[10.5px] text-slate-500 font-medium">Lebar (W)</label>
+                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
+                  <input
+                    type="number"
+                    v-model.number="activeElement.w"
+                    :min="2"
+                    :step="0.5"
+                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
+                  />
+                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
+                </div>
               </div>
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] text-slate-500 font-mono">Tinggi (H)</label>
-                <InputNumber v-model="activeElement.h" :min="1" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+                <label class="text-[10.5px] text-slate-500 font-medium">Tinggi (H)</label>
+                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
+                  <input
+                    type="number"
+                    v-model.number="activeElement.h"
+                    :min="1"
+                    :step="0.5"
+                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
+                  />
+                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- 5. Typography -->
-          <div v-if="!['qr', 'code128', 'line', 'logo'].includes(activeElement.type)" class="p-2.5 bg-slate-50 rounded-md border border-slate-200 flex flex-col gap-2">
-            <div class="flex items-center justify-between">
+          <div v-if="!['qr', 'code128', 'line', 'logo'].includes(activeElement.type)" class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2.5">
+            <div class="flex items-center justify-between gap-2">
               <label class="text-[11px] font-semibold text-slate-700">Ukuran Huruf</label>
-              <InputNumber v-model="activeElement.fontSize" :min="4" :max="36" suffix=" pt" class="!w-24 !text-xs" inputClass="!py-0.5 !text-xs text-center font-bold" />
+              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 w-24 focus-within:ring-1 focus-within:ring-indigo-500">
+                <input
+                  type="number"
+                  v-model.number="activeElement.fontSize"
+                  :min="4"
+                  :max="36"
+                  :step="0.5"
+                  class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 text-center focus:outline-hidden"
+                />
+                <span class="text-[10px] text-slate-400 font-mono ml-1">pt</span>
+              </div>
             </div>
 
             <div class="flex items-center justify-between pt-1.5 border-t border-slate-200">
