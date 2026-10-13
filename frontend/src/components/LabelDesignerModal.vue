@@ -12,7 +12,8 @@ import { useToast } from 'primevue/usetoast'
 export interface LabelElement {
   id: string
   type: 'qr' | 'code128' | 'field' | 'static_text' | 'header' | 'line' | 'logo'
-  field?: 'name' | 'sku' | 'location' | 'category' | 'register_number' | 'merk'
+  field?: string
+  prefix?: string // Teks awalan otomatis, misal: "NUP: ", "Thn: ", "Merk: "
   text?: string
   logoUrl?: string
   x: number // mm
@@ -46,62 +47,92 @@ const emit = defineEmits<{
 
 const toast = useToast()
 const MM_TO_PX = 3.7795
-const zoom = ref(2.5) // Screen display zoom factor
+const zoom = ref(2.2) // Skala tampilan layar kanvas
 const snapGrid = ref(true)
-const gridSizeMm = ref(1)
+const gridSizeMm = ref(0.5)
+const showGuideGrid = ref(false) // Grid garis visual di stiker (default mati agar stiker bersih)
 
+// Daftar Lengkap Field dari Formulir Barang
+const AVAILABLE_FIELDS = [
+  { label: 'Nama Barang', value: 'name', icon: 'pi pi-box', defaultPrefix: '' },
+  { label: 'Kode Barang (KIB / BMD)', value: 'item_code', icon: 'pi pi-tag', defaultPrefix: 'Kode: ' },
+  { label: 'Kode Barcode / SKU', value: 'sku', icon: 'pi pi-hashtag', defaultPrefix: '' },
+  { label: 'No. Register / NUP', value: 'register_number', icon: 'pi pi-id-card', defaultPrefix: 'NUP: ' },
+  { label: 'Ruangan / Lokasi', value: 'location', icon: 'pi pi-map-marker', defaultPrefix: '📍 ' },
+  { label: 'Kode Ruangan / Lokasi', value: 'location_code', icon: 'pi pi-compass', defaultPrefix: 'Ruang: ' },
+  { label: 'Merk / Brand', value: 'merk', icon: 'pi pi-bookmark', defaultPrefix: 'Merk: ' },
+  { label: 'Tipe / Model', value: 'type_model', icon: 'pi pi-cog', defaultPrefix: 'Tipe: ' },
+  { label: 'Nomor Seri Pabrik (SN)', value: 'serial_number', icon: 'pi pi-barcode', defaultPrefix: 'SN: ' },
+  { label: 'Tahun Pengadaan', value: 'procurement_year', icon: 'pi pi-calendar', defaultPrefix: 'Thn: ' },
+  { label: 'Asal Usul / Sumber Dana', value: 'funding_source', icon: 'pi pi-dollar', defaultPrefix: 'Dana: ' },
+  { label: 'Kategori Barang', value: 'category', icon: 'pi pi-folder', defaultPrefix: 'Kat: ' },
+  { label: 'Kondisi Barang', value: 'condition_status', icon: 'pi pi-shield', defaultPrefix: 'Kondisi: ' },
+  { label: 'Ukuran / Dimensi / CC', value: 'size', icon: 'pi pi-arrows-alt', defaultPrefix: 'Ukuran: ' },
+  { label: 'Bahan / Material', value: 'material', icon: 'pi pi-database', defaultPrefix: 'Bahan: ' },
+  { label: 'Harga Satuan (Rp)', value: 'price_per_unit', icon: 'pi pi-money-bill', defaultPrefix: 'Rp ' },
+  { label: 'Keterangan', value: 'description', icon: 'pi pi-info-circle', defaultPrefix: 'Ket: ' },
+]
+
+// Preset Desain Standar yang Rapi & Proporsional
 const DEFAULT_PRESETS: LabelTemplate[] = [
   {
-    id: 'preset_50x30',
-    name: 'Stiker Rol Standar (50 × 30 mm)',
-    widthMm: 50,
-    heightMm: 30,
-    elements: [
-      { id: 'qr_1', type: 'qr', x: 2, y: 2.5, w: 25, h: 25 },
-      { id: 'hdr_1', type: 'header', text: 'INVENTARIS KANTOR', x: 28, y: 2.5, w: 20, h: 4, fontSize: 6.5, bold: true, align: 'left', border: true },
-      { id: 'f_name', type: 'field', field: 'name', x: 28, y: 7.5, w: 20, h: 9, fontSize: 8, bold: true, align: 'left' },
-      { id: 'f_sku', type: 'field', field: 'sku', x: 28, y: 17.5, w: 20, h: 4, fontSize: 7, bold: true, align: 'left' },
-      { id: 'f_loc', type: 'field', field: 'location', x: 28, y: 22.5, w: 20, h: 4, fontSize: 6.5, bold: false, align: 'left' },
-    ],
-  },
-  {
     id: 'preset_tj_103',
-    name: 'Tom & Jerry No. 103 (64 × 32 mm)',
+    name: '🌟 Tom & Jerry No. 103 (64 × 32 mm · Rekomendasi)',
     widthMm: 64,
     heightMm: 32,
     elements: [
-      { id: 'qr_1', type: 'qr', x: 3, y: 3, w: 26, h: 26 },
-      { id: 'hdr_1', type: 'header', text: 'PEMERINTAH KABUPATEN KSB', x: 31, y: 2.5, w: 30, h: 4.5, fontSize: 6.5, bold: true, align: 'left', border: true },
-      { id: 'f_name', type: 'field', field: 'name', x: 31, y: 8, w: 30, h: 10, fontSize: 8.5, bold: true, align: 'left' },
-      { id: 'f_sku', type: 'field', field: 'sku', x: 31, y: 19, w: 30, h: 4.5, fontSize: 7.5, bold: true, align: 'left' },
-      { id: 'f_loc', type: 'field', field: 'location', x: 31, y: 24.5, w: 30, h: 4, fontSize: 7, bold: false, align: 'left' },
+      { id: 'hdr_1', type: 'header', text: 'PEMERINTAH KABUPATEN SUMBAWA BARAT', x: 2, y: 1.8, w: 60, h: 4, fontSize: 6.5, bold: true, align: 'center', border: true },
+      { id: 'qr_1', type: 'qr', x: 2.5, y: 7, w: 23, h: 23 },
+      { id: 'f_name', type: 'field', field: 'name', x: 27, y: 7, w: 35, h: 8, fontSize: 7.5, bold: true, align: 'left' },
+      { id: 'f_sku', type: 'field', field: 'sku', prefix: '', x: 27, y: 15.5, w: 35, h: 4, fontSize: 7, bold: true, align: 'left' },
+      { id: 'f_nup', type: 'field', field: 'register_number', prefix: 'NUP: ', x: 27, y: 20, w: 35, h: 3.5, fontSize: 6.5, bold: false, align: 'left' },
+      { id: 'f_loc', type: 'field', field: 'location', prefix: '📍 ', x: 27, y: 24, w: 35, h: 3.5, fontSize: 6.5, bold: false, align: 'left' },
+      { id: 'f_yr', type: 'field', field: 'procurement_year', prefix: 'Thn: ', x: 27, y: 27.5, w: 35, h: 3, fontSize: 6, bold: false, align: 'left' },
+    ],
+  },
+  {
+    id: 'preset_50x30',
+    name: '🏷️ Stiker Rol Standar (50 × 30 mm)',
+    widthMm: 50,
+    heightMm: 30,
+    elements: [
+      { id: 'hdr_1', type: 'header', text: 'INVENTARIS KANTOR', x: 2, y: 2, w: 46, h: 3.5, fontSize: 6.5, bold: true, align: 'left', border: true },
+      { id: 'qr_1', type: 'qr', x: 2, y: 6.5, w: 21, h: 21 },
+      { id: 'f_name', type: 'field', field: 'name', x: 24.5, y: 6.5, w: 24, h: 8, fontSize: 7.5, bold: true, align: 'left' },
+      { id: 'f_sku', type: 'field', field: 'sku', x: 24.5, y: 15, w: 24, h: 4, fontSize: 7, bold: true, align: 'left' },
+      { id: 'f_nup', type: 'field', field: 'register_number', prefix: 'NUP: ', x: 24.5, y: 19.5, w: 24, h: 3.5, fontSize: 6.5, bold: false, align: 'left' },
+      { id: 'f_loc', type: 'field', field: 'location', prefix: '📍 ', x: 24.5, y: 23.5, w: 24, h: 3.5, fontSize: 6.5, bold: false, align: 'left' },
     ],
   },
   {
     id: 'preset_40x30',
-    name: 'Stiker Rol Mini (40 × 30 mm)',
+    name: '🏷️ Stiker Rol Mini (40 × 30 mm)',
     widthMm: 40,
     heightMm: 30,
     elements: [
-      { id: 'qr_1', type: 'qr', x: 1.5, y: 4, w: 22, h: 22 },
-      { id: 'f_name', type: 'field', field: 'name', x: 24.5, y: 4, w: 14.5, h: 10, fontSize: 7.5, bold: true, align: 'left' },
-      { id: 'f_sku', type: 'field', field: 'sku', x: 24.5, y: 15, w: 14.5, h: 4, fontSize: 6.5, bold: true, align: 'left' },
-      { id: 'f_loc', type: 'field', field: 'location', x: 24.5, y: 20, w: 14.5, h: 4, fontSize: 6, bold: false, align: 'left' },
+      { id: 'qr_1', type: 'qr', x: 2, y: 3, w: 23, h: 23 },
+      { id: 'f_name', type: 'field', field: 'name', x: 26, y: 3, w: 12.5, h: 10, fontSize: 7, bold: true, align: 'left' },
+      { id: 'f_sku', type: 'field', field: 'sku', x: 26, y: 14, w: 12.5, h: 4, fontSize: 6.5, bold: true, align: 'left' },
+      { id: 'f_loc', type: 'field', field: 'location', prefix: '', x: 26, y: 19, w: 12.5, h: 4, fontSize: 6, bold: false, align: 'left' },
     ],
   },
   {
     id: 'preset_70x50',
-    name: 'Stiker Aset Besar (70 × 50 mm)',
+    name: '🏷️ Stiker Aset BMD Lengkap (70 × 50 mm)',
     widthMm: 70,
     heightMm: 50,
     elements: [
-      { id: 'hdr_1', type: 'header', text: 'KARTU INVENTARIS BARANG MILIK DAERAH', x: 3, y: 3, w: 64, h: 5, fontSize: 7.5, bold: true, align: 'center', border: true },
-      { id: 'qr_1', type: 'qr', x: 4, y: 10, w: 32, h: 32 },
-      { id: 'f_name', type: 'field', field: 'name', x: 38, y: 10, w: 29, h: 12, fontSize: 9.5, bold: true, align: 'left' },
-      { id: 'f_sku', type: 'field', field: 'sku', x: 38, y: 23, w: 29, h: 5, fontSize: 8, bold: true, align: 'left' },
-      { id: 'f_nup', type: 'field', field: 'register_number', x: 38, y: 29, w: 29, h: 5, fontSize: 7.5, bold: false, align: 'left' },
-      { id: 'f_loc', type: 'field', field: 'location', x: 38, y: 35, w: 29, h: 5, fontSize: 7.5, bold: false, align: 'left' },
-      { id: 'st_1', type: 'static_text', text: 'DILARANG DILEPAS / DIPINDAHKAN', x: 4, y: 44, w: 62, h: 4, fontSize: 6, bold: false, align: 'center' },
+      { id: 'hdr_1', type: 'header', text: 'KARTU INVENTARIS BARANG MILIK DAERAH (BMD)', x: 3, y: 2.5, w: 64, h: 4.5, fontSize: 7.5, bold: true, align: 'center', border: true },
+      { id: 'qr_1', type: 'qr', x: 3.5, y: 8.5, w: 28, h: 28 },
+      { id: 'f_name', type: 'field', field: 'name', x: 33, y: 8.5, w: 34, h: 9, fontSize: 8.5, bold: true, align: 'left' },
+      { id: 'f_code', type: 'field', field: 'item_code', prefix: 'Kode: ', x: 33, y: 18, w: 34, h: 4, fontSize: 7, bold: false, align: 'left' },
+      { id: 'f_sku', type: 'field', field: 'sku', prefix: 'Barcode: ', x: 33, y: 22.5, w: 34, h: 4, fontSize: 7, bold: true, align: 'left' },
+      { id: 'f_nup', type: 'field', field: 'register_number', prefix: 'No. Reg: ', x: 33, y: 27, w: 34, h: 4, fontSize: 7, bold: false, align: 'left' },
+      { id: 'f_merk', type: 'field', field: 'merk', prefix: 'Merk/Tipe: ', x: 33, y: 31.5, w: 34, h: 4, fontSize: 6.5, bold: false, align: 'left' },
+      { id: 'f_loc', type: 'field', field: 'location', prefix: 'Ruangan: ', x: 33, y: 36, w: 34, h: 4, fontSize: 6.5, bold: false, align: 'left' },
+      { id: 'f_yr', type: 'field', field: 'procurement_year', prefix: 'Tahun: ', x: 3.5, y: 38, w: 28, h: 3.5, fontSize: 6.5, bold: false, align: 'center' },
+      { id: 'line_1', type: 'line', x: 3, y: 42.5, w: 64, h: 1 },
+      { id: 'st_1', type: 'static_text', text: 'DILARANG DILEPAS / DIPINDAHKAN TANPA IZIN PENGELOLA BMD', x: 3, y: 44, w: 64, h: 3.5, fontSize: 5.5, bold: false, align: 'center' },
     ],
   },
 ]
@@ -111,9 +142,10 @@ const activeTemplate = ref<LabelTemplate>(JSON.parse(JSON.stringify(DEFAULT_PRES
 const activeElementId = ref<string | null>(null)
 const copies = ref(1)
 const isPrinting = ref(false)
+const paletteTab = ref<'form' | 'barcode' | 'header' | 'text'>('form')
 
 function loadSavedTemplates() {
-  const raw = localStorage.getItem('custom_label_templates_v2')
+  const raw = localStorage.getItem('custom_label_templates_v3')
   if (raw) {
     try {
       templates.value = JSON.parse(raw)
@@ -126,7 +158,7 @@ function loadSavedTemplates() {
 }
 
 function saveTemplates() {
-  localStorage.setItem('custom_label_templates_v2', JSON.stringify(templates.value))
+  localStorage.setItem('custom_label_templates_v3', JSON.stringify(templates.value))
 }
 
 onMounted(() => {
@@ -138,7 +170,7 @@ const activeElement = computed(() => {
   return activeTemplate.value.elements.find((el) => el.id === activeElementId.value) || null
 })
 
-// Sample item for preview
+// Sampel Barang Nyata untuk Pratinjau
 const sampleItem = computed(() => {
   if (props.selectedIds.length > 0) {
     const found = props.items.find((i) => i.id === props.selectedIds[0])
@@ -149,16 +181,56 @@ const sampleItem = computed(() => {
       id: 'sample',
       name: 'Laptop Lenovo ThinkPad E14 Gen 4',
       sku: 'ELK-2026-001',
-      location: 'Ruang Server IT (Lantai 2)',
-      category: 'Elektronik & IT',
+      item_code: '02.06.01.02.001',
       register_number: '0001 / BMD / 2024',
+      location: 'Ruang Server IT (Lantai 2)',
+      location_code: 'R.02',
+      category: 'Elektronik & IT',
       merk: 'Lenovo ThinkPad',
+      type_model: 'E14 Core i5',
+      serial_number: 'SN-PF41A92X',
+      procurement_year: '2024',
+      funding_source: 'APBD 2024',
+      condition_status: 'Baik (B)',
+      size: '14 Inch',
+      material: 'Aluminium / Polimer',
+      price_per_unit: 14500000,
+      description: 'Kondisi lengkap dengan adaptor',
     }
   )
 })
 
-// Drag and Resize Interaction
-const canvasRef = ref<HTMLElement | null>(null)
+// Nilai field yang dirender
+function resolveFieldValue(item: any, fieldKey?: string, prefix?: string): string {
+  if (!fieldKey) return ''
+  let val = item[fieldKey]
+  if (val === undefined || val === null || val === '') {
+    // Fallback sample values if empty
+    switch (fieldKey) {
+      case 'name': val = item.name || 'Nama Aset'; break
+      case 'sku': val = item.sku || 'AST-0001'; break
+      case 'item_code': val = item.item_code || '02.06.01.001'; break
+      case 'register_number': val = item.register_number || '0001'; break
+      case 'location': val = item.location || 'Gudang Utama'; break
+      case 'location_code': val = item.location_code || 'G.01'; break
+      case 'merk': val = item.merk || 'Standar'; break
+      case 'type_model': val = item.type_model || '-'; break
+      case 'serial_number': val = item.serial_number || 'SN-12345'; break
+      case 'procurement_year': val = item.procurement_year || '2024'; break
+      case 'funding_source': val = item.funding_source || 'APBD'; break
+      case 'condition_status': val = item.condition_status || 'Baik'; break
+      case 'price_per_unit': val = item.price_per_unit ? `Rp ${Number(item.price_per_unit).toLocaleString('id-ID')}` : '-'; break
+      default: val = '-'
+    }
+  } else if (fieldKey === 'price_per_unit') {
+    val = `Rp ${Number(val).toLocaleString('id-ID')}`
+  }
+
+  const pfx = prefix || ''
+  return `${pfx}${val}`
+}
+
+// Drag & Resize Engine
 let isDragging = false
 let isResizing = false
 let dragStartX = 0
@@ -207,7 +279,6 @@ function onPointerMove(e: PointerEvent) {
       newY = Math.round(newY / gridSizeMm.value) * gridSizeMm.value
     }
 
-    // Clamp within canvas boundaries
     newX = Math.max(0, Math.min(activeTemplate.value.widthMm - activeElement.value.w, newX))
     newY = Math.max(0, Math.min(activeTemplate.value.heightMm - activeElement.value.h, newY))
 
@@ -233,45 +304,51 @@ function onPointerMove(e: PointerEvent) {
   }
 }
 
-function onPointerUp(e: PointerEvent) {
+function onPointerUp() {
   isDragging = false
   isResizing = false
 }
 
-// Add New Elements
-function addElement(type: LabelElement['type'], field?: LabelElement['field']) {
+// Tambah Elemen Baru
+function addFieldElement(fieldKey: string, defaultPrefix = '') {
+  const id = `f_${fieldKey}_${Date.now().toString(36)}`
+  const newEl: LabelElement = {
+    id,
+    type: 'field',
+    field: fieldKey,
+    prefix: defaultPrefix,
+    x: 4,
+    y: Math.min(activeTemplate.value.heightMm - 6, activeTemplate.value.elements.length * 4 + 4),
+    w: 32,
+    h: fieldKey === 'name' ? 8 : 4.5,
+    fontSize: fieldKey === 'name' ? 8 : 7,
+    bold: fieldKey === 'name' || fieldKey === 'sku',
+    align: 'left',
+  }
+  activeTemplate.value.elements.push(newEl)
+  activeElementId.value = id
+  toast.add({ severity: 'info', summary: 'Field Ditambahkan', detail: fieldKey, life: 1200 })
+}
+
+function addOtherElement(type: 'qr' | 'code128' | 'header' | 'static_text' | 'line' | 'logo') {
   const id = `${type}_${Date.now().toString(36)}`
   let newEl: LabelElement
 
   switch (type) {
     case 'qr':
-      newEl = { id, type: 'qr', x: 2, y: 2, w: 20, h: 20 }
+      newEl = { id, type: 'qr', x: 2.5, y: 4, w: 22, h: 22 }
       break
     case 'code128':
-      newEl = { id, type: 'code128', x: 2, y: 2, w: 35, h: 12 }
+      newEl = { id, type: 'code128', x: 2.5, y: 4, w: 36, h: 12 }
       break
     case 'header':
-      newEl = { id, type: 'header', text: 'INVENTARIS KANTOR', x: 2, y: 2, w: 25, h: 4, fontSize: 7, bold: true, align: 'left', border: true }
-      break
-    case 'field':
-      newEl = {
-        id,
-        type: 'field',
-        field: field || 'name',
-        x: 4,
-        y: 4,
-        w: 24,
-        h: field === 'name' ? 8 : 4.5,
-        fontSize: field === 'name' ? 8 : 7,
-        bold: field === 'name' || field === 'sku',
-        align: 'left',
-      }
+      newEl = { id, type: 'header', text: 'PEMERINTAH KABUPATEN KSB', x: 2, y: 2, w: activeTemplate.value.widthMm - 4, h: 4, fontSize: 6.5, bold: true, align: 'center', border: true }
       break
     case 'static_text':
-      newEl = { id, type: 'static_text', text: 'Teks Kustom', x: 2, y: 2, w: 25, h: 4, fontSize: 7, bold: false, align: 'left' }
+      newEl = { id, type: 'static_text', text: 'MILIK PEMERINTAH DAERAH', x: 2, y: 4, w: 28, h: 4, fontSize: 6.5, bold: false, align: 'left' }
       break
     case 'line':
-      newEl = { id, type: 'line', x: 2, y: 2, w: 25, h: 1, lineOrientation: 'horizontal' }
+      newEl = { id, type: 'line', x: 2, y: 10, w: activeTemplate.value.widthMm - 4, h: 1 }
       break
     case 'logo':
       newEl = { id, type: 'logo', x: 2, y: 2, w: 10, h: 10, logoUrl: '' }
@@ -290,7 +367,7 @@ function handleLogoUpload(e: Event) {
   reader.onload = (ev) => {
     if (activeElement.value && ev.target?.result) {
       activeElement.value.logoUrl = ev.target.result as string
-      toast.add({ severity: 'success', summary: 'Logo Berhasil Diunggah', life: 1800 })
+      toast.add({ severity: 'success', summary: 'Logo Berhasil Dipasang', life: 1800 })
     }
   }
   reader.readAsDataURL(file)
@@ -312,24 +389,30 @@ function duplicateActiveElement() {
   activeElementId.value = copy.id
 }
 
-// Preset management
 function applyPreset(tpl: LabelTemplate) {
   activeTemplate.value = JSON.parse(JSON.stringify(tpl))
   activeElementId.value = null
-  toast.add({ severity: 'info', summary: 'Template Dimuat', detail: tpl.name, life: 1800 })
+  toast.add({ severity: 'info', summary: 'Preset Dimuat', detail: tpl.name, life: 1800 })
+}
+
+function resetLayout() {
+  const defaultTpl = DEFAULT_PRESETS.find((p) => p.id === activeTemplate.value.id) || DEFAULT_PRESETS[0]
+  activeTemplate.value = JSON.parse(JSON.stringify(defaultTpl))
+  activeElementId.value = null
+  toast.add({ severity: 'info', summary: 'Tata Letak Direset ke Bawaan', life: 1500 })
 }
 
 function saveCurrentAsNewTemplate() {
-  const name = prompt('Masukkan nama template kustom:', activeTemplate.value.name)
+  const name = prompt('Beri nama template label ini:', activeTemplate.value.name.replace(/^[🌟🏷️\s]+/, ''))
   if (!name) return
   const newTpl: LabelTemplate = {
     ...JSON.parse(JSON.stringify(activeTemplate.value)),
     id: `custom_${Date.now().toString(36)}`,
-    name: name.trim(),
+    name: `🏷️ ${name.trim()}`,
   }
   templates.value.push(newTpl)
   saveTemplates()
-  toast.add({ severity: 'success', summary: 'Template Disimpan', detail: newTpl.name, life: 2000 })
+  toast.add({ severity: 'success', summary: 'Template Berhasil Disimpan', detail: newTpl.name, life: 2000 })
 }
 
 function exportJSON() {
@@ -337,7 +420,7 @@ function exportJSON() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `template_label_${activeTemplate.value.widthMm}x${activeTemplate.value.heightMm}mm.json`
+  a.download = `label_${activeTemplate.value.widthMm}x${activeTemplate.value.heightMm}mm.json`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -355,9 +438,9 @@ function importJSON(e: Event) {
         activeTemplate.value = parsed
         templates.value.push(parsed)
         saveTemplates()
-        toast.add({ severity: 'success', summary: 'Template Berhasil Diimpor', life: 2000 })
+        toast.add({ severity: 'success', summary: 'Template Diimpor', life: 2000 })
       } else {
-        toast.add({ severity: 'error', summary: 'Format file JSON tidak valid', life: 2500 })
+        toast.add({ severity: 'error', summary: 'File JSON template tidak valid', life: 2500 })
       }
     } catch {
       toast.add({ severity: 'error', summary: 'Gagal membaca file JSON', life: 2500 })
@@ -366,7 +449,7 @@ function importJSON(e: Event) {
   reader.readAsText(file)
 }
 
-// Keydown nudging
+// Navigasi Nudge dengan Keyboard Arrow Keys
 function onKeyDown(e: KeyboardEvent) {
   if (!activeElement.value) return
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -397,7 +480,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
 })
 
-// Get Items for printing
+// Data Barang yang Akan Dicetak
 const itemsToPrint = computed(() => {
   const targetIds = props.selectedIds.length > 0 ? props.selectedIds : [sampleItem.value.id]
   const list: any[] = []
@@ -415,19 +498,7 @@ function printLabels() {
   setTimeout(() => {
     window.print()
     isPrinting.value = false
-  }, 300)
-}
-
-function resolveFieldValue(item: any, field?: string) {
-  switch (field) {
-    case 'name': return item.name || '-'
-    case 'sku': return item.sku || '-'
-    case 'location': return item.location ? `📍 ${item.location}` : '-'
-    case 'category': return item.category || '-'
-    case 'register_number': return item.register_number ? `No. Reg: ${item.register_number}` : '-'
-    case 'merk': return item.merk || '-'
-    default: return '-'
-  }
+  }, 350)
 }
 </script>
 
@@ -435,85 +506,115 @@ function resolveFieldValue(item: any, field?: string) {
   <Dialog
     :visible="visible"
     modal
-    header="🎨 Desainer Label QR &amp; Barcode (Full Drag &amp; Drop)"
-    :style="{ width: '96vw', maxWidth: '1240px', height: '92vh' }"
+    header="Desainer Label QR &amp; Barcode (Drag &amp; Drop)"
+    :style="{ width: '96vw', maxWidth: '1360px', height: '94vh' }"
     :contentStyle="{ padding: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }"
     @update:visible="emit('update:visible', $event)"
   >
-    <!-- Top Action Bar -->
-    <div class="p-3 border-b flex flex-wrap items-center justify-between gap-2.5 bg-slate-900 text-white text-xs select-none">
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="font-bold text-slate-300">Ukuran Label:</span>
-        <div class="flex items-center gap-1">
+    <!-- TOP TOOLBAR: Clean, Professional, Light -->
+    <div class="px-4 py-2.5 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs select-none shadow-xs">
+      <!-- Left: Preset & Size Controls -->
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-500 font-semibold">Preset:</span>
+          <Select
+            :modelValue="activeTemplate.id"
+            :options="templates"
+            optionLabel="name"
+            optionValue="id"
+            placeholder="Pilih Preset..."
+            class="!w-[280px] !text-xs !py-0.5"
+            @update:modelValue="(val) => {
+              const found = templates.find((t) => t.id === val)
+              if (found) applyPreset(found)
+            }"
+          />
+        </div>
+
+        <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200">
+          <span class="text-slate-500 text-[11px] font-medium px-1">Ukuran:</span>
           <InputNumber
             v-model="activeTemplate.widthMm"
             :min="20"
             :max="210"
             suffix=" mm"
-            class="!w-[88px] !text-xs"
-            inputClass="!py-1 !text-xs !bg-slate-800 !text-white !border-slate-700"
+            class="!w-[76px] !text-xs"
+            inputClass="!py-0.5 !text-xs !bg-white !text-slate-800 text-center font-mono font-semibold"
           />
-          <span class="text-slate-400">&times;</span>
+          <span class="text-slate-400 font-bold">&times;</span>
           <InputNumber
             v-model="activeTemplate.heightMm"
             :min="10"
             :max="297"
             suffix=" mm"
-            class="!w-[88px] !text-xs"
-            inputClass="!py-1 !text-xs !bg-slate-800 !text-white !border-slate-700"
+            class="!w-[76px] !text-xs"
+            inputClass="!py-0.5 !text-xs !bg-white !text-slate-800 text-center font-mono font-semibold"
           />
         </div>
 
-        <span class="h-4 w-px bg-slate-700 mx-1" />
-
-        <!-- Preset Templates Selector -->
-        <Select
-          :modelValue="activeTemplate.id"
-          :options="templates"
-          optionLabel="name"
-          optionValue="id"
-          placeholder="Pilih Preset..."
-          class="!w-[230px] !text-xs"
-          @update:modelValue="(val) => {
-            const found = templates.find((t) => t.id === val)
-            if (found) applyPreset(found)
-          }"
-        />
-
         <Button
-          icon="pi pi-bookmark"
+          icon="pi pi-refresh"
+          label="Reset"
+          size="small"
+          text
+          severity="secondary"
+          v-tooltip.top="'Kembalikan tata letak ke preset awal'"
+          class="!text-xs !py-1"
+          @click="resetLayout"
+        />
+      </div>
+
+      <!-- Right: View Controls & Print Action -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Zoom Controller -->
+        <div class="flex items-center bg-slate-100 rounded-md border border-slate-200 px-1 py-0.5">
+          <button
+            type="button"
+            class="px-2 py-0.5 text-slate-600 hover:text-slate-900 font-bold"
+            title="Perkecil Kanvas"
+            @click="zoom = Math.max(1.2, zoom - 0.3)"
+          >
+            -
+          </button>
+          <span class="text-xs font-mono font-semibold text-slate-700 w-12 text-center">
+            {{ Math.round(zoom * 45) }}%
+          </span>
+          <button
+            type="button"
+            class="px-2 py-0.5 text-slate-600 hover:text-slate-900 font-bold"
+            title="Perbesar Kanvas"
+            @click="zoom = Math.min(3.5, zoom + 0.3)"
+          >
+            +
+          </button>
+        </div>
+
+        <!-- Snap Grid Toggle -->
+        <label class="flex items-center gap-1.5 cursor-pointer text-slate-600 text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1.5 rounded-md border border-slate-200">
+          <Checkbox v-model="snapGrid" binary />
+          <span>Snap 0.5mm</span>
+        </label>
+
+        <!-- Save Template -->
+        <Button
+          icon="pi pi-save"
           label="Simpan Template"
           size="small"
           severity="secondary"
           class="!text-xs !py-1"
           @click="saveCurrentAsNewTemplate"
         />
-      </div>
 
-      <div class="flex items-center gap-2">
-        <!-- Zoom Controller -->
-        <div class="flex items-center gap-1 bg-slate-800 rounded px-2 py-0.5 border border-slate-700">
-          <i class="pi pi-search-plus text-slate-400 text-xs" />
-          <button type="button" class="px-1 text-slate-300 hover:text-white" @click="zoom = Math.max(1, zoom - 0.5)">-</button>
-          <span class="text-xs font-mono w-10 text-center">{{ Math.round(zoom * 40) }}%</span>
-          <button type="button" class="px-1 text-slate-300 hover:text-white" @click="zoom = Math.min(4, zoom + 0.5)">+</button>
-        </div>
-
-        <!-- Snap Grid Toggle -->
-        <label class="flex items-center gap-1.5 cursor-pointer text-slate-300 text-xs bg-slate-800 px-2 py-1 rounded border border-slate-700">
-          <Checkbox v-model="snapGrid" binary />
-          <span>Snap 1mm</span>
-        </label>
-
-        <!-- Import / Export -->
-        <Button icon="pi pi-download" text rounded size="small" severity="secondary" v-tooltip.top="'Ekspor JSON'" @click="exportJSON" />
-        <label class="cursor-pointer p-1.5 rounded hover:bg-slate-800 text-slate-300" v-tooltip.top="'Impor JSON'">
+        <!-- Export / Import -->
+        <Button icon="pi pi-download" text rounded size="small" severity="secondary" v-tooltip.top="'Ekspor JSON Template'" @click="exportJSON" />
+        <label class="cursor-pointer p-1.5 rounded-md hover:bg-slate-100 text-slate-600" v-tooltip.top="'Impor File JSON'">
           <i class="pi pi-upload text-sm" />
           <input type="file" accept=".json" class="hidden" @change="importJSON" />
         </label>
 
-        <span class="h-4 w-px bg-slate-700 mx-1" />
+        <span class="h-4 w-px bg-slate-200 mx-1" />
 
+        <!-- Print Action -->
         <div class="flex items-center gap-1.5">
           <InputNumber
             v-model="copies"
@@ -521,409 +622,432 @@ function resolveFieldValue(item: any, field?: string) {
             :max="50"
             prefix="&times; "
             class="!w-[65px] !text-xs"
-            inputClass="!py-1 !text-xs !bg-slate-800 !text-white !border-slate-700 text-center"
-            v-tooltip.top="'Jumlah rangkap cetak'"
+            inputClass="!py-1 !text-xs !bg-slate-50 !text-slate-800 text-center font-bold"
+            v-tooltip.top="'Jumlah rangkap cetak per barang'"
           />
           <Button
             label="Cetak Label Ini"
             icon="pi pi-print"
             size="small"
             severity="success"
-            class="!text-xs !py-1 font-bold"
+            class="!text-xs !py-1 font-bold shadow-xs"
             @click="printLabels"
           />
         </div>
       </div>
     </div>
 
-    <!-- Main Workspace (Sidebar Palette + Canvas + Property Inspector) -->
-    <div class="flex-1 flex overflow-hidden bg-slate-950">
-      <!-- Left Sidebar: Elements Palette -->
-      <div class="w-60 border-r border-slate-800 bg-slate-900/90 p-3 flex flex-col gap-3 text-xs overflow-y-auto select-none">
-        <div class="font-bold text-slate-300 uppercase tracking-wider text-[10.5px]">Tambah Elemen Baru</div>
-
-        <div class="flex flex-col gap-1.5">
+    <!-- MAIN WORKSPACE: 3 COLUMNS -->
+    <div class="flex-1 flex overflow-hidden bg-slate-100">
+      <!-- LEFT COLUMN: PALETTE OF ELEMENTS FROM FORM & BARCODES -->
+      <div class="w-68 border-r border-slate-200 bg-white flex flex-col overflow-hidden select-none">
+        <!-- Palette Tab Headers -->
+        <div class="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1">
           <button
             type="button"
-            class="palette-btn"
-            @click="addElement('qr')"
+            class="tab-btn"
+            :class="paletteTab === 'form' ? 'tab-btn-active' : ''"
+            @click="paletteTab = 'form'"
           >
-            <i class="pi pi-qrcode text-indigo-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">QR Code</div>
-              <div class="text-[10px] text-slate-400">Link scan detail aset</div>
-            </div>
+            <i class="pi pi-list text-xs mr-1" />
+            <span>Data Formulir</span>
           </button>
-
           <button
             type="button"
-            class="palette-btn"
-            @click="addElement('code128')"
+            class="tab-btn"
+            :class="paletteTab === 'barcode' ? 'tab-btn-active' : ''"
+            @click="paletteTab = 'barcode'"
           >
-            <i class="pi pi-barcode text-sky-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Barcode 128</div>
-              <div class="text-[10px] text-slate-400">Barcode garis SKU</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('header')"
-          >
-            <i class="pi pi-building text-amber-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Header / Instansi</div>
-              <div class="text-[10px] text-slate-400">Judul kop stiker</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('field', 'name')"
-          >
-            <i class="pi pi-box text-emerald-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Nama Barang</div>
-              <div class="text-[10px] text-slate-400">Field dinamis nama</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('field', 'sku')"
-          >
-            <i class="pi pi-hashtag text-cyan-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Kode SKU</div>
-              <div class="text-[10px] text-slate-400">Kode inventaris barang</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('field', 'register_number')"
-          >
-            <i class="pi pi-id-card text-purple-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">No. Register / NUP</div>
-              <div class="text-[10px] text-slate-400">Nomor urut pencatatan</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('field', 'location')"
-          >
-            <i class="pi pi-map-marker text-rose-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Ruangan / Lokasi</div>
-              <div class="text-[10px] text-slate-400">Letak penempatan fisik</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('static_text')"
-          >
-            <i class="pi pi-pencil text-slate-300 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Teks Statis Bebas</div>
-              <div class="text-[10px] text-slate-400">Catatan peringatan / tahun</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('line')"
-          >
-            <i class="pi pi-minus text-slate-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Garis Pembatas</div>
-              <div class="text-[10px] text-slate-400">Divider horizontal</div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="palette-btn"
-            @click="addElement('logo')"
-          >
-            <i class="pi pi-image text-amber-400 text-base" />
-            <div class="text-left">
-              <div class="font-bold">Logo Instansi / Gambar</div>
-              <div class="text-[10px] text-slate-400">Logo Pemda / kantor</div>
-            </div>
+            <i class="pi pi-qrcode text-xs mr-1" />
+            <span>Barcode &amp; Kop</span>
           </button>
         </div>
 
-        <div class="mt-auto p-2 rounded bg-slate-800/80 border border-slate-700/60 text-[10.5px] text-slate-300 leading-relaxed">
-          💡 <strong>Tips:</strong> Klik elemen di kanvas untuk menggeser (drag). Tarik kotak biru di pojok kanan-bawah untuk mengubah ukuran. Gunakan tombol panah keyboard untuk pergeseran presisi 0.5 mm.
+        <!-- Palette Content: TAB 1 - ALL FIELDS FROM FORM -->
+        <div v-if="paletteTab === 'form'" class="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+            Klik field untuk taruh di stiker:
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <button
+              v-for="fld in AVAILABLE_FIELDS"
+              :key="fld.value"
+              type="button"
+              class="field-item-btn"
+              @click="addFieldElement(fld.value, fld.defaultPrefix)"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <i :class="[fld.icon, 'text-indigo-600 text-xs shrink-0']" />
+                <span class="font-semibold text-slate-800 truncate text-[11.5px]">{{ fld.label }}</span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono shrink-0">+ Taruh</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Palette Content: TAB 2 - BARCODE, HEADER, LOGO, DIVIDER, TEXT -->
+        <div v-else class="flex-1 overflow-y-auto p-3 flex flex-col gap-2.5">
+          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            Elemen Visual:
+          </div>
+
+          <button
+            type="button"
+            class="component-item-btn"
+            @click="addOtherElement('qr')"
+          >
+            <i class="pi pi-qrcode text-indigo-600 text-lg" />
+            <div class="text-left flex-1 min-w-0">
+              <div class="font-bold text-slate-800 text-[11.5px]">QR Code</div>
+              <div class="text-[10px] text-slate-500">Scan link aset interaktif</div>
+            </div>
+            <i class="pi pi-plus text-slate-400 text-xs" />
+          </button>
+
+          <button
+            type="button"
+            class="component-item-btn"
+            @click="addOtherElement('code128')"
+          >
+            <i class="pi pi-barcode text-cyan-600 text-lg" />
+            <div class="text-left flex-1 min-w-0">
+              <div class="font-bold text-slate-800 text-[11.5px]">Barcode 128</div>
+              <div class="text-[10px] text-slate-500">Barcode garis SKU aset</div>
+            </div>
+            <i class="pi pi-plus text-slate-400 text-xs" />
+          </button>
+
+          <button
+            type="button"
+            class="component-item-btn"
+            @click="addOtherElement('header')"
+          >
+            <i class="pi pi-building text-amber-600 text-lg" />
+            <div class="text-left flex-1 min-w-0">
+              <div class="font-bold text-slate-800 text-[11.5px]">Header / Kop Instansi</div>
+              <div class="text-[10px] text-slate-500">Judul kop instansi atas</div>
+            </div>
+            <i class="pi pi-plus text-slate-400 text-xs" />
+          </button>
+
+          <button
+            type="button"
+            class="component-item-btn"
+            @click="addOtherElement('logo')"
+          >
+            <i class="pi pi-image text-emerald-600 text-lg" />
+            <div class="text-left flex-1 min-w-0">
+              <div class="font-bold text-slate-800 text-[11.5px]">Logo Instansi / Kantor</div>
+              <div class="text-[10px] text-slate-500">Unggah file logo PNG/JPG</div>
+            </div>
+            <i class="pi pi-plus text-slate-400 text-xs" />
+          </button>
+
+          <button
+            type="button"
+            class="component-item-btn"
+            @click="addOtherElement('line')"
+          >
+            <i class="pi pi-minus text-slate-500 text-lg" />
+            <div class="text-left flex-1 min-w-0">
+              <div class="font-bold text-slate-800 text-[11.5px]">Garis Pembatas</div>
+              <div class="text-[10px] text-slate-500">Garis pemisah horizontal</div>
+            </div>
+            <i class="pi pi-plus text-slate-400 text-xs" />
+          </button>
+
+          <button
+            type="button"
+            class="component-item-btn"
+            @click="addOtherElement('static_text')"
+          >
+            <i class="pi pi-pencil text-purple-600 text-lg" />
+            <div class="text-left flex-1 min-w-0">
+              <div class="font-bold text-slate-800 text-[11.5px]">Teks Bebas Statis</div>
+              <div class="text-[10px] text-slate-500">Teks peringatan / keterangan</div>
+            </div>
+            <i class="pi pi-plus text-slate-400 text-xs" />
+          </button>
+        </div>
+
+        <div class="p-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-tight">
+          💡 Geser elemen langsung di stiker. Tarik titik biru di pojok untuk ubah ukuran.
         </div>
       </div>
 
-      <!-- Center: Visual WYSIWYG Canvas Area -->
+      <!-- CENTER COLUMN: VISUAL STICKER CANVAS -->
       <div
-        class="flex-1 overflow-auto p-8 grid place-items-center relative bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px]"
+        class="flex-1 overflow-auto p-8 grid place-items-center relative bg-slate-200/60"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
       >
-        <!-- Actual Label Container in Millimeters -->
-        <div
-          ref="canvasRef"
-          class="relative bg-white shadow-2xl rounded-sm border border-slate-400 text-black select-none overflow-hidden"
-          :style="{
-            width: `${activeTemplate.widthMm * MM_TO_PX * zoom}px`,
-            height: `${activeTemplate.heightMm * MM_TO_PX * zoom}px`,
-          }"
-          @click.self="activeElementId = null"
-        >
-          <!-- Grid Overlay when active -->
-          <div
-            v-if="snapGrid"
-            class="absolute inset-0 pointer-events-none opacity-20"
-            :style="{
-              backgroundImage: 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
-              backgroundSize: `${gridSizeMm * MM_TO_PX * zoom}px ${gridSizeMm * MM_TO_PX * zoom}px`,
-            }"
-          />
+        <div class="flex flex-col items-center gap-2">
+          <!-- Sticker Label Badge Info -->
+          <div class="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white/80 px-3 py-1 rounded-full border border-slate-300 shadow-xs">
+            <span>🏷️ {{ activeTemplate.widthMm }} &times; {{ activeTemplate.heightMm }} mm</span>
+            <span class="text-slate-300">|</span>
+            <span class="text-slate-500 font-normal">Sampel: {{ sampleItem.name }}</span>
+          </div>
 
-          <!-- Placed Elements on Canvas -->
+          <!-- THE PHYSICAL STICKER (White card with clean border and drop shadow) -->
           <div
-            v-for="el in activeTemplate.elements"
-            :key="el.id"
-            class="absolute cursor-move transition-shadow"
-            :class="[
-              activeElementId === el.id ? 'ring-2 ring-indigo-600 bg-indigo-50/20 z-20' : 'hover:ring-1 hover:ring-slate-400 z-10',
-            ]"
+            class="relative bg-white shadow-xl rounded-[4px] border border-slate-300 text-black select-none overflow-hidden transition-all"
             :style="{
-              left: `${el.x * MM_TO_PX * zoom}px`,
-              top: `${el.y * MM_TO_PX * zoom}px`,
-              width: `${el.w * MM_TO_PX * zoom}px`,
-              height: `${el.h * MM_TO_PX * zoom}px`,
+              width: `${activeTemplate.widthMm * MM_TO_PX * zoom}px`,
+              height: `${activeTemplate.heightMm * MM_TO_PX * zoom}px`,
             }"
-            @pointerdown="startDrag($event, el)"
-            @click.stop="activeElementId = el.id"
+            @click.self="activeElementId = null"
           >
-            <!-- 1. QR Code Element -->
+            <!-- Optional Faint Grid Guides -->
             <div
-              v-if="el.type === 'qr'"
-              class="w-full h-full p-0.5 flex items-center justify-center pointer-events-none"
-            >
-              <img
-                :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
-                class="w-full h-full object-contain pointer-events-none"
-                alt="QR"
-              />
-            </div>
-
-            <!-- 2. Barcode 128 Element -->
-            <div
-              v-else-if="el.type === 'code128'"
-              class="w-full h-full p-0.5 flex flex-col items-center justify-center pointer-events-none"
-            >
-              <img
-                :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`"
-                class="w-full h-[75%] object-contain pointer-events-none"
-                alt="Barcode"
-              />
-              <span class="text-[8px] font-mono font-bold leading-tight truncate max-w-full">{{ sampleItem.sku }}</span>
-            </div>
-
-            <!-- 3. Header / Instansi Element -->
-            <div
-              v-else-if="el.type === 'header'"
-              class="w-full h-full flex items-center pointer-events-none uppercase tracking-wide leading-tight truncate px-0.5"
-              :class="[
-                el.border ? 'border-b border-black' : '',
-                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-              ]"
+              v-if="showGuideGrid"
+              class="absolute inset-0 pointer-events-none opacity-10"
               :style="{
-                fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
-                fontWeight: el.bold ? 800 : 600,
+                backgroundImage: 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
+                backgroundSize: `${gridSizeMm * 2 * MM_TO_PX * zoom}px ${gridSizeMm * 2 * MM_TO_PX * zoom}px`,
               }"
-            >
-              {{ el.text || 'INVENTARIS KANTOR' }}
-            </div>
-
-            <!-- 4. Field Element -->
-            <div
-              v-else-if="el.type === 'field'"
-              class="w-full h-full flex items-center pointer-events-none leading-tight px-0.5 overflow-hidden"
-              :class="[
-                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-              ]"
-              :style="{
-                fontSize: `${(el.fontSize || 7.5) * (zoom / 2)}pt`,
-                fontWeight: el.bold ? 700 : 400,
-                fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
-              }"
-            >
-              <span class="truncate">{{ resolveFieldValue(sampleItem, el.field) }}</span>
-            </div>
-
-            <!-- 5. Static Text Element -->
-            <div
-              v-else-if="el.type === 'static_text'"
-              class="w-full h-full flex items-center pointer-events-none leading-tight px-0.5 overflow-hidden"
-              :class="[
-                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-              ]"
-              :style="{
-                fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
-                fontWeight: el.bold ? 700 : 400,
-              }"
-            >
-              <span class="truncate">{{ el.text }}</span>
-            </div>
-
-            <!-- 6. Line Divider Element -->
-            <div
-              v-else-if="el.type === 'line'"
-              class="w-full h-full pointer-events-none border-t border-black my-auto"
             />
 
-            <!-- 7. Logo / Image Element -->
+            <!-- Placed Elements on Sticker -->
             <div
-              v-else-if="el.type === 'logo'"
-              class="w-full h-full p-0.5 flex items-center justify-center pointer-events-none"
+              v-for="el in activeTemplate.elements"
+              :key="el.id"
+              class="absolute cursor-move transition-shadow"
+              :class="[
+                activeElementId === el.id
+                  ? 'ring-2 ring-indigo-600 ring-offset-1 bg-indigo-50/20 z-20'
+                  : 'hover:ring-1 hover:ring-indigo-300 z-10',
+              ]"
+              :style="{
+                left: `${el.x * MM_TO_PX * zoom}px`,
+                top: `${el.y * MM_TO_PX * zoom}px`,
+                width: `${el.w * MM_TO_PX * zoom}px`,
+                height: `${el.h * MM_TO_PX * zoom}px`,
+              }"
+              @pointerdown="startDrag($event, el)"
+              @click.stop="activeElementId = el.id"
             >
-              <img
-                v-if="el.logoUrl"
-                :src="el.logoUrl"
-                class="w-full h-full object-contain pointer-events-none"
-                alt="Logo"
-              />
+              <!-- 1. QR Code -->
               <div
-                v-else
-                class="w-full h-full border border-dashed border-slate-400 bg-slate-50 flex flex-col items-center justify-center text-slate-400 p-1"
+                v-if="el.type === 'qr'"
+                class="w-full h-full p-0.5 flex items-center justify-center pointer-events-none"
               >
-                <i class="pi pi-image text-sm mb-0.5" />
-                <span class="text-[7px] text-center font-bold">Upload Logo</span>
+                <img
+                  :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
+                  class="w-full h-full object-contain pointer-events-none"
+                  alt="QR"
+                />
               </div>
-            </div>
 
-            <!-- Resize Handle for Active Element -->
-            <div
-              v-if="activeElementId === el.id"
-              class="absolute -right-1 -bottom-1 w-3 h-3 bg-indigo-600 border border-white rounded-xs cursor-nwse-resize z-30"
-              @pointerdown.stop="startResize($event, el)"
-            />
+              <!-- 2. Barcode 128 -->
+              <div
+                v-else-if="el.type === 'code128'"
+                class="w-full h-full p-0.5 flex flex-col items-center justify-center pointer-events-none"
+              >
+                <img
+                  :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`"
+                  class="w-full h-[75%] object-contain pointer-events-none"
+                  alt="BC"
+                />
+                <span class="text-[8px] font-mono font-bold leading-tight truncate max-w-full">{{ sampleItem.sku }}</span>
+              </div>
+
+              <!-- 3. Header / Kop -->
+              <div
+                v-else-if="el.type === 'header'"
+                class="w-full h-full flex items-center pointer-events-none uppercase tracking-wide leading-tight truncate px-0.5"
+                :class="[
+                  el.border ? 'border-b border-black' : '',
+                  el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+                ]"
+                :style="{
+                  fontSize: `${(el.fontSize || 6.5) * (zoom / 2)}pt`,
+                  fontWeight: el.bold ? 800 : 600,
+                }"
+              >
+                {{ el.text || 'PEMERINTAH KABUPATEN KSB' }}
+              </div>
+
+              <!-- 4. Dynamic Field from Form -->
+              <div
+                v-else-if="el.type === 'field'"
+                class="w-full h-full flex items-center pointer-events-none leading-tight px-0.5 overflow-hidden"
+                :class="[
+                  el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+                ]"
+                :style="{
+                  fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
+                  fontWeight: el.bold ? 700 : 400,
+                  fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
+                }"
+              >
+                <span class="truncate">{{ resolveFieldValue(sampleItem, el.field, el.prefix) }}</span>
+              </div>
+
+              <!-- 5. Static Text -->
+              <div
+                v-else-if="el.type === 'static_text'"
+                class="w-full h-full flex items-center pointer-events-none leading-tight px-0.5 overflow-hidden"
+                :class="[
+                  el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+                ]"
+                :style="{
+                  fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
+                  fontWeight: el.bold ? 700 : 400,
+                }"
+              >
+                <span class="truncate">{{ el.text }}</span>
+              </div>
+
+              <!-- 6. Line Divider -->
+              <div
+                v-else-if="el.type === 'line'"
+                class="w-full h-full pointer-events-none border-t border-black my-auto"
+              />
+
+              <!-- 7. Logo -->
+              <div
+                v-else-if="el.type === 'logo'"
+                class="w-full h-full p-0.5 flex items-center justify-center pointer-events-none"
+              >
+                <img
+                  v-if="el.logoUrl"
+                  :src="el.logoUrl"
+                  class="w-full h-full object-contain pointer-events-none"
+                  alt="Logo"
+                />
+                <div
+                  v-else
+                  class="w-full h-full border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-slate-400 p-1"
+                >
+                  <i class="pi pi-image text-sm" />
+                </div>
+              </div>
+
+              <!-- Resize Handle -->
+              <div
+                v-if="activeElementId === el.id"
+                class="absolute -right-1 -bottom-1 w-3.5 h-3.5 bg-indigo-600 border-2 border-white rounded-xs cursor-nwse-resize z-30 shadow-xs"
+                @pointerdown.stop="startResize($event, el)"
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Right Sidebar: Properties Inspector -->
-      <div class="w-64 border-l border-slate-800 bg-slate-900/90 p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
-        <div class="font-bold text-slate-300 uppercase tracking-wider text-[10.5px] flex items-center justify-between">
-          <span>Properti Elemen</span>
-          <Tag v-if="activeElement" :value="activeElement.type" severity="info" class="!text-[9px] !py-0" />
+      <!-- RIGHT COLUMN: PROPERTIES INSPECTOR -->
+      <div class="w-72 border-l border-slate-200 bg-white p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
+        <div class="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between pb-2 border-b border-slate-200">
+          <span>Pengaturan Elemen</span>
+          <Tag v-if="activeElement" :value="activeElement.type.toUpperCase()" severity="info" class="!text-[9px] !py-0" />
         </div>
 
         <div v-if="activeElement" class="flex flex-col gap-3">
-          <!-- Text Value for Header & Static -->
+          <!-- 1. Text Field Inputs -->
           <div v-if="activeElement.type === 'header' || activeElement.type === 'static_text'" class="flex flex-col gap-1">
-            <label class="text-slate-400 text-[11px]">Teks Tampilan</label>
-            <InputText v-model="activeElement.text" class="w-full !text-xs !py-1 !bg-slate-800 !text-white !border-slate-700" />
+            <label class="text-slate-600 font-semibold text-[11px]">Teks Tampilan</label>
+            <InputText v-model="activeElement.text" class="w-full !text-xs !py-1" />
           </div>
 
-          <!-- Dynamic Field Selector -->
-          <div v-if="activeElement.type === 'field'" class="flex flex-col gap-1">
-            <label class="text-slate-400 text-[11px]">Field Data Barang</label>
-            <Select
-              v-model="activeElement.field"
-              :options="[
-                { label: 'Nama Barang', value: 'name' },
-                { label: 'Kode SKU', value: 'sku' },
-                { label: 'Lokasi / Ruangan', value: 'location' },
-                { label: 'Kategori', value: 'category' },
-                { label: 'No. Register / NUP', value: 'register_number' },
-                { label: 'Merk / Tipe', value: 'merk' },
-              ]"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full !text-xs"
-            />
-          </div>
+          <!-- 2. Form Field Selector & Prefix -->
+          <div v-if="activeElement.type === 'field'" class="flex flex-col gap-2 p-2 bg-slate-50 rounded-md border border-slate-200">
+            <div class="flex flex-col gap-1">
+              <label class="text-slate-600 font-semibold text-[11px]">Field dari Formulir</label>
+              <Select
+                v-model="activeElement.field"
+                :options="AVAILABLE_FIELDS"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full !text-xs"
+              />
+            </div>
 
-          <!-- Dimensions & Coordinates Grid (mm) -->
-          <div class="grid grid-cols-2 gap-2 p-2 bg-slate-800/80 rounded border border-slate-700/80">
             <div class="flex flex-col gap-1">
-              <label class="text-[10px] text-slate-400 font-mono">Posisi X (mm)</label>
-              <InputNumber v-model="activeElement.x" :min="0" :step="0.5" class="w-full !text-xs" inputClass="!py-0.5 !text-xs !bg-slate-900 !text-white" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] text-slate-400 font-mono">Posisi Y (mm)</label>
-              <InputNumber v-model="activeElement.y" :min="0" :step="0.5" class="w-full !text-xs" inputClass="!py-0.5 !text-xs !bg-slate-900 !text-white" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] text-slate-400 font-mono">Lebar (mm)</label>
-              <InputNumber v-model="activeElement.w" :min="2" :step="0.5" class="w-full !text-xs" inputClass="!py-0.5 !text-xs !bg-slate-900 !text-white" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] text-slate-400 font-mono">Tinggi (mm)</label>
-              <InputNumber v-model="activeElement.h" :min="1" :step="0.5" class="w-full !text-xs" inputClass="!py-0.5 !text-xs !bg-slate-900 !text-white" />
+              <label class="text-slate-600 font-semibold text-[11px]">Teks Awalan (Prefix)</label>
+              <InputText
+                v-model="activeElement.prefix"
+                placeholder="Contoh: NUP: , Thn: , dll"
+                class="w-full !text-xs !py-1"
+              />
+              <span class="text-[10px] text-slate-400">Contoh hasil: "{{ resolveFieldValue(sampleItem, activeElement.field, activeElement.prefix) }}"</span>
             </div>
           </div>
 
-          <!-- Logo Image Controls -->
-          <div v-if="activeElement.type === 'logo'" class="flex flex-col gap-2 p-2.5 bg-slate-800/80 rounded border border-slate-700/80">
-            <label class="text-[11px] text-slate-300 font-bold">Gambar Logo</label>
+          <!-- 3. Logo Controls -->
+          <div v-if="activeElement.type === 'logo'" class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-md border border-slate-200">
+            <label class="text-[11px] text-slate-700 font-bold">File Gambar Logo</label>
             <div v-if="activeElement.logoUrl" class="flex items-center gap-2">
-              <img :src="activeElement.logoUrl" class="w-12 h-12 object-contain bg-white rounded p-1 border border-slate-600" alt="Preview" />
+              <img :src="activeElement.logoUrl" class="w-12 h-12 object-contain bg-white rounded p-1 border border-slate-300" alt="Preview" />
               <div class="flex flex-col gap-1 flex-1">
-                <span class="text-[10px] text-emerald-400">✓ Logo terpasang</span>
+                <span class="text-[10.5px] text-emerald-600 font-semibold">✓ Logo terpasang</span>
                 <button
                   type="button"
-                  class="text-[10.5px] text-rose-400 hover:text-rose-300 text-left font-semibold"
+                  class="text-[10px] text-rose-600 hover:text-rose-700 text-left font-semibold"
                   @click="activeElement.logoUrl = ''"
                 >
-                  Hapus Gambar
+                  Hapus Logo
                 </button>
               </div>
             </div>
 
-            <label class="cursor-pointer w-full flex items-center justify-center gap-2 py-1.5 px-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold transition-colors">
+            <label class="cursor-pointer w-full flex items-center justify-center gap-2 py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold transition-colors">
               <i class="pi pi-upload text-xs" />
-              <span>{{ activeElement.logoUrl ? 'Ganti File Logo' : 'Unggah File Logo (PNG/JPG)' }}</span>
+              <span>{{ activeElement.logoUrl ? 'Ganti Logo' : 'Unggah File Logo (PNG/JPG)' }}</span>
               <input type="file" accept="image/*" class="hidden" @change="handleLogoUpload" />
             </label>
-            <span class="text-[9.5px] text-slate-400">Rekomendasi file PNG transparan untuk hasil cetak bersih.</span>
           </div>
 
-          <!-- Typography (Font Size, Bold, Alignment) -->
-          <div v-if="!['qr', 'code128', 'line', 'logo'].includes(activeElement.type)" class="flex flex-col gap-2 p-2 bg-slate-800/80 rounded border border-slate-700/80">
+          <!-- 4. Dimension & Position (mm) -->
+          <div class="p-2.5 bg-slate-50 rounded-md border border-slate-200 flex flex-col gap-2">
+            <span class="text-[11px] font-bold text-slate-700">Posisi &amp; Ukuran (mm)</span>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] text-slate-500 font-mono">Posisi X</label>
+                <InputNumber v-model="activeElement.x" :min="0" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] text-slate-500 font-mono">Posisi Y</label>
+                <InputNumber v-model="activeElement.y" :min="0" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] text-slate-500 font-mono">Lebar (W)</label>
+                <InputNumber v-model="activeElement.w" :min="2" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] text-slate-500 font-mono">Tinggi (H)</label>
+                <InputNumber v-model="activeElement.h" :min="1" :step="0.5" suffix=" mm" class="w-full !text-xs" inputClass="!py-0.5 !text-xs font-mono" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Typography -->
+          <div v-if="!['qr', 'code128', 'line', 'logo'].includes(activeElement.type)" class="p-2.5 bg-slate-50 rounded-md border border-slate-200 flex flex-col gap-2">
             <div class="flex items-center justify-between">
-              <label class="text-[10.5px] text-slate-400">Ukuran Font</label>
-              <InputNumber v-model="activeElement.fontSize" :min="4" :max="36" suffix=" pt" class="!w-24 !text-xs" inputClass="!py-0.5 !text-xs !bg-slate-900 !text-white text-center" />
+              <label class="text-[11px] font-semibold text-slate-700">Ukuran Huruf</label>
+              <InputNumber v-model="activeElement.fontSize" :min="4" :max="36" suffix=" pt" class="!w-24 !text-xs" inputClass="!py-0.5 !text-xs text-center font-bold" />
             </div>
 
-            <div class="flex items-center justify-between pt-1 border-t border-slate-700">
-              <label class="flex items-center gap-1.5 cursor-pointer text-slate-300 text-[11px]">
+            <div class="flex items-center justify-between pt-1.5 border-t border-slate-200">
+              <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-[11px]">
                 <Checkbox v-model="activeElement.bold" binary />
-                <span>Huruf Tebal (Bold)</span>
+                <span class="font-bold">Tebal (Bold)</span>
               </label>
 
-              <label v-if="activeElement.type === 'header'" class="flex items-center gap-1.5 cursor-pointer text-slate-300 text-[11px]">
+              <label v-if="activeElement.type === 'header'" class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-[11px]">
                 <Checkbox v-model="activeElement.border" binary />
                 <span>Garis Bawah</span>
               </label>
             </div>
 
-            <div class="flex items-center justify-between pt-1 border-t border-slate-700">
-              <span class="text-[10.5px] text-slate-400">Rata Teks:</span>
-              <div class="flex items-center gap-1">
+            <div class="flex items-center justify-between pt-1.5 border-t border-slate-200">
+              <span class="text-[11px] text-slate-600">Perataan:</span>
+              <div class="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200">
                 <button
                   type="button"
                   class="align-btn"
-                  :class="activeElement.align === 'left' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700'"
+                  :class="activeElement.align === 'left' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'"
+                  title="Rata Kiri"
                   @click="activeElement.align = 'left'"
                 >
                   <i class="pi pi-align-left text-xs" />
@@ -931,7 +1055,8 @@ function resolveFieldValue(item: any, field?: string) {
                 <button
                   type="button"
                   class="align-btn"
-                  :class="activeElement.align === 'center' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700'"
+                  :class="activeElement.align === 'center' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'"
+                  title="Rata Tengah"
                   @click="activeElement.align = 'center'"
                 >
                   <i class="pi pi-align-center text-xs" />
@@ -939,7 +1064,8 @@ function resolveFieldValue(item: any, field?: string) {
                 <button
                   type="button"
                   class="align-btn"
-                  :class="activeElement.align === 'right' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700'"
+                  :class="activeElement.align === 'right' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'"
+                  title="Rata Kanan"
                   @click="activeElement.align = 'right'"
                 >
                   <i class="pi pi-align-right text-xs" />
@@ -948,13 +1074,14 @@ function resolveFieldValue(item: any, field?: string) {
             </div>
           </div>
 
-          <!-- Actions: Duplicate & Delete -->
-          <div class="flex items-center gap-2 pt-2">
+          <!-- 6. Actions (Duplicate & Delete) -->
+          <div class="flex items-center gap-2 pt-1">
             <Button
               icon="pi pi-copy"
               label="Duplikat"
               size="small"
               severity="secondary"
+              outlined
               class="w-1/2 !text-xs !py-1"
               @click="duplicateActiveElement"
             />
@@ -969,15 +1096,16 @@ function resolveFieldValue(item: any, field?: string) {
           </div>
         </div>
 
-        <div v-else class="flex flex-col items-center justify-center p-8 text-center text-slate-500">
-          <i class="pi pi-mouse text-2xl mb-2 opacity-50" />
-          <p>Klik salah satu elemen pada kanvas stiker untuk mengatur propertinya.</p>
+        <!-- Empty State in Inspector -->
+        <div v-else class="flex flex-col items-center justify-center p-8 text-center text-slate-400">
+          <i class="pi pi-mouse text-3xl mb-2 text-slate-300" />
+          <p class="text-xs">Klik salah satu elemen pada stiker untuk mengatur ukuran, teks, atau posisinya.</p>
         </div>
       </div>
     </div>
   </Dialog>
 
-  <!-- PURE PRINT ENGINE (Rendered only on window.print) -->
+  <!-- PURE PRINT ENGINE (Direnter khusus saat window.print) -->
   <teleport to="body">
     <div v-if="isPrinting" id="custom-print-sheet">
       <div
@@ -1000,7 +1128,7 @@ function resolveFieldValue(item: any, field?: string) {
             height: `${el.h}mm`,
           }"
         >
-          <!-- QR -->
+          <!-- QR Code -->
           <img
             v-if="el.type === 'qr'"
             :src="`/api/barcode/${it.id}.png?fmt=qr`"
@@ -1011,7 +1139,7 @@ function resolveFieldValue(item: any, field?: string) {
           <!-- Barcode 128 -->
           <div v-else-if="el.type === 'code128'" class="w-full h-full flex flex-col items-center justify-center">
             <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="w-full h-[75%] object-contain" alt="BC" />
-            <span class="text-[7.5pt] font-mono font-bold leading-none truncate">{{ it.sku }}</span>
+            <span class="text-[7pt] font-mono font-bold leading-none truncate">{{ it.sku }}</span>
           </div>
 
           <!-- Header -->
@@ -1023,14 +1151,14 @@ function resolveFieldValue(item: any, field?: string) {
               el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
             ]"
             :style="{
-              fontSize: `${el.fontSize || 7}pt`,
+              fontSize: `${el.fontSize || 6.5}pt`,
               fontWeight: el.bold ? 800 : 600,
             }"
           >
             {{ el.text }}
           </div>
 
-          <!-- Field -->
+          <!-- Dynamic Field from Form -->
           <div
             v-else-if="el.type === 'field'"
             class="w-full h-full flex items-center leading-tight truncate"
@@ -1038,12 +1166,12 @@ function resolveFieldValue(item: any, field?: string) {
               el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
             ]"
             :style="{
-              fontSize: `${el.fontSize || 7.5}pt`,
+              fontSize: `${el.fontSize || 7}pt`,
               fontWeight: el.bold ? 700 : 400,
               fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
             }"
           >
-            {{ resolveFieldValue(it, el.field) }}
+            {{ resolveFieldValue(it, el.field, el.prefix) }}
           </div>
 
           <!-- Static Text -->
@@ -1061,7 +1189,7 @@ function resolveFieldValue(item: any, field?: string) {
             {{ el.text }}
           </div>
 
-          <!-- Line -->
+          <!-- Line Divider -->
           <div
             v-else-if="el.type === 'line'"
             class="w-full h-full border-t border-black my-auto"
@@ -1081,26 +1209,66 @@ function resolveFieldValue(item: any, field?: string) {
 </template>
 
 <style scoped>
-.palette-btn {
+.tab-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tab-btn-active {
+  background: #ffffff;
+  color: #4f46e5;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.field-item-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+.field-item-btn:hover {
+  background-color: #f8fafc;
+  border-color: #6366f1;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+
+.component-item-btn {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  background-color: rgba(30, 41, 59, 0.7);
-  border: 1px solid rgba(51, 65, 85, 0.8);
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 6px;
-  color: #f1f5f9;
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.palette-btn:hover {
-  background-color: #334155;
+.component-item-btn:hover {
+  background-color: #f8fafc;
   border-color: #6366f1;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 
 .align-btn {
   padding: 3px 6px;
   border-radius: 4px;
+  border: none;
   cursor: pointer;
   transition: all 0.1s ease;
 }
@@ -1109,33 +1277,33 @@ function resolveFieldValue(item: any, field?: string) {
 <style>
 @media print {
   body * {
-    visibility: hidden;
+    visibility: hidden !important;
   }
   #custom-print-sheet,
   #custom-print-sheet * {
-    visibility: visible;
+    visibility: visible !important;
   }
   #custom-print-sheet {
-    position: absolute;
-    left: 0;
-    top: 0;
-    margin: 0;
-    padding: 0;
-    background: transparent;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
   }
   .custom-print-label {
-    position: relative;
-    box-sizing: border-box;
-    overflow: hidden;
-    background: #ffffff;
-    page-break-after: always;
-    break-after: page;
+    position: relative !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    page-break-after: always !important;
+    break-after: page !important;
   }
   .custom-print-el {
-    position: absolute;
-    box-sizing: border-box;
-    display: flex;
-    overflow: hidden;
+    position: absolute !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    overflow: hidden !important;
   }
 }
 </style>
