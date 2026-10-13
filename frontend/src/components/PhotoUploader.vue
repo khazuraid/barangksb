@@ -448,15 +448,16 @@ async function stampGpsMapCamera(
         const badgeIconSize = Math.round(badgeSize * 1.3)
         const badgeTotalW = badgeIconSize + badgeTextW + Math.round(10 * scale)
 
-        // Map thumbnail dimensions dynamically adapted to aspect ratio
-        const approxMapSize = Math.round(isLandscape ? height * 0.22 : width * 0.23)
+        // Map thumbnail dimensions: fixed proportional square on the left (never balloons horizontally)
+        const mapSize = Math.round(isLandscape ? height * 0.20 : width * 0.22)
+        const mapGap = Math.round(isPortrait ? 16 * scale : 20 * scale)
 
-        // Available width for right-side text column
-        const textX = padX + approxMapSize + padX
+        // Available width for right-side text column (strictly after map + gap)
+        const textX = padX + mapSize + mapGap
         // Title area width guarantees zero overlap with top-right badge
-        const titleAreaW = cardW - textX - badgeTotalW - padX - Math.round(14 * scale)
+        const titleAreaW = Math.max(120, cardW - textX - badgeTotalW - padX - Math.round(14 * scale))
         // Full text width for address, coords, and timestamp
-        const textAreaW = cardW - textX - padX
+        const textAreaW = Math.max(120, cardW - textX - padX)
 
         let textContentH = 0
         let itemLines: string[] = []
@@ -479,7 +480,7 @@ async function stampGpsMapCamera(
 
           // 3. Street Address
           ctx.font = `400 ${metaSize}px system-ui, -apple-system, sans-serif`
-          addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
+          addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 3)
 
           const itemBlockH = itemLines.length * titleLineH
           const subBlockH = subLines.length * bodyLineH
@@ -491,21 +492,21 @@ async function stampGpsMapCamera(
           titleLines = wrapText(ctx, titleText, titleAreaW).slice(0, 2)
 
           ctx.font = `400 ${bodySize}px system-ui, -apple-system, sans-serif`
-          addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 2)
+          addressLines = wrapText(ctx, addressText, textAreaW).slice(0, 3)
 
           const titleBlockH = titleLines.length * titleLineH
           const addressBlockH = addressLines.length * bodyLineH
           textContentH = titleBlockH + Math.round(6 * scale) + addressBlockH + Math.round(6 * scale) + metaLineH * 2 + Math.round(6 * scale)
         }
 
-        const mapSize = Math.max(approxMapSize, textContentH)
-        const cardH = mapSize + padY * 2
+        // Card height safely accommodates both the map thumbnail and the text content
+        const cardH = Math.max(mapSize, textContentH) + padY * 2
         // Flush at bottom edge
         const cardY = height - cardH
 
         // Draw Card Background (semi-translucent deep charcoal with subtle top divider)
         ctx.save()
-        ctx.fillStyle = 'rgba(15, 18, 22, 0.88)'
+        ctx.fillStyle = 'rgba(15, 18, 22, 0.90)'
         ctx.fillRect(cardX, cardY, cardW, cardH)
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)'
         ctx.lineWidth = Math.max(1, Math.round(scale))
@@ -539,9 +540,9 @@ async function stampGpsMapCamera(
         ctx.fillText(badgeText, badgeX + badgeIconSize + Math.round(6 * scale), badgeY)
         ctx.restore()
 
-        // Draw Map Box (Left column)
+        // Draw Map Box (Left column, centered vertically inside card)
         const mapX = padX
-        const mapY = cardY + padY
+        const mapY = cardY + Math.round((cardH - mapSize) / 2)
         const mapRadius = Math.round(10 * scale)
 
         ctx.save()
@@ -575,9 +576,8 @@ async function stampGpsMapCamera(
         ctx.fillText('Google', mapX + 7, mapY + mapSize - 7)
         ctx.restore()
 
-        // Draw Text Block (Right column, vertically centered with map)
-        const textYOffset = Math.max(0, Math.floor((mapSize - textContentH) / 2))
-        let textY = cardY + padY + textYOffset
+        // Draw Text Block (Right column, vertically centered inside card)
+        let textY = cardY + Math.max(padY, Math.round((cardH - textContentH) / 2))
 
         ctx.save()
         ctx.shadowColor = 'rgba(0, 0, 0, 0.95)'
