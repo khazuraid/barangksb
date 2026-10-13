@@ -295,7 +295,6 @@ function handleLogoUpload(e: Event) {
   }
   reader.readAsDataURL(file)
 }
-}
 
 function removeActiveElement() {
   if (!activeElementId.value) return
