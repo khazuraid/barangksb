@@ -26,9 +26,20 @@ export interface LabelElement {
   lineOrientation?: 'horizontal' | 'vertical'
 }
 
+export interface TableCellConfig {
+  id: string
+  field: string
+  label: string
+  customText?: string
+  bold?: boolean
+  fontSize?: number // pt (opsional)
+  align?: 'left' | 'center' | 'right'
+  bgColor?: 'white' | 'light_gray' | 'dark'
+}
+
 export interface TableRowConfig {
   id: string
-  type: 'field' | 'two_fields' | 'custom' | 'barcode_strip'
+  type: 'cells' | 'field' | 'two_fields' | 'custom' | 'barcode_strip'
   field: string
   label: string
   field2?: string
@@ -40,6 +51,7 @@ export interface TableRowConfig {
   align?: 'left' | 'center' | 'right'
   bgColor?: 'white' | 'light_gray' | 'dark'
   hasBottomBorder?: boolean
+  cells?: TableCellConfig[]
 }
 
 export interface TableLayoutConfig {
@@ -165,10 +177,51 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
       footerFontSize: 5.5,
       defaultFontSize: 6.5,
       rows: [
-        { id: 'r1', type: 'field', field: 'name', label: 'Nama', bold: true, fontSize: 7, bgColor: 'white' },
-        { id: 'r2', type: 'field', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5, bgColor: 'white' },
-        { id: 'r3', type: 'field', field: 'register_number', label: 'No. Reg', bold: false, fontSize: 6, bgColor: 'white' },
-        { id: 'r4', type: 'two_fields', field: 'location', label: 'Ruang', field2: 'procurement_year', label2: 'Tahun', bold: false, fontSize: 6, bgColor: 'white' },
+        {
+          id: 'r1',
+          type: 'cells',
+          field: 'name',
+          label: 'Nama',
+          bold: true,
+          fontSize: 7,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'name', label: 'Nama', bold: true, fontSize: 7, bgColor: 'white' }],
+        },
+        {
+          id: 'r2',
+          type: 'cells',
+          field: 'sku',
+          label: 'SKU',
+          bold: true,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5, bgColor: 'white' }],
+        },
+        {
+          id: 'r3',
+          type: 'cells',
+          field: 'register_number',
+          label: 'No. Reg',
+          bold: false,
+          fontSize: 6,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'register_number', label: 'No. Reg', bold: false, fontSize: 6, bgColor: 'white' }],
+        },
+        {
+          id: 'r4',
+          type: 'cells',
+          field: 'location',
+          label: 'Ruang',
+          field2: 'procurement_year',
+          label2: 'Tahun',
+          bold: false,
+          fontSize: 6,
+          bgColor: 'white',
+          cells: [
+            { id: 'c1', field: 'location', label: 'Ruang', bold: false, fontSize: 6, bgColor: 'white' },
+            { id: 'c2', field: 'procurement_year', label: 'Tahun', bold: false, fontSize: 6, bgColor: 'white' },
+          ],
+        },
       ],
     },
     elements: [],
@@ -207,9 +260,41 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
       footerFontSize: 5.5,
       defaultFontSize: 6.5,
       rows: [
-        { id: 'r1', type: 'field', field: 'name', label: 'Barang', bold: true, fontSize: 7, bgColor: 'white' },
-        { id: 'r2', type: 'field', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5, bgColor: 'white' },
-        { id: 'r3', type: 'two_fields', field: 'register_number', label: 'NUP', field2: 'location', label2: 'Ruang', bold: false, fontSize: 6, bgColor: 'white' },
+        {
+          id: 'r1',
+          type: 'cells',
+          field: 'name',
+          label: 'Barang',
+          bold: true,
+          fontSize: 7,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'name', label: 'Barang', bold: true, fontSize: 7, bgColor: 'white' }],
+        },
+        {
+          id: 'r2',
+          type: 'cells',
+          field: 'sku',
+          label: 'SKU',
+          bold: true,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5, bgColor: 'white' }],
+        },
+        {
+          id: 'r3',
+          type: 'cells',
+          field: 'register_number',
+          label: 'NUP',
+          field2: 'location',
+          label2: 'Ruang',
+          bold: false,
+          fontSize: 6,
+          bgColor: 'white',
+          cells: [
+            { id: 'c1', field: 'register_number', label: 'NUP', bold: false, fontSize: 6, bgColor: 'white' },
+            { id: 'c2', field: 'location', label: 'Ruang', bold: false, fontSize: 6, bgColor: 'white' },
+          ],
+        },
       ],
     },
     elements: [],
@@ -248,12 +333,76 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
       footerFontSize: 5.5,
       defaultFontSize: 6.5,
       rows: [
-        { id: 'r1', type: 'field', field: 'name', label: 'Nama Barang', bold: true, fontSize: 7.5, bgColor: 'white' },
-        { id: 'r2', type: 'two_fields', field: 'item_code', label: 'Kode KIB', field2: 'register_number', label2: 'No. Reg', bold: false, fontSize: 6.5, bgColor: 'white' },
-        { id: 'r3', type: 'field', field: 'sku', label: 'SKU / Barcode', bold: true, fontSize: 6.5, bgColor: 'white' },
-        { id: 'r4', type: 'two_fields', field: 'merk', label: 'Merk/Tipe', field2: 'procurement_year', label2: 'Tahun', bold: false, fontSize: 6.5, bgColor: 'white' },
-        { id: 'r5', type: 'field', field: 'location', label: 'Ruangan', bold: false, fontSize: 6.5, bgColor: 'white' },
-        { id: 'r6', type: 'field', field: 'funding_source', label: 'Sumber Dana', bold: false, fontSize: 6, bgColor: 'white' },
+        {
+          id: 'r1',
+          type: 'cells',
+          field: 'name',
+          label: 'Nama Barang',
+          bold: true,
+          fontSize: 7.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'name', label: 'Nama Barang', bold: true, fontSize: 7.5, bgColor: 'white' }],
+        },
+        {
+          id: 'r2',
+          type: 'cells',
+          field: 'item_code',
+          label: 'Kode KIB',
+          field2: 'register_number',
+          label2: 'No. Reg',
+          bold: false,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [
+            { id: 'c1', field: 'item_code', label: 'Kode KIB', bold: false, fontSize: 6.5, bgColor: 'white' },
+            { id: 'c2', field: 'register_number', label: 'No. Reg', bold: false, fontSize: 6.5, bgColor: 'white' },
+          ],
+        },
+        {
+          id: 'r3',
+          type: 'cells',
+          field: 'sku',
+          label: 'SKU / Barcode',
+          bold: true,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'sku', label: 'SKU / Barcode', bold: true, fontSize: 6.5, bgColor: 'white' }],
+        },
+        {
+          id: 'r4',
+          type: 'cells',
+          field: 'merk',
+          label: 'Merk/Tipe',
+          field2: 'procurement_year',
+          label2: 'Tahun',
+          bold: false,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [
+            { id: 'c1', field: 'merk', label: 'Merk/Tipe', bold: false, fontSize: 6.5, bgColor: 'white' },
+            { id: 'c2', field: 'procurement_year', label: 'Tahun', bold: false, fontSize: 6.5, bgColor: 'white' },
+          ],
+        },
+        {
+          id: 'r5',
+          type: 'cells',
+          field: 'location',
+          label: 'Ruangan',
+          bold: false,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'location', label: 'Ruangan', bold: false, fontSize: 6.5, bgColor: 'white' }],
+        },
+        {
+          id: 'r6',
+          type: 'cells',
+          field: 'funding_source',
+          label: 'Sumber Dana',
+          bold: false,
+          fontSize: 6,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'funding_source', label: 'Sumber Dana', bold: false, fontSize: 6, bgColor: 'white' }],
+        },
       ],
     },
     elements: [],
@@ -263,46 +412,37 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
 const templates = ref<LabelTemplate[]>([])
 const activeTemplate = ref<LabelTemplate>(JSON.parse(JSON.stringify(DEFAULT_PRESETS[0])))
 const activeElementId = ref<string | null>(null)
-const selectedTableRowIndex = ref<number | null>(null)
+const selectedTableRowIndex = ref<number | null>(0)
+const selectedTableCellIndex = ref<number | null>(0)
 const copies = ref(1)
 const isPrinting = ref(false)
 const paletteTab = ref<'data' | 'borders' | 'header_footer' | 'free_components'>('data')
 
+// Helper untuk normalisasi sel pada setiap baris
+function getRowCells(row: TableRowConfig): TableCellConfig[] {
+  if (row.cells && row.cells.length > 0) {
+    return row.cells
+  }
+  if (row.type === 'two_fields') {
+    row.cells = [
+      { id: 'c1', field: row.field || 'name', label: row.label || 'Kolom 1', bold: row.bold, fontSize: row.fontSize, align: row.align, bgColor: row.bgColor },
+      { id: 'c2', field: row.field2 || 'location', label: row.label2 || 'Kolom 2', bold: row.bold2, fontSize: row.fontSize, align: row.align, bgColor: row.bgColor },
+    ]
+  } else if (row.type === 'custom') {
+    row.cells = [
+      { id: 'c1', field: '', label: row.label || 'Catatan', customText: row.customText || '', bold: row.bold, fontSize: row.fontSize, align: row.align || 'center', bgColor: row.bgColor },
+    ]
+  } else {
+    row.cells = [
+      { id: 'c1', field: row.field || 'name', label: row.label || 'Nama', bold: row.bold, fontSize: row.fontSize, align: row.align, bgColor: row.bgColor },
+    ]
+  }
+  return row.cells
+}
+
 function ensureTableConfig(tpl: LabelTemplate) {
   if (!tpl.tableConfig) {
-    tpl.tableConfig = {
-      borderWidth: 1.5,
-      borderStyle: 'solid',
-      borderColor: '#000000',
-      showOuterBorder: true,
-      showGridLines: true,
-      showColBorder: true,
-      showLabelColBorder: true,
-      showHeaderBorder: true,
-      showFooterBorder: false,
-      cellPaddingMm: 0.8,
-      labelColWidthPercent: 28,
-      showHeader: true,
-      headerText: 'PEMERINTAH KABUPATEN SUMBAWA BARAT',
-      headerSubText: '',
-      headerFontSize: 6.5,
-      headerStyle: 'standard',
-      showLogo: false,
-      logoUrl: '',
-      logoWidthMm: 8,
-      qrPosition: 'left',
-      qrType: 'qr',
-      qrWidthMm: 22,
-      showFooter: false,
-      footerText: '',
-      footerFontSize: 5.5,
-      defaultFontSize: 6.5,
-      rows: [
-        { id: 'r1', type: 'field', field: 'name', label: 'Nama', bold: true, fontSize: 7, bgColor: 'white' },
-        { id: 'r2', type: 'field', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5, bgColor: 'white' },
-        { id: 'r3', type: 'field', field: 'location', label: 'Ruang', bold: false, fontSize: 6, bgColor: 'white' },
-      ],
-    }
+    tpl.tableConfig = JSON.parse(JSON.stringify(DEFAULT_PRESETS[0].tableConfig))
   } else {
     // Migrasi field yang belum ada
     if (tpl.tableConfig.borderWidth === undefined) tpl.tableConfig.borderWidth = 1.5
@@ -318,8 +458,9 @@ function ensureTableConfig(tpl: LabelTemplate) {
     if (tpl.tableConfig.logoWidthMm === undefined) tpl.tableConfig.logoWidthMm = 8
 
     tpl.tableConfig.rows?.forEach((r) => {
-      if (!r.type) r.type = 'field'
+      if (!r.type) r.type = 'cells'
       if (!r.bgColor) r.bgColor = 'white'
+      getRowCells(r)
     })
   }
 
@@ -329,7 +470,7 @@ function ensureTableConfig(tpl: LabelTemplate) {
 }
 
 function loadSavedTemplates() {
-  const raw = localStorage.getItem('custom_label_templates_v5')
+  const raw = localStorage.getItem('custom_label_templates_v6')
   if (raw) {
     try {
       const parsed = JSON.parse(raw)
@@ -344,7 +485,7 @@ function loadSavedTemplates() {
 }
 
 function saveTemplates() {
-  localStorage.setItem('custom_label_templates_v5', JSON.stringify(templates.value))
+  localStorage.setItem('custom_label_templates_v6', JSON.stringify(templates.value))
 }
 
 onMounted(() => {
@@ -360,8 +501,17 @@ const activeElement = computed(() => {
 })
 
 const selectedTableRow = computed(() => {
-  if (selectedTableRowIndex.value === null) return null
-  return activeTemplate.value.tableConfig?.rows[selectedTableRowIndex.value] || null
+  if (selectedTableRowIndex.value === null || !activeTemplate.value.tableConfig?.rows) return null
+  return activeTemplate.value.tableConfig.rows[selectedTableRowIndex.value] || null
+})
+
+const selectedTableCell = computed(() => {
+  if (!selectedTableRow.value) return null
+  const cells = getRowCells(selectedTableRow.value)
+  if (selectedTableCellIndex.value === null || selectedTableCellIndex.value >= cells.length) {
+    return cells[0] || null
+  }
+  return cells[selectedTableCellIndex.value] || null
 })
 
 // Sampel Barang Nyata
@@ -422,81 +572,53 @@ function resolveFieldValue(item: any, fieldKey?: string, prefix?: string): strin
   return `${pfx}${val}`
 }
 
-// ==== OPERASI BARIS TABEL (FULL CUSTOM) ====
-function addSingleFieldRow(fieldKey: string, defaultLabel: string) {
+// ==== OPERASI TAMBAH DAN HAPUS BARIS (ROW) ====
+function addNewRow(fieldKey = 'name', defaultLabel = 'Nama', insertAfterIndex?: number) {
   ensureTableConfig(activeTemplate.value)
   const newRow: TableRowConfig = {
     id: `r_${Date.now().toString(36)}`,
-    type: 'field',
+    type: 'cells',
     field: fieldKey,
-    label: defaultLabel || fieldKey,
+    label: defaultLabel,
     bold: fieldKey === 'name' || fieldKey === 'sku',
     fontSize: fieldKey === 'name' ? 7 : activeTemplate.value.tableConfig.defaultFontSize,
     align: 'left',
     bgColor: 'white',
     hasBottomBorder: true,
+    cells: [
+      {
+        id: `c_${Date.now().toString(36)}`,
+        field: fieldKey,
+        label: defaultLabel,
+        bold: fieldKey === 'name' || fieldKey === 'sku',
+        fontSize: fieldKey === 'name' ? 7 : activeTemplate.value.tableConfig.defaultFontSize,
+        align: 'left',
+        bgColor: 'white',
+      },
+    ],
   }
-  activeTemplate.value.tableConfig.rows.push(newRow)
-  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
-  toast.add({ severity: 'success', summary: 'Baris Ditambahkan', detail: defaultLabel, life: 1200 })
+
+  if (insertAfterIndex !== undefined && insertAfterIndex >= 0 && insertAfterIndex < activeTemplate.value.tableConfig.rows.length) {
+    activeTemplate.value.tableConfig.rows.splice(insertAfterIndex + 1, 0, newRow)
+    selectedTableRowIndex.value = insertAfterIndex + 1
+  } else {
+    activeTemplate.value.tableConfig.rows.push(newRow)
+    selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
+  }
+  selectedTableCellIndex.value = 0
+  toast.add({ severity: 'success', summary: 'Baris Ditambahkan', detail: `Baris baru #${selectedTableRowIndex.value + 1}`, life: 1200 })
 }
 
-function addTwoFieldsRow(f1: string, l1: string, f2: string, l2: string) {
-  ensureTableConfig(activeTemplate.value)
-  const newRow: TableRowConfig = {
-    id: `r_${Date.now().toString(36)}`,
-    type: 'two_fields',
-    field: f1,
-    label: l1,
-    field2: f2,
-    label2: l2,
-    bold: false,
-    bold2: false,
-    fontSize: activeTemplate.value.tableConfig.defaultFontSize,
-    align: 'left',
-    bgColor: 'white',
-    hasBottomBorder: true,
+function removeTableRow(index: number) {
+  if (!activeTemplate.value.tableConfig || activeTemplate.value.tableConfig.rows.length === 0) return
+  activeTemplate.value.tableConfig.rows.splice(index, 1)
+  if (selectedTableRowIndex.value === index) {
+    selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length > 0 ? Math.min(index, activeTemplate.value.tableConfig.rows.length - 1) : null
+    selectedTableCellIndex.value = 0
+  } else if (selectedTableRowIndex.value !== null && selectedTableRowIndex.value > index) {
+    selectedTableRowIndex.value--
   }
-  activeTemplate.value.tableConfig.rows.push(newRow)
-  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
-  toast.add({ severity: 'success', summary: 'Baris 2 Kolom Ditambahkan', detail: `${l1} & ${l2}`, life: 1400 })
-}
-
-function addCustomTextRow() {
-  ensureTableConfig(activeTemplate.value)
-  const newRow: TableRowConfig = {
-    id: `r_${Date.now().toString(36)}`,
-    type: 'custom',
-    field: '',
-    label: 'Catatan',
-    customText: 'BARANG ASLI MILIK PEMERINTAH DAERAH',
-    bold: true,
-    fontSize: 6,
-    align: 'center',
-    bgColor: 'light_gray',
-    hasBottomBorder: true,
-  }
-  activeTemplate.value.tableConfig.rows.push(newRow)
-  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
-  toast.add({ severity: 'info', summary: 'Baris Teks Bebas Ditambahkan', life: 1200 })
-}
-
-function addBarcodeStripRow() {
-  ensureTableConfig(activeTemplate.value)
-  const newRow: TableRowConfig = {
-    id: `r_${Date.now().toString(36)}`,
-    type: 'barcode_strip',
-    field: 'sku',
-    label: 'Barcode',
-    bold: true,
-    fontSize: 5.5,
-    align: 'center',
-    bgColor: 'white',
-    hasBottomBorder: true,
-  }
-  activeTemplate.value.tableConfig.rows.push(newRow)
-  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
-  toast.add({ severity: 'info', summary: 'Baris Barcode Garis Ditambahkan', life: 1200 })
+  toast.add({ severity: 'info', summary: 'Baris Dihapus', life: 1000 })
 }
 
 function duplicateTableRow(index: number) {
@@ -504,19 +626,13 @@ function duplicateTableRow(index: number) {
   const original = activeTemplate.value.tableConfig.rows[index]
   const copy: TableRowConfig = JSON.parse(JSON.stringify(original))
   copy.id = `r_${Date.now().toString(36)}`
+  if (copy.cells) {
+    copy.cells.forEach((c) => (c.id = `c_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 5)}`))
+  }
   activeTemplate.value.tableConfig.rows.splice(index + 1, 0, copy)
   selectedTableRowIndex.value = index + 1
+  selectedTableCellIndex.value = 0
   toast.add({ severity: 'info', summary: 'Baris Diduplikasi', life: 1000 })
-}
-
-function removeTableRow(index: number) {
-  if (!activeTemplate.value.tableConfig) return
-  activeTemplate.value.tableConfig.rows.splice(index, 1)
-  if (selectedTableRowIndex.value === index) {
-    selectedTableRowIndex.value = null
-  } else if (selectedTableRowIndex.value !== null && selectedTableRowIndex.value > index) {
-    selectedTableRowIndex.value--
-  }
 }
 
 function moveRowUp(index: number) {
@@ -536,6 +652,137 @@ function moveRowDown(index: number) {
   rows[index] = rows[index + 1]
   rows[index + 1] = temp
   selectedTableRowIndex.value = index + 1
+}
+
+// ==== OPERASI TAMBAH DAN HAPUS SEL (CELL) ====
+function addCellToRow(rowIndex: number, fieldKey?: string, label?: string) {
+  if (!activeTemplate.value.tableConfig?.rows) return
+  const row = activeTemplate.value.tableConfig.rows[rowIndex]
+  if (!row) return
+
+  const cells = getRowCells(row)
+  const f = fieldKey || 'location'
+  const l = label || (AVAILABLE_FIELDS.find((x) => x.value === f)?.defaultLabel || 'Kolom')
+
+  const newCell: TableCellConfig = {
+    id: `c_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 5)}`,
+    field: f,
+    label: l,
+    bold: false,
+    fontSize: row.fontSize || activeTemplate.value.tableConfig.defaultFontSize,
+    align: 'left',
+    bgColor: 'white',
+  }
+
+  cells.push(newCell)
+  row.cells = cells
+  row.type = 'cells'
+
+  selectedTableRowIndex.value = rowIndex
+  selectedTableCellIndex.value = cells.length - 1
+  toast.add({ severity: 'success', summary: 'Sel Ditambahkan', detail: `Kolom ke-${cells.length} di Baris #${rowIndex + 1}`, life: 1200 })
+}
+
+function removeCellFromRow(rowIndex: number, cellIndex: number) {
+  if (!activeTemplate.value.tableConfig?.rows) return
+  const row = activeTemplate.value.tableConfig.rows[rowIndex]
+  if (!row) return
+
+  const cells = getRowCells(row)
+  if (cells.length > 1) {
+    cells.splice(cellIndex, 1)
+    row.cells = cells
+    if (selectedTableCellIndex.value !== null && selectedTableCellIndex.value >= cells.length) {
+      selectedTableCellIndex.value = cells.length - 1
+    }
+    toast.add({ severity: 'info', summary: 'Sel Dihapus', life: 1000 })
+  } else {
+    // Jika hanya 1 sel tersisa di baris, hapus seluruh baris tersebut
+    removeTableRow(rowIndex)
+  }
+}
+
+// Tambah baris preset
+function addMultiCellRow(cellDefs: Array<{ field: string; label: string }>) {
+  ensureTableConfig(activeTemplate.value)
+  const cells: TableCellConfig[] = cellDefs.map((cd, idx) => ({
+    id: `c_${Date.now().toString(36)}_${idx}`,
+    field: cd.field,
+    label: cd.label,
+    bold: false,
+    fontSize: activeTemplate.value.tableConfig.defaultFontSize,
+    align: 'left',
+    bgColor: 'white',
+  }))
+
+  const newRow: TableRowConfig = {
+    id: `r_${Date.now().toString(36)}`,
+    type: 'cells',
+    field: cellDefs[0].field,
+    label: cellDefs[0].label,
+    bold: false,
+    fontSize: activeTemplate.value.tableConfig.defaultFontSize,
+    align: 'left',
+    bgColor: 'white',
+    hasBottomBorder: true,
+    cells,
+  }
+
+  activeTemplate.value.tableConfig.rows.push(newRow)
+  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
+  selectedTableCellIndex.value = 0
+  toast.add({ severity: 'success', summary: 'Baris Kolom Ditambahkan', detail: `${cells.length} Sel`, life: 1200 })
+}
+
+function addCustomTextRow() {
+  ensureTableConfig(activeTemplate.value)
+  const newRow: TableRowConfig = {
+    id: `r_${Date.now().toString(36)}`,
+    type: 'custom',
+    field: '',
+    label: 'Catatan',
+    customText: 'BARANG ASLI MILIK PEMERINTAH DAERAH',
+    bold: true,
+    fontSize: 6,
+    align: 'center',
+    bgColor: 'light_gray',
+    hasBottomBorder: true,
+    cells: [
+      {
+        id: `c_${Date.now().toString(36)}`,
+        field: '',
+        label: 'Catatan',
+        customText: 'BARANG ASLI MILIK PEMERINTAH DAERAH',
+        bold: true,
+        fontSize: 6,
+        align: 'center',
+        bgColor: 'light_gray',
+      },
+    ],
+  }
+  activeTemplate.value.tableConfig.rows.push(newRow)
+  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
+  selectedTableCellIndex.value = 0
+  toast.add({ severity: 'info', summary: 'Baris Teks Bebas Ditambahkan', life: 1200 })
+}
+
+function addBarcodeStripRow() {
+  ensureTableConfig(activeTemplate.value)
+  const newRow: TableRowConfig = {
+    id: `r_${Date.now().toString(36)}`,
+    type: 'barcode_strip',
+    field: 'sku',
+    label: 'Barcode',
+    bold: true,
+    fontSize: 5.5,
+    align: 'center',
+    bgColor: 'white',
+    hasBottomBorder: true,
+  }
+  activeTemplate.value.tableConfig.rows.push(newRow)
+  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
+  selectedTableCellIndex.value = 0
+  toast.add({ severity: 'info', summary: 'Baris Barcode Garis Ditambahkan', life: 1200 })
 }
 
 // ==== DRAG & DROP ENGINE (MODE BEBAS) ====
@@ -686,7 +933,8 @@ function applyPreset(tpl: LabelTemplate) {
   ensureTableConfig(clone)
   activeTemplate.value = clone
   activeElementId.value = null
-  selectedTableRowIndex.value = null
+  selectedTableRowIndex.value = 0
+  selectedTableCellIndex.value = 0
   toast.add({ severity: 'info', summary: 'Preset Dimuat', detail: tpl.name, life: 1800 })
 }
 
@@ -696,7 +944,8 @@ function resetLayout() {
   ensureTableConfig(clone)
   activeTemplate.value = clone
   activeElementId.value = null
-  selectedTableRowIndex.value = null
+  selectedTableRowIndex.value = 0
+  selectedTableCellIndex.value = 0
   toast.add({ severity: 'info', summary: 'Tata Letak Direset ke Bawaan', life: 1500 })
 }
 
@@ -774,7 +1023,7 @@ function printLabels() {
   <Dialog
     :visible="visible"
     modal
-    header="Desainer Label QR &amp; Barcode Aset (Kustom Penuh)"
+    header="Desainer Label QR &amp; Barcode Aset (Tambah &amp; Hapus Baris / Sel Penuh)"
     :style="{ width: '98vw', maxWidth: '1440px', height: '95vh' }"
     :contentStyle="{ padding: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }"
     @update:visible="emit('update:visible', $event)"
@@ -792,7 +1041,7 @@ function printLabels() {
             @click="activeTemplate.layoutMode = 'table'"
           >
             <i class="pi pi-table" />
-            <span>Mode Tabel (Kustom Full)</span>
+            <span>Mode Tabel (Tambah &amp; Hapus Baris/Sel)</span>
           </button>
           <button
             type="button"
@@ -940,7 +1189,7 @@ function printLabels() {
     <!-- MAIN WORKSPACE: 3 COLUMNS -->
     <div class="flex-1 flex overflow-hidden bg-slate-100">
       <!-- LEFT COLUMN: PALETTE & TABLE ROW BUILDER -->
-      <div class="w-80 border-r border-slate-200 bg-white flex flex-col overflow-hidden select-none">
+      <div class="w-84 border-r border-slate-200 bg-white flex flex-col overflow-hidden select-none">
         <!-- Palette Tab Headers -->
         <div class="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1 overflow-x-auto">
           <button
@@ -950,7 +1199,7 @@ function printLabels() {
             @click="paletteTab = 'data'"
           >
             <i class="pi pi-list text-xs mr-1" />
-            <span>{{ isTableMode ? 'Data & Baris' : 'Data Form' }}</span>
+            <span>{{ isTableMode ? 'Data, Baris & Sel' : 'Data Form' }}</span>
           </button>
           <button
             v-if="isTableMode"
@@ -984,59 +1233,135 @@ function printLabels() {
           </button>
         </div>
 
-        <!-- 1. TAB DATA & BARIS (MODE TABEL) -->
+        <!-- 1. TAB DATA & BARIS (MODE TABEL - FITUR TAMBAH & HAPUS BARIS/SEL) -->
         <div v-if="paletteTab === 'data' && isTableMode" class="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
-          <!-- Tipe Baris Khusus Tambahan -->
-          <div class="flex flex-col gap-1.5 p-2 bg-indigo-50/50 rounded-lg border border-indigo-100">
-            <span class="text-[10px] font-bold text-indigo-900 uppercase tracking-wide">Tambah Struktur Baris Khusus:</span>
-            <div class="grid grid-cols-2 gap-1.5">
+          <!-- A. KONTROL CEPAT TAMBAH & HAPUS BARIS / SEL -->
+          <div class="flex flex-col gap-1.5 p-2 bg-indigo-50/70 rounded-lg border border-indigo-200 shadow-2xs">
+            <span class="text-[10.5px] font-bold text-indigo-950 uppercase tracking-wide flex items-center justify-between">
+              <span>Aksi Baris &amp; Sel:</span>
+              <span class="text-[10px] text-indigo-700 font-semibold">Total {{ activeTemplate.tableConfig.rows.length }} Baris</span>
+            </span>
+
+            <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+              <!-- Tambah Baris Baru -->
               <button
                 type="button"
-                class="px-2 py-1.5 bg-white border border-indigo-200 hover:border-indigo-500 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs transition-all"
-                @click="addTwoFieldsRow('location', 'Ruang', 'procurement_year', 'Tahun')"
+                class="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-left flex items-center gap-1.5 text-[11px] font-bold shadow-2xs transition-all"
+                @click="addNewRow('name', 'Nama')"
+              >
+                <i class="pi pi-plus-circle text-xs" />
+                <span>+ Baris Baru</span>
+              </button>
+
+              <!-- Tambah Sel di Baris Terpilih -->
+              <button
+                type="button"
+                class="px-2 py-1.5 bg-white border border-indigo-300 hover:border-indigo-600 rounded text-left flex items-center gap-1.5 text-[11px] font-bold text-indigo-900 shadow-2xs transition-all disabled:opacity-50"
+                :disabled="selectedTableRowIndex === null"
+                @click="selectedTableRowIndex !== null && addCellToRow(selectedTableRowIndex)"
               >
                 <i class="pi pi-table text-indigo-600 text-xs" />
-                <span>2 Kolom Sebaris</span>
+                <span>+ Sel / Kolom</span>
+              </button>
+
+              <!-- Hapus Baris Terpilih -->
+              <button
+                type="button"
+                class="px-2 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold shadow-2xs transition-all disabled:opacity-50"
+                :disabled="selectedTableRowIndex === null"
+                @click="selectedTableRowIndex !== null && removeTableRow(selectedTableRowIndex)"
+              >
+                <i class="pi pi-trash text-xs text-rose-600" />
+                <span>✕ Hapus Baris</span>
+              </button>
+
+              <!-- Hapus Sel Terpilih -->
+              <button
+                type="button"
+                class="px-2 py-1.5 bg-white border border-amber-200 hover:bg-amber-50 text-amber-800 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold shadow-2xs transition-all disabled:opacity-50"
+                :disabled="selectedTableRowIndex === null || selectedTableCellIndex === null"
+                @click="selectedTableRowIndex !== null && selectedTableCellIndex !== null && removeCellFromRow(selectedTableRowIndex, selectedTableCellIndex)"
+              >
+                <i class="pi pi-times-circle text-xs text-amber-600" />
+                <span>✕ Hapus Sel</span>
+              </button>
+            </div>
+
+            <!-- Shortcut Jenis Baris Multi-Kolom -->
+            <div class="grid grid-cols-2 gap-1.5 pt-1 border-t border-indigo-100">
+              <button
+                type="button"
+                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
+                @click="addMultiCellRow([{ field: 'location', label: 'Ruang' }, { field: 'procurement_year', label: 'Tahun' }])"
+              >
+                <i class="pi pi-pause text-indigo-500 text-[10px]" />
+                <span>Baris 2 Sel</span>
               </button>
               <button
                 type="button"
-                class="px-2 py-1.5 bg-white border border-indigo-200 hover:border-indigo-500 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs transition-all"
+                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
+                @click="addMultiCellRow([{ field: 'location', label: 'Ruang' }, { field: 'procurement_year', label: 'Tahun' }, { field: 'condition_status', label: 'Kondisi' }])"
+              >
+                <i class="pi pi-bars text-indigo-500 text-[10px]" />
+                <span>Baris 3 Sel</span>
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
                 @click="addCustomTextRow"
               >
-                <i class="pi pi-pencil text-purple-600 text-xs" />
-                <span>Teks Bebas / Ket</span>
+                <i class="pi pi-pencil text-purple-600 text-[10px]" />
+                <span>Teks Catatan</span>
               </button>
               <button
                 type="button"
-                class="col-span-2 px-2 py-1.5 bg-white border border-indigo-200 hover:border-indigo-500 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs transition-all"
+                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
                 @click="addBarcodeStripRow"
               >
-                <i class="pi pi-barcode text-cyan-600 text-xs" />
-                <span>Barcode 128 Strip (Garis Barcode di Tabel)</span>
+                <i class="pi pi-barcode text-cyan-600 text-[10px]" />
+                <span>Barcode 128 Strip</span>
               </button>
             </div>
           </div>
 
-          <!-- Tambah Baris dari Field Formulir -->
+          <!-- B. DAFTAR 17 FIELD FORMULIR BARANG -->
           <div class="flex flex-col gap-1">
             <div class="text-[11px] text-slate-500 px-1 pb-0.5 font-medium flex items-center justify-between">
-              <span>Klik field untuk tambah ke tabel:</span>
+              <span>Field Formulir (Tambah Baris / Sel):</span>
               <span class="text-[10px] text-indigo-600 font-bold">{{ AVAILABLE_FIELDS.length }} Field</span>
             </div>
 
-            <button
+            <div
               v-for="f in AVAILABLE_FIELDS"
               :key="f.value"
-              type="button"
-              class="field-item-btn"
-              @click="addSingleFieldRow(f.value, f.defaultLabel)"
+              class="flex items-center justify-between p-1.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-md transition-all gap-1 shadow-2xs"
             >
-              <div class="flex items-center gap-2 truncate">
+              <div class="flex items-center gap-1.5 truncate flex-1 min-w-0">
                 <i :class="[f.icon, 'text-slate-500 text-xs shrink-0']" />
-                <div class="truncate text-[11.5px] font-semibold text-slate-700">{{ f.label }}</div>
+                <span class="truncate text-[11px] font-semibold text-slate-700">{{ f.label }}</span>
               </div>
-              <i class="pi pi-plus text-slate-400 text-xs shrink-0" />
-            </button>
+              <div class="flex items-center gap-1 shrink-0">
+                <!-- Tambah sebagai Baris Baru -->
+                <button
+                  type="button"
+                  class="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 border border-indigo-200 text-[10px] font-bold transition-all"
+                  title="Tambah sebagai Baris Baru"
+                  @click="addNewRow(f.value, f.defaultLabel)"
+                >
+                  + Baris
+                </button>
+                <!-- Tambah sebagai Sel ke Baris Terpilih -->
+                <button
+                  type="button"
+                  class="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 border border-slate-200 text-[10px] font-bold transition-all disabled:opacity-40"
+                  :disabled="selectedTableRowIndex === null"
+                  title="Tambah sebagai Sel Baru di Baris Terpilih"
+                  @click="selectedTableRowIndex !== null && addCellToRow(selectedTableRowIndex, f.value, f.defaultLabel)"
+                >
+                  + Sel
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1125,7 +1450,7 @@ function printLabels() {
 
             <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
               <Checkbox v-model="activeTemplate.tableConfig.showLabelColBorder" binary />
-              <span class="font-semibold">Garis Vertikal Pemisah Label &amp; Nilai</span>
+              <span class="font-semibold">Garis Vertikal Pemisah Label &amp; Sel</span>
             </label>
 
             <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
@@ -1370,7 +1695,7 @@ function printLabels() {
         </div>
 
         <div class="p-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-tight">
-          <span v-if="isTableMode">💡 <b>Mode Tabel Kustom:</b> Semua garis, kerapatan sel, 2 kolom sebaris, warna latar, dan kop instansi dapat dikustomisasi penuh.</span>
+          <span v-if="isTableMode">💡 <b>Mode Tabel Kustom:</b> Tambah atau hapus baris &amp; sel langsung melalui tombol hover di kanvas atau panel samping.</span>
           <span v-else>💡 Geser elemen langsung di stiker. Tarik titik biru di pojok untuk ubah ukuran.</span>
         </div>
       </div>
@@ -1382,13 +1707,24 @@ function printLabels() {
         @pointerup="onPointerUp"
       >
         <div class="flex flex-col items-center gap-2">
-          <!-- Sticker Label Badge Info -->
+          <!-- Sticker Label Badge Info + Quick Row Adder -->
           <div class="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white/80 px-3 py-1 rounded-full border border-slate-300 shadow-xs">
             <span>🏷️ {{ activeTemplate.widthMm }} &times; {{ activeTemplate.heightMm }} mm</span>
             <span class="text-slate-300">|</span>
             <span class="text-indigo-600 font-bold">{{ isTableMode ? 'Tabel Kustom Penuh' : 'Mode Bebas' }}</span>
             <span class="text-slate-300">|</span>
             <span class="text-slate-500 font-normal">Sampel: {{ sampleItem.name }}</span>
+            <template v-if="isTableMode">
+              <span class="text-slate-300">|</span>
+              <button
+                type="button"
+                class="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs transition-all"
+                @click="addNewRow('name', 'Nama')"
+              >
+                <i class="pi pi-plus text-[10px]" />
+                <span>Tambah Baris</span>
+              </button>
+            </template>
           </div>
 
           <!-- THE PHYSICAL STICKER -->
@@ -1398,7 +1734,7 @@ function printLabels() {
               width: `${activeTemplate.widthMm * MM_TO_PX * zoom}px`,
               height: `${activeTemplate.heightMm * MM_TO_PX * zoom}px`,
             }"
-            @click.self="activeElementId = null; selectedTableRowIndex = null"
+            @click.self="activeElementId = null; selectedTableRowIndex = null; selectedTableCellIndex = null"
           >
             <!-- 1. MODE TABEL BERGARIS KUSTOM PENUH -->
             <div
@@ -1465,91 +1801,135 @@ function printLabels() {
                   <div
                     v-for="(row, rIdx) in activeTemplate.tableConfig.rows"
                     :key="row.id"
-                    class="flex-1 flex items-center cursor-pointer transition-colors relative"
+                    class="group/row flex-1 flex items-stretch cursor-pointer transition-colors relative"
                     :class="[
                       row.bgColor === 'light_gray' ? 'bg-slate-100' : row.bgColor === 'dark' ? 'bg-slate-800 text-white' : 'bg-white',
-                      selectedTableRowIndex === rIdx ? 'ring-1 ring-indigo-500 bg-indigo-50/60' : 'hover:bg-indigo-50/30',
+                      selectedTableRowIndex === rIdx ? 'ring-1 ring-indigo-500 bg-indigo-50/50' : 'hover:bg-indigo-50/20',
                     ]"
                     :style="{
-                      padding: `${activeTemplate.tableConfig.cellPaddingMm * MM_TO_PX * (zoom / 2.2)}px 4px`,
                       borderBottom: (activeTemplate.tableConfig.showGridLines && rIdx < activeTemplate.tableConfig.rows.length - 1) || row.hasBottomBorder
                         ? `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
                         : 'none',
-                      fontSize: `${(row.fontSize || activeTemplate.tableConfig.defaultFontSize) * (zoom / 2.2)}pt`,
                     }"
-                    @click.stop="selectedTableRowIndex = rIdx"
+                    @click.stop="selectedTableRowIndex = rIdx; selectedTableCellIndex = 0"
                   >
-                    <!-- TIPE 1: Baris Field Tunggal Normal -->
-                    <template v-if="!row.type || row.type === 'field'">
-                      <div
-                        class="font-bold shrink-0 truncate px-1"
-                        :style="{
-                          width: `${activeTemplate.tableConfig.labelColWidthPercent}%`,
-                          borderRight: activeTemplate.tableConfig.showLabelColBorder
-                            ? `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                            : 'none',
-                        }"
-                      >
-                        {{ row.label }}:
-                      </div>
-                      <div
-                        class="flex-1 truncate px-1.5"
-                        :class="[
-                          row.bold ? 'font-bold' : 'font-normal',
-                          row.field === 'sku' ? 'font-mono' : '',
-                          row.align === 'center' ? 'text-center' : row.align === 'right' ? 'text-right' : 'text-left',
-                        ]"
-                      >
-                        {{ resolveFieldValue(sampleItem, row.field) }}
-                      </div>
-                    </template>
-
-                    <!-- TIPE 2: Baris 2 Kolom Berdampingan (Two Fields) -->
-                    <template v-else-if="row.type === 'two_fields'">
-                      <!-- Kolom 1 -->
-                      <div class="flex-1 flex items-center truncate min-w-0">
-                        <span class="font-bold shrink-0 px-1">{{ row.label }}:</span>
-                        <span class="truncate px-1" :class="row.bold ? 'font-bold' : ''">{{ resolveFieldValue(sampleItem, row.field) }}</span>
-                      </div>
-                      <!-- Pemisah Antar Kolom -->
-                      <div
-                        class="h-full w-px self-stretch"
-                        :style="{
-                          backgroundColor: activeTemplate.tableConfig.borderColor,
-                          width: `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px`,
-                        }"
-                      />
-                      <!-- Kolom 2 -->
-                      <div class="flex-1 flex items-center truncate min-w-0 pl-1">
-                        <span class="font-bold shrink-0 px-1">{{ row.label2 || 'Kol 2' }}:</span>
-                        <span class="truncate px-1" :class="row.bold2 ? 'font-bold' : ''">{{ resolveFieldValue(sampleItem, row.field2) }}</span>
-                      </div>
-                    </template>
-
-                    <!-- TIPE 3: Baris Teks Bebas / Manual -->
-                    <template v-else-if="row.type === 'custom'">
-                      <div
-                        class="w-full text-center px-2 font-bold tracking-tight truncate"
-                        :class="row.align === 'left' ? 'text-left' : row.align === 'right' ? 'text-right' : 'text-center'"
-                      >
-                        {{ row.customText || row.label }}
-                      </div>
-                    </template>
-
-                    <!-- TIPE 4: Barcode Strip Memanjang -->
-                    <template v-else-if="row.type === 'barcode_strip'">
+                    <!-- TIPE KHUSUS: Barcode Strip Memanjang -->
+                    <template v-if="row.type === 'barcode_strip'">
                       <div class="w-full flex flex-col items-center justify-center p-0.5">
                         <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-4 object-contain pointer-events-none" alt="BC" />
                         <span class="font-mono font-bold text-[7pt] leading-none">{{ sampleItem.sku }}</span>
                       </div>
                     </template>
+
+                    <!-- TIPE STANDARD DENGAN MULTI-SEL (CELLS) -->
+                    <template v-else>
+                      <div
+                        v-for="(cell, cIdx) in getRowCells(row)"
+                        :key="cell.id"
+                        class="group/cell flex-1 flex items-center min-w-0 relative transition-all"
+                        :class="[
+                          cell.bgColor === 'light_gray' ? 'bg-slate-100' : cell.bgColor === 'dark' ? 'bg-slate-800 text-white' : '',
+                          selectedTableRowIndex === rIdx && selectedTableCellIndex === cIdx ? 'ring-1 ring-emerald-500 bg-emerald-50/60 font-semibold' : 'hover:bg-emerald-50/30',
+                        ]"
+                        :style="{
+                          padding: `${activeTemplate.tableConfig.cellPaddingMm * MM_TO_PX * (zoom / 2.2)}px 4px`,
+                          borderRight: (activeTemplate.tableConfig.showLabelColBorder || activeTemplate.tableConfig.showColBorder) && cIdx < getRowCells(row).length - 1
+                            ? `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
+                            : 'none',
+                          fontSize: `${(cell.fontSize || row.fontSize || activeTemplate.tableConfig.defaultFontSize) * (zoom / 2.2)}pt`,
+                        }"
+                        @click.stop="selectedTableRowIndex = rIdx; selectedTableCellIndex = cIdx"
+                      >
+                        <!-- Label Sel -->
+                        <span
+                          v-if="cell.label"
+                          class="font-bold shrink-0 truncate pr-1"
+                          :style="{
+                            maxWidth: getRowCells(row).length === 1 ? `${activeTemplate.tableConfig.labelColWidthPercent}%` : '45%',
+                          }"
+                        >
+                          {{ cell.label }}:
+                        </span>
+
+                        <!-- Nilai Sel / Teks Bebas -->
+                        <span
+                          class="flex-1 truncate"
+                          :class="[
+                            cell.bold ? 'font-bold' : 'font-normal',
+                            cell.field === 'sku' ? 'font-mono' : '',
+                            cell.align === 'center' ? 'text-center' : cell.align === 'right' ? 'text-right' : 'text-left',
+                          ]"
+                        >
+                          {{ cell.customText || resolveFieldValue(sampleItem, cell.field) }}
+                        </span>
+
+                        <!-- Tombol Cepat Hapus Sel Ini (Muncul saat Hover pada Sel jika lebih dari 1 sel) -->
+                        <button
+                          v-if="getRowCells(row).length > 1"
+                          type="button"
+                          class="opacity-0 group-hover/cell:opacity-100 absolute right-0.5 top-0.5 p-0.5 rounded-full bg-rose-500 text-white text-[9px] hover:bg-rose-700 transition-opacity z-10"
+                          title="Hapus Sel Ini"
+                          @click.stop="removeCellFromRow(rIdx, cIdx)"
+                        >
+                          <i class="pi pi-times text-[8px]" />
+                        </button>
+                      </div>
+                    </template>
+
+                    <!-- TOMBOL CEPAT BARIS (Hover Overlay di ujung kanan baris) -->
+                    <div class="opacity-0 group-hover/row:opacity-100 absolute right-0 top-0 bottom-0 flex items-center gap-0.5 bg-white/95 px-1 border-l border-slate-300 shadow-xs transition-opacity z-20">
+                      <!-- Tambah Sel ke Baris Ini -->
+                      <button
+                        type="button"
+                        class="p-0.5 rounded bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[10px]"
+                        title="Tambah Sel / Kolom di Baris Ini"
+                        @click.stop="addCellToRow(rIdx)"
+                      >
+                        <i class="pi pi-plus-circle text-[10px]" />
+                      </button>
+                      <!-- Sisip Baris Baru Tepat di Bawah Ini -->
+                      <button
+                        type="button"
+                        class="p-0.5 rounded bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-700 text-[10px]"
+                        title="Sisipkan Baris Baru di Bawah Ini"
+                        @click.stop="addNewRow('location', 'Ruang', rIdx)"
+                      >
+                        <i class="pi pi-plus text-[10px]" />
+                      </button>
+                      <!-- Hapus Baris Ini -->
+                      <button
+                        type="button"
+                        class="p-0.5 rounded bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 text-[10px]"
+                        title="Hapus Seluruh Baris Ini"
+                        @click.stop="removeTableRow(rIdx)"
+                      >
+                        <i class="pi pi-trash text-[10px]" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Tombol Tambah Baris di Bawah Tabel -->
+                  <div
+                    class="py-1 px-2 border-t border-dashed border-slate-300 bg-slate-50/60 hover:bg-indigo-50/60 flex items-center justify-center cursor-pointer text-slate-500 hover:text-indigo-600 transition-colors text-[10px] font-bold gap-1 shrink-0"
+                    title="Klik untuk tambah baris baru"
+                    @click="addNewRow('name', 'Nama')"
+                  >
+                    <i class="pi pi-plus-circle text-xs" />
+                    <span>+ Tambah Baris Baru</span>
                   </div>
 
                   <div
                     v-if="activeTemplate.tableConfig.rows.length === 0"
-                    class="flex-1 flex items-center justify-center text-slate-400 text-xs p-4 text-center"
+                    class="flex-1 flex flex-col items-center justify-center text-slate-400 text-xs p-4 text-center gap-2"
                   >
-                    Tabel kosong. Tambah baris dari panel di sebelah kiri.
+                    <span>Tabel masih kosong.</span>
+                    <button
+                      type="button"
+                      class="px-2.5 py-1 bg-indigo-600 text-white rounded font-bold text-xs shadow-xs"
+                      @click="addNewRow('name', 'Nama')"
+                    >
+                      + Tambah Baris Pertama
+                    </button>
                   </div>
                 </div>
 
@@ -1682,11 +2062,11 @@ function printLabels() {
         </div>
       </div>
 
-      <!-- RIGHT COLUMN: PROPERTIES INSPECTOR (FULL KUSTOM) -->
+      <!-- RIGHT COLUMN: PROPERTIES INSPECTOR (FULL KUSTOM BARIS & SEL) -->
       <div class="w-88 shrink-0 border-l border-slate-200 bg-white p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
         <div class="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between pb-2 border-b border-slate-200">
           <span>{{ isTableMode ? 'Inspektor Baris & Sel' : 'Pengaturan Elemen' }}</span>
-          <Tag :value="isTableMode ? 'KUSTOM PENUH' : 'MODE BEBAS'" severity="info" class="!text-[9px] !py-0" />
+          <Tag :value="isTableMode ? 'KUSTOM BARIS & SEL' : 'MODE BEBAS'" severity="info" class="!text-[9px] !py-0" />
         </div>
 
         <!-- 1. INSPECTOR UNTUK MODE TABEL -->
@@ -1694,7 +2074,7 @@ function printLabels() {
           <!-- A. Pengaturan Baris Terpilih -->
           <div v-if="selectedTableRow" class="p-3 bg-indigo-50/60 rounded-lg border border-indigo-200 flex flex-col gap-2.5">
             <div class="flex items-center justify-between">
-              <span class="font-bold text-indigo-900 text-xs">Edit Baris #{{ (selectedTableRowIndex ?? 0) + 1 }}</span>
+              <span class="font-bold text-indigo-900 text-xs">Baris #{{ (selectedTableRowIndex ?? 0) + 1 }}</span>
               <div class="flex items-center gap-1">
                 <button
                   type="button"
@@ -1733,77 +2113,91 @@ function printLabels() {
               </div>
             </div>
 
-            <!-- Tipe Baris Selector -->
-            <div class="flex flex-col gap-1">
-              <label class="text-[10.5px] font-semibold text-slate-600">Tipe Baris:</label>
-              <Select
-                v-model="selectedTableRow.type"
-                :options="[
-                  { label: 'Field Tunggal (Label: Nilai)', value: 'field' },
-                  { label: '2 Kolom Berdampingan', value: 'two_fields' },
-                  { label: 'Teks Bebas / Peringatan', value: 'custom' },
-                  { label: 'Barcode Garis Strip', value: 'barcode_strip' },
-                ]"
-                optionLabel="label"
-                optionValue="value"
-                class="w-full !text-xs"
-              />
+            <!-- Bagian Kelola Sel / Kolom di Baris Ini -->
+            <div class="p-2 bg-white rounded border border-indigo-100 flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[10.5px] font-bold text-slate-700 uppercase">
+                  Kolom / Sel ({{ getRowCells(selectedTableRow).length }})
+                </span>
+                <button
+                  type="button"
+                  class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold text-[10px] rounded border border-indigo-200 transition-all flex items-center gap-1"
+                  title="Tambah Sel / Kolom Baru di Baris Ini"
+                  @click="addCellToRow(selectedTableRowIndex!)"
+                >
+                  <i class="pi pi-plus text-[9px]" />
+                  <span>+ Tambah Sel</span>
+                </button>
+              </div>
+
+              <!-- Daftar Chips Sel di Baris Ini -->
+              <div class="flex flex-wrap gap-1.5">
+                <div
+                  v-for="(c, cIdx) in getRowCells(selectedTableRow)"
+                  :key="c.id"
+                  class="flex items-center gap-1 px-2 py-1 rounded border text-[11px] cursor-pointer transition-all"
+                  :class="selectedTableCellIndex === cIdx ? 'bg-emerald-500 border-emerald-600 text-white font-bold shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'"
+                  @click="selectedTableCellIndex = cIdx"
+                >
+                  <span>Sel {{ cIdx + 1 }}: {{ c.label || c.field }}</span>
+                  <button
+                    v-if="getRowCells(selectedTableRow).length > 1"
+                    type="button"
+                    class="ml-0.5 p-0.5 rounded-full hover:bg-black/20 text-current transition-colors"
+                    title="Hapus Sel Ini"
+                    @click.stop="removeCellFromRow(selectedTableRowIndex!, cIdx)"
+                  >
+                    <i class="pi pi-times text-[8px]" />
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <!-- Pengaturan Berdasarkan Tipe Baris -->
-            <!-- 1. FIELD TUNGGAL -->
-            <template v-if="!selectedTableRow.type || selectedTableRow.type === 'field'">
-              <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] font-semibold text-slate-600">Label Judul Baris:</label>
-                <InputText v-model="selectedTableRow.label" class="w-full !text-xs !py-1" />
+            <!-- Detail Edit Sel Terpilih -->
+            <div v-if="selectedTableCell" class="p-2.5 bg-white rounded border border-indigo-100 flex flex-col gap-2">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                <span class="font-bold text-emerald-800 text-[11px]">
+                  Edit Sel #{{ (selectedTableCellIndex ?? 0) + 1 }}
+                </span>
+                <button
+                  v-if="getRowCells(selectedTableRow).length > 1"
+                  type="button"
+                  class="text-rose-600 hover:text-rose-800 font-bold text-[10px] flex items-center gap-1"
+                  @click="removeCellFromRow(selectedTableRowIndex!, selectedTableCellIndex!)"
+                >
+                  <i class="pi pi-trash text-[9px]" />
+                  <span>Hapus Sel Ini</span>
+                </button>
               </div>
+
               <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] font-semibold text-slate-600">Field Data Barang:</label>
+                <label class="text-[10px] font-semibold text-slate-600">Label Judul Sel:</label>
+                <InputText v-model="selectedTableCell.label" placeholder="Contoh: Ruang" class="w-full !text-xs !py-1" />
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-semibold text-slate-600">Field Data Barang:</label>
                 <Select
-                  v-model="selectedTableRow.field"
+                  v-model="selectedTableCell.field"
                   :options="AVAILABLE_FIELDS"
                   optionLabel="label"
                   optionValue="value"
                   class="w-full !text-xs"
                 />
               </div>
-            </template>
 
-            <!-- 2. TWO FIELDS -->
-            <template v-else-if="selectedTableRow.type === 'two_fields'">
-              <div class="grid grid-cols-2 gap-2 p-1.5 bg-white rounded border border-indigo-100">
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-slate-600">Kolom Kiri</label>
-                  <InputText v-model="selectedTableRow.label" placeholder="Label 1" class="w-full !text-xs !py-0.5" />
-                  <Select v-model="selectedTableRow.field" :options="AVAILABLE_FIELDS" optionLabel="label" optionValue="value" class="w-full !text-[11px]" />
-                </div>
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-slate-600">Kolom Kanan</label>
-                  <InputText v-model="selectedTableRow.label2" placeholder="Label 2" class="w-full !text-xs !py-0.5" />
-                  <Select v-model="selectedTableRow.field2" :options="AVAILABLE_FIELDS" optionLabel="label" optionValue="value" class="w-full !text-[11px]" />
-                </div>
-              </div>
-            </template>
-
-            <!-- 3. CUSTOM TEXT -->
-            <template v-else-if="selectedTableRow.type === 'custom'">
               <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] font-semibold text-slate-600">Teks Bebas Manual:</label>
-                <InputText v-model="selectedTableRow.customText" placeholder="Contoh: ASLI BMD PEMDA KSB" class="w-full !text-xs !py-1" />
+                <label class="text-[10px] font-semibold text-slate-600">Teks Manual (Opsional):</label>
+                <InputText v-model="selectedTableCell.customText" placeholder="Kosongkan jika ambil otomatis dari field" class="w-full !text-xs !py-1" />
               </div>
-            </template>
 
-            <!-- Styling Sel / Baris Ini -->
-            <div class="pt-2 border-t border-indigo-100 flex flex-col gap-2">
-              <span class="text-[10.5px] font-bold text-indigo-900 uppercase">Gaya &amp; Warna Sel</span>
-
-              <div class="grid grid-cols-2 gap-2">
+              <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
                 <div class="flex flex-col gap-1">
                   <label class="text-[10px] text-slate-600">Ukuran Font:</label>
                   <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
                     <input
                       type="number"
-                      v-model.number="selectedTableRow.fontSize"
+                      v-model.number="selectedTableCell.fontSize"
                       min="4"
                       max="14"
                       step="0.5"
@@ -1816,11 +2210,11 @@ function printLabels() {
                 <div class="flex flex-col gap-1">
                   <label class="text-[10px] text-slate-600">Warna Latar Sel:</label>
                   <Select
-                    v-model="selectedTableRow.bgColor"
+                    v-model="selectedTableCell.bgColor"
                     :options="[
                       { label: 'Putih', value: 'white' },
                       { label: 'Abu-abu', value: 'light_gray' },
-                      { label: 'Hitam (Teks Putih)', value: 'dark' },
+                      { label: 'Hitam (Inverted)', value: 'dark' },
                     ]"
                     optionLabel="label"
                     optionValue="value"
@@ -1831,73 +2225,100 @@ function printLabels() {
 
               <div class="flex items-center justify-between pt-1">
                 <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
-                  <Checkbox v-model="selectedTableRow.bold" binary />
-                  <span class="font-bold">Teks Tebal (Bold)</span>
+                  <Checkbox v-model="selectedTableCell.bold" binary />
+                  <span class="font-bold">Teks Tebal</span>
                 </label>
 
                 <div class="flex items-center gap-1">
                   <button
                     type="button"
-                    class="px-2 py-0.5 rounded border text-[11px]"
-                    :class="selectedTableRow.align === 'left' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
-                    @click="selectedTableRow.align = 'left'"
+                    class="px-2 py-0.5 rounded border text-[10.5px]"
+                    :class="selectedTableCell.align === 'left' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
+                    @click="selectedTableCell.align = 'left'"
                   >
                     Kiri
                   </button>
                   <button
                     type="button"
-                    class="px-2 py-0.5 rounded border text-[11px]"
-                    :class="selectedTableRow.align === 'center' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
-                    @click="selectedTableRow.align = 'center'"
+                    class="px-2 py-0.5 rounded border text-[10.5px]"
+                    :class="selectedTableCell.align === 'center' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
+                    @click="selectedTableCell.align = 'center'"
                   >
                     Tengah
                   </button>
                   <button
                     type="button"
-                    class="px-2 py-0.5 rounded border text-[11px]"
-                    :class="selectedTableRow.align === 'right' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
-                    @click="selectedTableRow.align = 'right'"
+                    class="px-2 py-0.5 rounded border text-[10.5px]"
+                    :class="selectedTableCell.align === 'right' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
+                    @click="selectedTableCell.align = 'right'"
                   >
                     Kanan
                   </button>
                 </div>
               </div>
+            </div>
 
-              <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs pt-1">
+            <!-- Tombol Aksi Hapus Baris -->
+            <div class="pt-1 flex items-center justify-between">
+              <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
                 <Checkbox v-model="selectedTableRow.hasBottomBorder" binary />
-                <span>Paksa Garis Bawah di Baris Ini</span>
+                <span>Paksa Garis Bawah</span>
               </label>
+
+              <button
+                type="button"
+                class="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1"
+                @click="removeTableRow(selectedTableRowIndex!)"
+              >
+                <i class="pi pi-trash text-xs" />
+                <span>Hapus Seluruh Baris</span>
+              </button>
             </div>
           </div>
 
           <div v-else class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-500 text-xs text-center">
-            👉 Klik salah satu baris pada kanvas stiker untuk mengatur field, kolom ganda, perataan teks, atau warna latarnya.
+            👉 Klik salah satu baris pada kanvas stiker untuk mengatur isi sel, menambah kolom, atau menghapusnya.
           </div>
 
           <!-- B. Daftar Urutan Baris Aktif -->
           <div class="flex flex-col gap-1.5">
-            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Urutan Baris Tabel ({{ activeTemplate.tableConfig.rows.length }})</span>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Urutan Baris Tabel ({{ activeTemplate.tableConfig.rows.length }})</span>
+              <button
+                type="button"
+                class="text-indigo-600 hover:text-indigo-800 text-[11px] font-bold flex items-center gap-1"
+                @click="addNewRow('name', 'Nama')"
+              >
+                <i class="pi pi-plus text-[10px]" />
+                <span>Tambah Baris</span>
+              </button>
+            </div>
+
             <div class="flex flex-col gap-1 max-h-56 overflow-y-auto">
               <div
                 v-for="(r, idx) in activeTemplate.tableConfig.rows"
                 :key="r.id"
                 class="flex items-center justify-between px-2 py-1 rounded border text-xs cursor-pointer transition-colors"
                 :class="selectedTableRowIndex === idx ? 'bg-indigo-100 border-indigo-400 font-bold text-indigo-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'"
-                @click="selectedTableRowIndex = idx"
+                @click="selectedTableRowIndex = idx; selectedTableCellIndex = 0"
               >
                 <div class="flex items-center gap-1.5 truncate">
                   <span class="text-slate-400 text-[10px]">{{ idx + 1 }}.</span>
-                  <span v-if="r.type === 'two_fields'" class="truncate text-indigo-700">⊞ {{ r.label }} | {{ r.label2 }}</span>
-                  <span v-else-if="r.type === 'custom'" class="truncate text-purple-700">✎ {{ r.customText || r.label }}</span>
-                  <span v-else-if="r.type === 'barcode_strip'" class="truncate text-cyan-700">|||| Barcode Garis</span>
-                  <span v-else class="truncate">{{ r.label }} ({{ r.field }})</span>
+                  <span v-if="r.type === 'barcode_strip'" class="truncate text-cyan-700">|||| Barcode Garis</span>
+                  <span v-else class="truncate">
+                    {{ getRowCells(r).map((c) => c.label || c.field).join(' | ') }}
+                    <span class="text-[10px] font-normal text-slate-400">({{ getRowCells(r).length }} sel)</span>
+                  </span>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
-                  <button type="button" class="text-slate-400 hover:text-indigo-600 p-0.5" @click.stop="duplicateTableRow(idx)">
+                  <button type="button" class="text-indigo-600 hover:text-indigo-800 p-0.5" title="Tambah Sel" @click.stop="addCellToRow(idx)">
+                    <i class="pi pi-plus-circle text-[11px]" />
+                  </button>
+                  <button type="button" class="text-slate-400 hover:text-indigo-600 p-0.5" title="Duplikat" @click.stop="duplicateTableRow(idx)">
                     <i class="pi pi-copy text-[10px]" />
                   </button>
-                  <button type="button" class="text-rose-500 hover:text-rose-700 p-0.5" @click.stop="removeTableRow(idx)">
-                    <i class="pi pi-times text-[10px]" />
+                  <button type="button" class="text-rose-500 hover:text-rose-700 p-0.5" title="Hapus Baris" @click.stop="removeTableRow(idx)">
+                    <i class="pi pi-trash text-[10px]" />
                   </button>
                 </div>
               </div>
@@ -1978,7 +2399,7 @@ function printLabels() {
           height: `${activeTemplate.heightMm}mm`,
         }"
       >
-        <!-- 1. Print Mode: Native HTML Table with Real Print Borders & Full Customization -->
+        <!-- 1. Print Mode: Native HTML Table with Real Print Borders & Dynamic Cells -->
         <table
           v-if="activeTemplate.layoutMode === 'table'"
           class="custom-print-table"
@@ -2043,89 +2464,50 @@ function printLabels() {
                   :key="r.id"
                   class="print-data-row"
                   :style="{
-                    fontSize: `${r.fontSize || activeTemplate.tableConfig.defaultFontSize}pt`,
                     borderBottom: (activeTemplate.tableConfig.showGridLines && rIdx < activeTemplate.tableConfig.rows.length - 1) || r.hasBottomBorder
                       ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
                       : 'none',
-                    backgroundColor: r.bgColor === 'light_gray' ? '#f1f5f9' : r.bgColor === 'dark' ? '#1e293b' : 'transparent',
-                    color: r.bgColor === 'dark' ? '#ffffff' : '#000000',
                   }"
                 >
-                  <!-- 1. FIELD TUNGGAL -->
-                  <template v-if="!r.type || r.type === 'field'">
-                    <td
-                      class="print-label-col"
-                      :style="{
-                        width: `${activeTemplate.tableConfig.labelColWidthPercent}%`,
-                        padding: `${activeTemplate.tableConfig.cellPaddingMm}mm 1mm`,
-                        borderRight: activeTemplate.tableConfig.showLabelColBorder
-                          ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                          : 'none',
-                      }"
-                    >
-                      {{ r.label }}:
-                    </td>
-                    <td
-                      class="print-val-col"
-                      :class="[
-                        r.bold ? 'font-bold' : '',
-                        r.field === 'sku' ? 'font-mono' : '',
-                      ]"
-                      :style="{
-                        padding: `${activeTemplate.tableConfig.cellPaddingMm}mm 1mm`,
-                        textAlign: r.align || 'left',
-                      }"
-                    >
-                      {{ resolveFieldValue(it, r.field) }}
-                    </td>
-                  </template>
-
-                  <!-- 2. TWO FIELDS -->
-                  <template v-else-if="r.type === 'two_fields'">
-                    <td
-                      colspan="2"
-                      :style="{ padding: `${activeTemplate.tableConfig.cellPaddingMm}mm 1mm` }"
-                    >
-                      <div style="display: flex; width: 100%; align-items: center;">
-                        <div style="flex: 1; display: flex; align-items: center; overflow: hidden;">
-                          <b style="padding-right: 1mm;">{{ r.label }}:</b>
-                          <span :style="{ fontWeight: r.bold ? 'bold' : 'normal' }">{{ resolveFieldValue(it, r.field) }}</span>
-                        </div>
-                        <div
-                          :style="{
-                            width: `${activeTemplate.tableConfig.borderWidth}pt`,
-                            height: '100%',
-                            backgroundColor: activeTemplate.tableConfig.borderColor,
-                            margin: '0 1mm',
-                          }"
-                        />
-                        <div style="flex: 1; display: flex; align-items: center; overflow: hidden; padding-left: 1mm;">
-                          <b style="padding-right: 1mm;">{{ r.label2 || 'Kol 2' }}:</b>
-                          <span :style="{ fontWeight: r.bold2 ? 'bold' : 'normal' }">{{ resolveFieldValue(it, r.field2) }}</span>
-                        </div>
-                      </div>
-                    </td>
-                  </template>
-
-                  <!-- 3. CUSTOM TEXT -->
-                  <template v-else-if="r.type === 'custom'">
-                    <td
-                      colspan="2"
-                      :style="{
-                        padding: `${activeTemplate.tableConfig.cellPaddingMm}mm 1mm`,
-                        textAlign: r.align || 'center',
-                        fontWeight: r.bold ? 'bold' : 'normal',
-                      }"
-                    >
-                      {{ r.customText || r.label }}
-                    </td>
-                  </template>
-
-                  <!-- 4. BARCODE STRIP -->
-                  <template v-else-if="r.type === 'barcode_strip'">
-                    <td colspan="2" style="text-align: center; padding: 0.5mm 1mm;">
+                  <!-- BARCODE STRIP ROW -->
+                  <template v-if="r.type === 'barcode_strip'">
+                    <td colspan="10" style="text-align: center; padding: 0.5mm 1mm;">
                       <img :src="`/api/barcode/${it.id}.png?fmt=code128`" style="width: 90%; height: 6mm; object-fit: contain;" alt="BC" />
                       <div style="font-family: monospace; font-weight: bold; font-size: 5.5pt; line-height: 1;">{{ it.sku }}</div>
+                    </td>
+                  </template>
+
+                  <!-- DYNAMIC MULTI-CELL ROW -->
+                  <template v-else>
+                    <td
+                      v-for="(cell, cIdx) in getRowCells(r)"
+                      :key="cell.id || cIdx"
+                      class="print-cell"
+                      :style="{
+                        fontSize: `${cell.fontSize || r.fontSize || activeTemplate.tableConfig.defaultFontSize}pt`,
+                        borderRight: (activeTemplate.tableConfig.showLabelColBorder || activeTemplate.tableConfig.showColBorder) && cIdx < getRowCells(r).length - 1
+                          ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
+                          : 'none',
+                        padding: `${activeTemplate.tableConfig.cellPaddingMm}mm 1mm`,
+                        backgroundColor: cell.bgColor === 'light_gray' ? '#f1f5f9' : cell.bgColor === 'dark' ? '#1e293b' : 'transparent',
+                        color: cell.bgColor === 'dark' ? '#ffffff' : '#000000',
+                        textAlign: cell.align || 'left',
+                      }"
+                    >
+                      <div style="display: flex; align-items: center; width: 100%; overflow: hidden;">
+                        <b v-if="cell.label" style="padding-right: 1mm; shrink: 0; white-space: nowrap;">{{ cell.label }}:</b>
+                        <span
+                          :style="{
+                            fontWeight: cell.bold ? 'bold' : 'normal',
+                            fontFamily: cell.field === 'sku' ? 'monospace' : 'inherit',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }"
+                        >
+                          {{ cell.customText || resolveFieldValue(it, cell.field) }}
+                        </span>
+                      </div>
                     </td>
                   </template>
                 </tr>
@@ -2267,24 +2649,6 @@ function printLabels() {
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-.field-item-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 9px;
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-align: left;
-}
-.field-item-btn:hover {
-  background-color: #f8fafc;
-  border-color: #6366f1;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-}
-
 .component-item-btn {
   display: flex;
   align-items: center;
@@ -2403,13 +2767,7 @@ function printLabels() {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  .print-label-col {
-    font-weight: bold !important;
-    white-space: nowrap !important;
-    vertical-align: middle !important;
-    box-sizing: border-box !important;
-  }
-  .print-val-col {
+  .print-cell {
     vertical-align: middle !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
