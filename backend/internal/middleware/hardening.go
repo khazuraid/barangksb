@@ -64,6 +64,38 @@ var (
 	burstMu      sync.Mutex
 )
 
+func init() {
+	// Background garbage collector to prevent memory leak from IP tracking maps
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		for range ticker.C {
+			now := time.Now()
+			bucketMu.Lock()
+			for ip, b := range loginBuckets {
+				if now.Sub(b.lastSeen) > 10*time.Minute {
+					delete(loginBuckets, ip)
+				}
+			}
+			bucketMu.Unlock()
+
+			burstMu.Lock()
+			for ip, b := range burstBuckets {
+				if now.After(b.blockedUntil) && now.Sub(b.windowStart) > 10*time.Minute {
+					delete(burstBuckets, ip)
+				}
+			}
+			burstMu.Unlock()
+		}
+	}()
+}
+
+// ResetLoginAttempts clears failed login attempts for an IP upon successful authentication
+func ResetLoginAttempts(ip string) {
+	bucketMu.Lock()
+	delete(loginBuckets, ip)
+	bucketMu.Unlock()
+}
+
 type ipRateBucket struct {
 	attempts int
 	lastSeen time.Time

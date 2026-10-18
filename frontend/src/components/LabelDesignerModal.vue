@@ -3,7 +3,6 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Tag from 'primevue/tag'
@@ -13,7 +12,7 @@ export interface LabelElement {
   id: string
   type: 'qr' | 'code128' | 'field' | 'static_text' | 'header' | 'line' | 'logo'
   field?: string
-  prefix?: string // Teks awalan otomatis, misal: "NUP: ", "Thn: ", "Merk: "
+  prefix?: string
   text?: string
   logoUrl?: string
   x: number // mm
@@ -27,11 +26,45 @@ export interface LabelElement {
   lineOrientation?: 'horizontal' | 'vertical'
 }
 
+export interface TableRowConfig {
+  id: string
+  field: string
+  label: string
+  bold?: boolean
+  fontSize?: number // pt (opsional)
+  align?: 'left' | 'center' | 'right'
+}
+
+export interface TableLayoutConfig {
+  showOuterBorder: boolean
+  showGridLines: boolean
+  showColBorder: boolean
+  showHeaderBorder: boolean
+  showFooterBorder: boolean
+
+  showHeader: boolean
+  headerText: string
+  headerFontSize: number
+
+  qrPosition: 'left' | 'right' | 'none'
+  qrType: 'qr' | 'code128'
+  qrWidthMm: number
+
+  showFooter: boolean
+  footerText: string
+  footerFontSize: number
+
+  defaultFontSize: number
+  rows: TableRowConfig[]
+}
+
 export interface LabelTemplate {
   id: string
   name: string
   widthMm: number
   heightMm: number
+  layoutMode: 'table' | 'free'
+  tableConfig: TableLayoutConfig
   elements: LabelElement[]
 }
 
@@ -47,39 +80,64 @@ const emit = defineEmits<{
 
 const toast = useToast()
 const MM_TO_PX = 3.7795
-const zoom = ref(2.2) // Skala tampilan layar kanvas
+const zoom = ref(2.2)
 const snapGrid = ref(true)
 const gridSizeMm = ref(0.5)
-const showGuideGrid = ref(false) // Grid garis visual di stiker (default mati agar stiker bersih)
+const showGuideGrid = ref(false)
 
-// Daftar Lengkap Field dari Formulir Barang
+// Field Lengkap dari Formulir Barang
 const AVAILABLE_FIELDS = [
-  { label: 'Nama Barang', value: 'name', icon: 'pi pi-box', defaultPrefix: '' },
-  { label: 'Kode Barang (KIB / BMD)', value: 'item_code', icon: 'pi pi-tag', defaultPrefix: 'Kode: ' },
-  { label: 'Kode Barcode / SKU', value: 'sku', icon: 'pi pi-hashtag', defaultPrefix: '' },
-  { label: 'No. Register / NUP', value: 'register_number', icon: 'pi pi-id-card', defaultPrefix: 'NUP: ' },
-  { label: 'Ruangan / Lokasi', value: 'location', icon: 'pi pi-map-marker', defaultPrefix: '📍 ' },
-  { label: 'Kode Ruangan / Lokasi', value: 'location_code', icon: 'pi pi-compass', defaultPrefix: 'Ruang: ' },
-  { label: 'Merk / Brand', value: 'merk', icon: 'pi pi-bookmark', defaultPrefix: 'Merk: ' },
-  { label: 'Tipe / Model', value: 'type_model', icon: 'pi pi-cog', defaultPrefix: 'Tipe: ' },
-  { label: 'Nomor Seri Pabrik (SN)', value: 'serial_number', icon: 'pi pi-barcode', defaultPrefix: 'SN: ' },
-  { label: 'Tahun Pengadaan', value: 'procurement_year', icon: 'pi pi-calendar', defaultPrefix: 'Thn: ' },
-  { label: 'Asal Usul / Sumber Dana', value: 'funding_source', icon: 'pi pi-dollar', defaultPrefix: 'Dana: ' },
-  { label: 'Kategori Barang', value: 'category', icon: 'pi pi-folder', defaultPrefix: 'Kat: ' },
-  { label: 'Kondisi Barang', value: 'condition_status', icon: 'pi pi-shield', defaultPrefix: 'Kondisi: ' },
-  { label: 'Ukuran / Dimensi / CC', value: 'size', icon: 'pi pi-arrows-alt', defaultPrefix: 'Ukuran: ' },
-  { label: 'Bahan / Material', value: 'material', icon: 'pi pi-database', defaultPrefix: 'Bahan: ' },
-  { label: 'Harga Satuan (Rp)', value: 'price_per_unit', icon: 'pi pi-money-bill', defaultPrefix: 'Rp ' },
-  { label: 'Keterangan', value: 'description', icon: 'pi pi-info-circle', defaultPrefix: 'Ket: ' },
+  { label: 'Nama Barang', value: 'name', icon: 'pi pi-box', defaultLabel: 'Nama' },
+  { label: 'Kode Barang (KIB / BMD)', value: 'item_code', icon: 'pi pi-tag', defaultLabel: 'Kode KIB' },
+  { label: 'Kode Barcode / SKU', value: 'sku', icon: 'pi pi-hashtag', defaultLabel: 'SKU' },
+  { label: 'No. Register / NUP', value: 'register_number', icon: 'pi pi-id-card', defaultLabel: 'No. Reg' },
+  { label: 'Ruangan / Lokasi', value: 'location', icon: 'pi pi-map-marker', defaultLabel: 'Ruang' },
+  { label: 'Kode Ruangan / Lokasi', value: 'location_code', icon: 'pi pi-compass', defaultLabel: 'Kd. Ruang' },
+  { label: 'Merk / Brand', value: 'merk', icon: 'pi pi-bookmark', defaultLabel: 'Merk' },
+  { label: 'Tipe / Model', value: 'type_model', icon: 'pi pi-cog', defaultLabel: 'Tipe' },
+  { label: 'Nomor Seri Pabrik (SN)', value: 'serial_number', icon: 'pi pi-barcode', defaultLabel: 'SN' },
+  { label: 'Tahun Pengadaan', value: 'procurement_year', icon: 'pi pi-calendar', defaultLabel: 'Tahun' },
+  { label: 'Asal Usul / Sumber Dana', value: 'funding_source', icon: 'pi pi-dollar', defaultLabel: 'Sumber' },
+  { label: 'Kategori Barang', value: 'category', icon: 'pi pi-folder', defaultLabel: 'Kategori' },
+  { label: 'Kondisi Barang', value: 'condition_status', icon: 'pi pi-shield', defaultLabel: 'Kondisi' },
+  { label: 'Ukuran / Dimensi / CC', value: 'size', icon: 'pi pi-arrows-alt', defaultLabel: 'Ukuran' },
+  { label: 'Bahan / Material', value: 'material', icon: 'pi pi-database', defaultLabel: 'Bahan' },
+  { label: 'Harga Satuan (Rp)', value: 'price_per_unit', icon: 'pi pi-money-bill', defaultLabel: 'Harga' },
+  { label: 'Keterangan', value: 'description', icon: 'pi pi-info-circle', defaultLabel: 'Ket' },
 ]
 
-// Preset Desain Standar yang Rapi & Proporsional
+// Preset Desain Standar (Mode Tabel Bergaris & Mode Bebas)
 const DEFAULT_PRESETS: LabelTemplate[] = [
   {
-    id: 'preset_tj_103',
-    name: '🌟 T&J 103 (64 × 32 mm)',
+    id: 'preset_tj_103_table',
+    name: '🌟 T&J 103 (64 × 32 mm) - Tabel Bergaris',
     widthMm: 64,
     heightMm: 32,
+    layoutMode: 'table',
+    tableConfig: {
+      showOuterBorder: true,
+      showGridLines: true,
+      showColBorder: true,
+      showHeaderBorder: true,
+      showFooterBorder: false,
+      showHeader: true,
+      headerText: 'PEMERINTAH KABUPATEN SUMBAWA BARAT',
+      headerFontSize: 6.5,
+      qrPosition: 'left',
+      qrType: 'qr',
+      qrWidthMm: 22,
+      showFooter: false,
+      footerText: '',
+      footerFontSize: 5.5,
+      defaultFontSize: 6.5,
+      rows: [
+        { id: 'r1', field: 'name', label: 'Nama', bold: true, fontSize: 7 },
+        { id: 'r2', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5 },
+        { id: 'r3', field: 'register_number', label: 'No. Reg', bold: false, fontSize: 6 },
+        { id: 'r4', field: 'location', label: 'Ruang', bold: false, fontSize: 6 },
+        { id: 'r5', field: 'procurement_year', label: 'Tahun', bold: false, fontSize: 6 },
+      ],
+    },
     elements: [
       { id: 'hdr_1', type: 'header', text: 'PEMERINTAH KABUPATEN SUMBAWA BARAT', x: 2, y: 1.8, w: 60, h: 4, fontSize: 6.5, bold: true, align: 'center', border: true },
       { id: 'qr_1', type: 'qr', x: 2.5, y: 7, w: 23, h: 23 },
@@ -91,10 +149,34 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     ],
   },
   {
-    id: 'preset_50x30',
-    name: '🏷️ Stiker Rol (50 × 30 mm)',
+    id: 'preset_50x30_table',
+    name: '🏷️ Stiker Rol (50 × 30 mm) - Tabel Bergaris',
     widthMm: 50,
     heightMm: 30,
+    layoutMode: 'table',
+    tableConfig: {
+      showOuterBorder: true,
+      showGridLines: true,
+      showColBorder: true,
+      showHeaderBorder: true,
+      showFooterBorder: false,
+      showHeader: true,
+      headerText: 'INVENTARIS PUSKESMAS KSB',
+      headerFontSize: 6.5,
+      qrPosition: 'left',
+      qrType: 'qr',
+      qrWidthMm: 20,
+      showFooter: false,
+      footerText: '',
+      footerFontSize: 5.5,
+      defaultFontSize: 6.5,
+      rows: [
+        { id: 'r1', field: 'name', label: 'Barang', bold: true, fontSize: 7 },
+        { id: 'r2', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5 },
+        { id: 'r3', field: 'register_number', label: 'NUP', bold: false, fontSize: 6 },
+        { id: 'r4', field: 'location', label: 'Ruang', bold: false, fontSize: 6 },
+      ],
+    },
     elements: [
       { id: 'hdr_1', type: 'header', text: 'INVENTARIS KANTOR', x: 2, y: 2, w: 46, h: 3.5, fontSize: 6.5, bold: true, align: 'left', border: true },
       { id: 'qr_1', type: 'qr', x: 2, y: 6.5, w: 21, h: 21 },
@@ -105,22 +187,37 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     ],
   },
   {
-    id: 'preset_40x30',
-    name: '🏷️ Stiker Rol Mini (40 × 30 mm)',
-    widthMm: 40,
-    heightMm: 30,
-    elements: [
-      { id: 'qr_1', type: 'qr', x: 2, y: 3, w: 23, h: 23 },
-      { id: 'f_name', type: 'field', field: 'name', x: 26, y: 3, w: 12.5, h: 10, fontSize: 7, bold: true, align: 'left' },
-      { id: 'f_sku', type: 'field', field: 'sku', x: 26, y: 14, w: 12.5, h: 4, fontSize: 6.5, bold: true, align: 'left' },
-      { id: 'f_loc', type: 'field', field: 'location', prefix: '', x: 26, y: 19, w: 12.5, h: 4, fontSize: 6, bold: false, align: 'left' },
-    ],
-  },
-  {
-    id: 'preset_70x50',
-    name: '🏷️ Kartu Aset BMD (70 × 50 mm)',
+    id: 'preset_70x50_table',
+    name: '🏷️ Kartu Aset BMD (70 × 50 mm) - Tabel Bergaris',
     widthMm: 70,
     heightMm: 50,
+    layoutMode: 'table',
+    tableConfig: {
+      showOuterBorder: true,
+      showGridLines: true,
+      showColBorder: true,
+      showHeaderBorder: true,
+      showFooterBorder: true,
+      showHeader: true,
+      headerText: 'KARTU INVENTARIS BARANG MILIK DAERAH (BMD)',
+      headerFontSize: 7,
+      qrPosition: 'left',
+      qrType: 'qr',
+      qrWidthMm: 25,
+      showFooter: true,
+      footerText: 'DILARANG DILEPAS / DIPINDAHKAN TANPA IZIN PENGELOLA BMD',
+      footerFontSize: 5.5,
+      defaultFontSize: 6.5,
+      rows: [
+        { id: 'r1', field: 'name', label: 'Nama Barang', bold: true, fontSize: 7.5 },
+        { id: 'r2', field: 'item_code', label: 'Kode KIB', bold: false, fontSize: 6.5 },
+        { id: 'r3', field: 'sku', label: 'SKU / Barcode', bold: true, fontSize: 6.5 },
+        { id: 'r4', field: 'register_number', label: 'No. Register', bold: false, fontSize: 6.5 },
+        { id: 'r5', field: 'merk', label: 'Merk / Tipe', bold: false, fontSize: 6.5 },
+        { id: 'r6', field: 'location', label: 'Ruangan', bold: false, fontSize: 6.5 },
+        { id: 'r7', field: 'procurement_year', label: 'Tahun', bold: false, fontSize: 6.5 },
+      ],
+    },
     elements: [
       { id: 'hdr_1', type: 'header', text: 'KARTU INVENTARIS BARANG MILIK DAERAH (BMD)', x: 3, y: 2.5, w: 64, h: 4.5, fontSize: 7.5, bold: true, align: 'center', border: true },
       { id: 'qr_1', type: 'qr', x: 3.5, y: 8.5, w: 28, h: 28 },
@@ -140,15 +237,48 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
 const templates = ref<LabelTemplate[]>([])
 const activeTemplate = ref<LabelTemplate>(JSON.parse(JSON.stringify(DEFAULT_PRESETS[0])))
 const activeElementId = ref<string | null>(null)
+const selectedTableRowIndex = ref<number | null>(null)
 const copies = ref(1)
 const isPrinting = ref(false)
-const paletteTab = ref<'form' | 'barcode' | 'header' | 'text'>('form')
+const paletteTab = ref<'form' | 'table_lines' | 'barcode'>('form')
+
+function ensureTableConfig(tpl: LabelTemplate) {
+  if (!tpl.tableConfig) {
+    tpl.tableConfig = {
+      showOuterBorder: true,
+      showGridLines: true,
+      showColBorder: true,
+      showHeaderBorder: true,
+      showFooterBorder: false,
+      showHeader: true,
+      headerText: 'INVENTARIS KANTOR',
+      headerFontSize: 6.5,
+      qrPosition: 'left',
+      qrType: 'qr',
+      qrWidthMm: 22,
+      showFooter: false,
+      footerText: '',
+      footerFontSize: 5.5,
+      defaultFontSize: 6.5,
+      rows: [
+        { id: 'r1', field: 'name', label: 'Nama', bold: true, fontSize: 7 },
+        { id: 'r2', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5 },
+        { id: 'r3', field: 'location', label: 'Ruang', bold: false, fontSize: 6 },
+      ],
+    }
+  }
+  if (!tpl.layoutMode) {
+    tpl.layoutMode = 'table'
+  }
+}
 
 function loadSavedTemplates() {
-  const raw = localStorage.getItem('custom_label_templates_v3')
+  const raw = localStorage.getItem('custom_label_templates_v4')
   if (raw) {
     try {
-      templates.value = JSON.parse(raw)
+      const parsed = JSON.parse(raw)
+      parsed.forEach((t: LabelTemplate) => ensureTableConfig(t))
+      templates.value = parsed
     } catch {
       templates.value = JSON.parse(JSON.stringify(DEFAULT_PRESETS))
     }
@@ -158,19 +288,27 @@ function loadSavedTemplates() {
 }
 
 function saveTemplates() {
-  localStorage.setItem('custom_label_templates_v3', JSON.stringify(templates.value))
+  localStorage.setItem('custom_label_templates_v4', JSON.stringify(templates.value))
 }
 
 onMounted(() => {
+  ensureTableConfig(activeTemplate.value)
   loadSavedTemplates()
 })
+
+const isTableMode = computed(() => activeTemplate.value.layoutMode === 'table')
 
 const activeElement = computed(() => {
   if (!activeElementId.value) return null
   return activeTemplate.value.elements.find((el) => el.id === activeElementId.value) || null
 })
 
-// Sampel Barang Nyata untuk Pratinjau
+const selectedTableRow = computed(() => {
+  if (selectedTableRowIndex.value === null) return null
+  return activeTemplate.value.tableConfig?.rows[selectedTableRowIndex.value] || null
+})
+
+// Sampel Barang Nyata
 const sampleItem = computed(() => {
   if (props.selectedIds.length > 0) {
     const found = props.items.find((i) => i.id === props.selectedIds[0])
@@ -200,12 +338,10 @@ const sampleItem = computed(() => {
   )
 })
 
-// Nilai field yang dirender
 function resolveFieldValue(item: any, fieldKey?: string, prefix?: string): string {
   if (!fieldKey) return ''
   let val = item[fieldKey]
   if (val === undefined || val === null || val === '') {
-    // Fallback sample values if empty
     switch (fieldKey) {
       case 'name': val = item.name || 'Nama Aset'; break
       case 'sku': val = item.sku || 'AST-0001'; break
@@ -230,7 +366,52 @@ function resolveFieldValue(item: any, fieldKey?: string, prefix?: string): strin
   return `${pfx}${val}`
 }
 
-// Drag & Resize Engine
+// ==== Operasi Baris Tabel ====
+function addTableRowFromField(fieldKey: string, defaultLabel: string) {
+  ensureTableConfig(activeTemplate.value)
+  const newRow: TableRowConfig = {
+    id: `r_${Date.now().toString(36)}`,
+    field: fieldKey,
+    label: defaultLabel || fieldKey,
+    bold: fieldKey === 'name' || fieldKey === 'sku',
+    fontSize: fieldKey === 'name' ? 7 : activeTemplate.value.tableConfig.defaultFontSize,
+    align: 'left',
+  }
+  activeTemplate.value.tableConfig.rows.push(newRow)
+  selectedTableRowIndex.value = activeTemplate.value.tableConfig.rows.length - 1
+  toast.add({ severity: 'success', summary: 'Baris Tabel Ditambahkan', detail: defaultLabel, life: 1200 })
+}
+
+function removeTableRow(index: number) {
+  if (!activeTemplate.value.tableConfig) return
+  activeTemplate.value.tableConfig.rows.splice(index, 1)
+  if (selectedTableRowIndex.value === index) {
+    selectedTableRowIndex.value = null
+  } else if (selectedTableRowIndex.value !== null && selectedTableRowIndex.value > index) {
+    selectedTableRowIndex.value--
+  }
+}
+
+function moveRowUp(index: number) {
+  if (index <= 0 || !activeTemplate.value.tableConfig) return
+  const rows = activeTemplate.value.tableConfig.rows
+  const temp = rows[index]
+  rows[index] = rows[index - 1]
+  rows[index - 1] = temp
+  selectedTableRowIndex.value = index - 1
+}
+
+function moveRowDown(index: number) {
+  if (!activeTemplate.value.tableConfig) return
+  const rows = activeTemplate.value.tableConfig.rows
+  if (index >= rows.length - 1) return
+  const temp = rows[index]
+  rows[index] = rows[index + 1]
+  rows[index + 1] = temp
+  selectedTableRowIndex.value = index + 1
+}
+
+// ==== Drag & Drop Engine (Mode Bebas) ====
 let isDragging = false
 let isResizing = false
 let dragStartX = 0
@@ -241,6 +422,7 @@ let initialElemW = 0
 let initialElemH = 0
 
 function startDrag(e: PointerEvent, el: LabelElement) {
+  if (isTableMode.value) return
   activeElementId.value = el.id
   isDragging = true
   isResizing = false
@@ -264,7 +446,7 @@ function startResize(e: PointerEvent, el: LabelElement) {
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (!activeElement.value) return
+  if (isTableMode.value || !activeElement.value) return
   const currentScale = MM_TO_PX * zoom.value
 
   if (isDragging) {
@@ -309,7 +491,7 @@ function onPointerUp() {
   isResizing = false
 }
 
-// Tambah Elemen Baru
+// Tambah Elemen Bebas
 function addFieldElement(fieldKey: string, defaultPrefix = '') {
   const id = `f_${fieldKey}_${Date.now().toString(36)}`
   const newEl: LabelElement = {
@@ -359,20 +541,6 @@ function addOtherElement(type: 'qr' | 'code128' | 'header' | 'static_text' | 'li
   activeElementId.value = id
 }
 
-function handleLogoUpload(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files?.length || !activeElement.value) return
-  const file = input.files[0]
-  const reader = new FileReader()
-  reader.onload = (ev) => {
-    if (activeElement.value && ev.target?.result) {
-      activeElement.value.logoUrl = ev.target.result as string
-      toast.add({ severity: 'success', summary: 'Logo Berhasil Dipasang', life: 1800 })
-    }
-  }
-  reader.readAsDataURL(file)
-}
-
 function removeActiveElement() {
   if (!activeElementId.value) return
   activeTemplate.value.elements = activeTemplate.value.elements.filter((el) => el.id !== activeElementId.value)
@@ -390,15 +558,21 @@ function duplicateActiveElement() {
 }
 
 function applyPreset(tpl: LabelTemplate) {
-  activeTemplate.value = JSON.parse(JSON.stringify(tpl))
+  const clone = JSON.parse(JSON.stringify(tpl))
+  ensureTableConfig(clone)
+  activeTemplate.value = clone
   activeElementId.value = null
+  selectedTableRowIndex.value = null
   toast.add({ severity: 'info', summary: 'Preset Dimuat', detail: tpl.name, life: 1800 })
 }
 
 function resetLayout() {
   const defaultTpl = DEFAULT_PRESETS.find((p) => p.id === activeTemplate.value.id) || DEFAULT_PRESETS[0]
-  activeTemplate.value = JSON.parse(JSON.stringify(defaultTpl))
+  const clone = JSON.parse(JSON.stringify(defaultTpl))
+  ensureTableConfig(clone)
+  activeTemplate.value = clone
   activeElementId.value = null
+  selectedTableRowIndex.value = null
   toast.add({ severity: 'info', summary: 'Tata Letak Direset ke Bawaan', life: 1500 })
 }
 
@@ -433,8 +607,9 @@ function importJSON(e: Event) {
   reader.onload = (ev) => {
     try {
       const parsed = JSON.parse(ev.target?.result as string)
-      if (parsed.widthMm && parsed.heightMm && Array.isArray(parsed.elements)) {
+      if (parsed.widthMm && parsed.heightMm) {
         parsed.id = `imported_${Date.now().toString(36)}`
+        ensureTableConfig(parsed)
         activeTemplate.value = parsed
         templates.value.push(parsed)
         saveTemplates()
@@ -448,37 +623,6 @@ function importJSON(e: Event) {
   }
   reader.readAsText(file)
 }
-
-// Navigasi Nudge dengan Keyboard Arrow Keys
-function onKeyDown(e: KeyboardEvent) {
-  if (!activeElement.value) return
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-
-  const step = e.shiftKey ? 1 : 0.5
-  if (e.key === 'ArrowLeft') {
-    activeElement.value.x = Math.max(0, activeElement.value.x - step)
-    e.preventDefault()
-  } else if (e.key === 'ArrowRight') {
-    activeElement.value.x = Math.min(activeTemplate.value.widthMm - activeElement.value.w, activeElement.value.x + step)
-    e.preventDefault()
-  } else if (e.key === 'ArrowUp') {
-    activeElement.value.y = Math.max(0, activeElement.value.y - step)
-    e.preventDefault()
-  } else if (e.key === 'ArrowDown') {
-    activeElement.value.y = Math.min(activeTemplate.value.heightMm - activeElement.value.h, activeElement.value.y + step)
-    e.preventDefault()
-  } else if (e.key === 'Delete' || e.key === 'Backspace') {
-    removeActiveElement()
-    e.preventDefault()
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onKeyDown)
-})
-onUnmounted(() => {
-  window.removeEventListener('keydown', onKeyDown)
-})
 
 // Data Barang yang Akan Dicetak
 const itemsToPrint = computed(() => {
@@ -506,48 +650,75 @@ function printLabels() {
   <Dialog
     :visible="visible"
     modal
-    header="Desainer Label QR &amp; Barcode (Drag &amp; Drop)"
-    :style="{ width: '96vw', maxWidth: '1360px', height: '94vh' }"
+    header="Desainer Label QR &amp; Barcode Aset"
+    :style="{ width: '96vw', maxWidth: '1400px', height: '94vh' }"
     :contentStyle="{ padding: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }"
     @update:visible="emit('update:visible', $event)"
   >
-    <!-- TOP TOOLBAR: Clean, Professional, Light, No Overlap -->
+    <!-- TOP TOOLBAR: Layout Switcher, Presets, Size, & Print Action -->
     <div class="px-3.5 py-2 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2.5 text-xs select-none shadow-xs">
-      <!-- Left: Preset & Size Controls -->
+      <!-- Left: Mode Switcher + Preset & Size -->
       <div class="flex items-center gap-2 flex-wrap">
+        <!-- Layout Mode Toggle (Tabel vs Bebas) -->
+        <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+          <button
+            type="button"
+            class="px-2.5 py-1 rounded-md font-bold text-xs flex items-center gap-1.5 transition-all"
+            :class="isTableMode ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+            @click="activeTemplate.layoutMode = 'table'"
+          >
+            <i class="pi pi-table" />
+            <span>Mode Tabel Bergaris</span>
+          </button>
+          <button
+            type="button"
+            class="px-2.5 py-1 rounded-md font-bold text-xs flex items-center gap-1.5 transition-all"
+            :class="!isTableMode ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+            @click="activeTemplate.layoutMode = 'free'"
+          >
+            <i class="pi pi-th-large" />
+            <span>Mode Bebas (Drag)</span>
+          </button>
+        </div>
+
+        <div class="h-4 w-px bg-slate-200 mx-0.5 shrink-0" />
+
+        <!-- Preset Selector -->
         <div class="flex items-center gap-1.5 shrink-0">
           <span class="text-slate-500 font-semibold">Preset:</span>
           <Select
-            :modelValue="activeTemplate.id"
-            :options="templates"
+            v-model="activeTemplate.id"
+            :options="DEFAULT_PRESETS"
             optionLabel="name"
             optionValue="id"
-            placeholder="Pilih Preset..."
-            class="!w-[260px] sm:!w-[310px] !text-xs !py-0.5"
-            @update:modelValue="(val) => {
-              const found = templates.find((t) => t.id === val)
-              if (found) applyPreset(found)
+            class="w-64 !text-xs"
+            @change="(e) => {
+              const p = DEFAULT_PRESETS.find((x) => x.id === e.value)
+              if (p) applyPreset(p)
             }"
           />
         </div>
 
-        <!-- Ukuran Width x Height in mm (Clean native inputs without suffix collision) -->
-        <div class="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-200 shrink-0">
-          <span class="text-slate-500 text-[11px] font-semibold">Ukuran:</span>
+        <!-- Dimensi Stiker (mm) -->
+        <div class="flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
           <div class="flex items-center gap-1">
+            <span class="text-slate-400 font-mono text-[11px]">P:</span>
             <input
               type="number"
               v-model.number="activeTemplate.widthMm"
               min="20"
-              max="210"
+              max="297"
               class="w-13 text-center font-mono font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 px-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
               title="Lebar stiker (mm)"
             />
-            <span class="text-slate-400 font-bold">&times;</span>
+          </div>
+          <span class="text-slate-300 font-bold">&times;</span>
+          <div class="flex items-center gap-1">
+            <span class="text-slate-400 font-mono text-[11px]">L:</span>
             <input
               type="number"
               v-model.number="activeTemplate.heightMm"
-              min="10"
+              min="15"
               max="297"
               class="w-13 text-center font-mono font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 px-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
               title="Tinggi stiker (mm)"
@@ -593,8 +764,8 @@ function printLabels() {
           </button>
         </div>
 
-        <!-- Snap Grid Toggle -->
-        <label class="flex items-center gap-1.5 cursor-pointer text-slate-600 text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-md border border-slate-200 shrink-0">
+        <!-- Snap Grid Toggle (Free Mode) -->
+        <label v-if="!isTableMode" class="flex items-center gap-1.5 cursor-pointer text-slate-600 text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-md border border-slate-200 shrink-0">
           <Checkbox v-model="snapGrid" binary />
           <span>Snap 0.5mm</span>
         </label>
@@ -644,8 +815,8 @@ function printLabels() {
 
     <!-- MAIN WORKSPACE: 3 COLUMNS -->
     <div class="flex-1 flex overflow-hidden bg-slate-100">
-      <!-- LEFT COLUMN: PALETTE OF ELEMENTS FROM FORM & BARCODES -->
-      <div class="w-68 border-r border-slate-200 bg-white flex flex-col overflow-hidden select-none">
+      <!-- LEFT COLUMN: PALETTE & TABLE ROW BUILDER -->
+      <div class="w-72 border-r border-slate-200 bg-white flex flex-col overflow-hidden select-none">
         <!-- Palette Tab Headers -->
         <div class="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1">
           <button
@@ -655,9 +826,20 @@ function printLabels() {
             @click="paletteTab = 'form'"
           >
             <i class="pi pi-list text-xs mr-1" />
-            <span>Data Formulir</span>
+            <span>{{ isTableMode ? 'Tambah Baris Data' : 'Data Formulir' }}</span>
           </button>
           <button
+            v-if="isTableMode"
+            type="button"
+            class="tab-btn"
+            :class="paletteTab === 'table_lines' ? 'tab-btn-active' : ''"
+            @click="paletteTab = 'table_lines'"
+          >
+            <i class="pi pi-sliders-h text-xs mr-1" />
+            <span>Garis &amp; Kolom</span>
+          </button>
+          <button
+            v-else
             type="button"
             class="tab-btn"
             :class="paletteTab === 'barcode' ? 'tab-btn-active' : ''"
@@ -668,40 +850,119 @@ function printLabels() {
           </button>
         </div>
 
-        <!-- Palette Content: TAB 1 - ALL FIELDS FROM FORM -->
-        <div v-if="paletteTab === 'form'" class="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-            Klik field untuk taruh di stiker:
-          </div>
-
-          <div class="flex flex-col gap-1.5">
-            <button
-              v-for="fld in AVAILABLE_FIELDS"
-              :key="fld.value"
-              type="button"
-              class="field-item-btn"
-              @click="addFieldElement(fld.value, fld.defaultPrefix)"
-            >
-              <div class="flex items-center gap-2 min-w-0">
-                <i :class="[fld.icon, 'text-indigo-600 text-xs shrink-0']" />
-                <span class="font-semibold text-slate-800 truncate text-[11.5px]">{{ fld.label }}</span>
-              </div>
-              <span class="text-[10px] text-slate-400 font-mono shrink-0">+ Taruh</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Palette Content: TAB 2 - BARCODE, HEADER, LOGO, DIVIDER, TEXT -->
-        <div v-else class="flex-1 overflow-y-auto p-3 flex flex-col gap-2.5">
-          <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-            Elemen Visual:
+        <!-- 1. TAB FORM FIELDS -->
+        <div v-if="paletteTab === 'form'" class="flex-1 overflow-y-auto p-2.5 flex flex-col gap-1.5">
+          <div class="text-[11px] text-slate-500 px-1 pb-1 font-medium flex items-center justify-between">
+            <span>{{ isTableMode ? 'Klik field untuk tambah ke tabel:' : 'Klik untuk tempatkan field:' }}</span>
+            <span class="text-[10px] text-indigo-600 font-bold">{{ AVAILABLE_FIELDS.length }} Field</span>
           </div>
 
           <button
+            v-for="f in AVAILABLE_FIELDS"
+            :key="f.value"
             type="button"
-            class="component-item-btn"
-            @click="addOtherElement('qr')"
+            class="field-item-btn"
+            @click="isTableMode ? addTableRowFromField(f.value, f.defaultLabel) : addFieldElement(f.value, f.defaultLabel ? f.defaultLabel + ': ' : '')"
           >
+            <div class="flex items-center gap-2 truncate">
+              <i :class="[f.icon, 'text-slate-500 text-xs shrink-0']" />
+              <div class="truncate text-[11.5px] font-semibold text-slate-700">{{ f.label }}</div>
+            </div>
+            <i class="pi pi-plus text-slate-400 text-xs shrink-0" />
+          </button>
+        </div>
+
+        <!-- 2. TAB GARIS & STRUKTUR TABEL (Mode Tabel) -->
+        <div v-else-if="paletteTab === 'table_lines' && isTableMode" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+          <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wide pb-1 border-b border-slate-200">
+            Garis Pembatas (Borders)
+          </div>
+
+          <label class="flex items-center gap-2 cursor-pointer p-2 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 text-slate-700 text-xs font-semibold">
+            <Checkbox v-model="activeTemplate.tableConfig.showOuterBorder" binary />
+            <div class="flex flex-col">
+              <span>Bingkai Luar Stiker</span>
+              <span class="text-[10px] text-slate-400 font-normal">Garis tebal membungkus label</span>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer p-2 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 text-slate-700 text-xs font-semibold">
+            <Checkbox v-model="activeTemplate.tableConfig.showGridLines" binary />
+            <div class="flex flex-col">
+              <span>Garis Pemisah Antar Baris</span>
+              <span class="text-[10px] text-slate-400 font-normal">Garis horizontal antar baris data</span>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer p-2 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 text-slate-700 text-xs font-semibold">
+            <Checkbox v-model="activeTemplate.tableConfig.showColBorder" binary />
+            <div class="flex flex-col">
+              <span>Garis Pemisah Kolom QR</span>
+              <span class="text-[10px] text-slate-400 font-normal">Garis vertikal antara QR dan teks data</span>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer p-2 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 text-slate-700 text-xs font-semibold">
+            <Checkbox v-model="activeTemplate.tableConfig.showHeaderBorder" binary />
+            <div class="flex flex-col">
+              <span>Garis Bawah Kop / Header</span>
+              <span class="text-[10px] text-slate-400 font-normal">Pemisah kop instansi di atas</span>
+            </div>
+          </label>
+
+          <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wide pt-2 pb-1 border-b border-slate-200">
+            Kolom Barcode &amp; QR
+          </div>
+
+          <div class="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-md border border-slate-200">
+            <label class="text-[11px] font-semibold text-slate-600">Posisi Barcode</label>
+            <Select
+              v-model="activeTemplate.tableConfig.qrPosition"
+              :options="[
+                { label: 'Kolom Kiri', value: 'left' },
+                { label: 'Kolom Kanan', value: 'right' },
+                { label: 'Tanpa Barcode', value: 'none' },
+              ]"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full !text-xs"
+            />
+
+            <div v-if="activeTemplate.tableConfig.qrPosition !== 'none'" class="flex flex-col gap-1 pt-1">
+              <label class="text-[11px] font-semibold text-slate-600">Tipe Barcode</label>
+              <Select
+                v-model="activeTemplate.tableConfig.qrType"
+                :options="[
+                  { label: 'QR Code (Rekomendasi)', value: 'qr' },
+                  { label: 'Barcode 128 (Garis)', value: 'code128' },
+                ]"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full !text-xs"
+              />
+
+              <div class="flex items-center justify-between pt-1">
+                <span class="text-[11px] text-slate-600 font-medium">Lebar Kolom:</span>
+                <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
+                  <input
+                    type="number"
+                    v-model.number="activeTemplate.tableConfig.qrWidthMm"
+                    min="15"
+                    max="45"
+                    class="w-10 text-center font-bold text-xs bg-transparent focus:outline-hidden"
+                  />
+                  <span class="text-[10px] text-slate-400">mm</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. TAB BARCODE & KOP (Mode Bebas) -->
+        <div v-else class="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2">
+          <div class="text-[11px] text-slate-500 px-1 pb-0.5 font-medium">Komponen Tambahan:</div>
+
+          <button type="button" class="component-item-btn" @click="addOtherElement('qr')">
             <i class="pi pi-qrcode text-indigo-600 text-lg" />
             <div class="text-left flex-1 min-w-0">
               <div class="font-bold text-slate-800 text-[11.5px]">QR Code</div>
@@ -710,11 +971,7 @@ function printLabels() {
             <i class="pi pi-plus text-slate-400 text-xs" />
           </button>
 
-          <button
-            type="button"
-            class="component-item-btn"
-            @click="addOtherElement('code128')"
-          >
+          <button type="button" class="component-item-btn" @click="addOtherElement('code128')">
             <i class="pi pi-barcode text-cyan-600 text-lg" />
             <div class="text-left flex-1 min-w-0">
               <div class="font-bold text-slate-800 text-[11.5px]">Barcode 128</div>
@@ -723,11 +980,7 @@ function printLabels() {
             <i class="pi pi-plus text-slate-400 text-xs" />
           </button>
 
-          <button
-            type="button"
-            class="component-item-btn"
-            @click="addOtherElement('header')"
-          >
+          <button type="button" class="component-item-btn" @click="addOtherElement('header')">
             <i class="pi pi-building text-amber-600 text-lg" />
             <div class="text-left flex-1 min-w-0">
               <div class="font-bold text-slate-800 text-[11.5px]">Header / Kop Instansi</div>
@@ -736,24 +989,7 @@ function printLabels() {
             <i class="pi pi-plus text-slate-400 text-xs" />
           </button>
 
-          <button
-            type="button"
-            class="component-item-btn"
-            @click="addOtherElement('logo')"
-          >
-            <i class="pi pi-image text-emerald-600 text-lg" />
-            <div class="text-left flex-1 min-w-0">
-              <div class="font-bold text-slate-800 text-[11.5px]">Logo Instansi / Kantor</div>
-              <div class="text-[10px] text-slate-500">Unggah file logo PNG/JPG</div>
-            </div>
-            <i class="pi pi-plus text-slate-400 text-xs" />
-          </button>
-
-          <button
-            type="button"
-            class="component-item-btn"
-            @click="addOtherElement('line')"
-          >
+          <button type="button" class="component-item-btn" @click="addOtherElement('line')">
             <i class="pi pi-minus text-slate-500 text-lg" />
             <div class="text-left flex-1 min-w-0">
               <div class="font-bold text-slate-800 text-[11.5px]">Garis Pembatas</div>
@@ -762,11 +998,7 @@ function printLabels() {
             <i class="pi pi-plus text-slate-400 text-xs" />
           </button>
 
-          <button
-            type="button"
-            class="component-item-btn"
-            @click="addOtherElement('static_text')"
-          >
+          <button type="button" class="component-item-btn" @click="addOtherElement('static_text')">
             <i class="pi pi-pencil text-purple-600 text-lg" />
             <div class="text-left flex-1 min-w-0">
               <div class="font-bold text-slate-800 text-[11.5px]">Teks Bebas Statis</div>
@@ -777,7 +1009,8 @@ function printLabels() {
         </div>
 
         <div class="p-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-tight">
-          💡 Geser elemen langsung di stiker. Tarik titik biru di pojok untuk ubah ukuran.
+          <span v-if="isTableMode">💡 <b>Mode Tabel:</b> Baris dan garis tersusun otomatis rapi. Klik baris pada kanvas untuk mengubah label &amp; urutan.</span>
+          <span v-else>💡 Geser elemen langsung di stiker. Tarik titik biru di pojok untuk ubah ukuran.</span>
         </div>
       </div>
 
@@ -792,170 +1025,388 @@ function printLabels() {
           <div class="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white/80 px-3 py-1 rounded-full border border-slate-300 shadow-xs">
             <span>🏷️ {{ activeTemplate.widthMm }} &times; {{ activeTemplate.heightMm }} mm</span>
             <span class="text-slate-300">|</span>
+            <span class="text-indigo-600 font-bold">{{ isTableMode ? 'Tabel Bergaris' : 'Mode Bebas' }}</span>
+            <span class="text-slate-300">|</span>
             <span class="text-slate-500 font-normal">Sampel: {{ sampleItem.name }}</span>
           </div>
 
-          <!-- THE PHYSICAL STICKER (White card with clean border and drop shadow) -->
+          <!-- THE PHYSICAL STICKER -->
           <div
-            class="relative bg-white shadow-xl rounded-[4px] border border-slate-300 text-black select-none overflow-hidden transition-all"
+            class="relative bg-white shadow-xl rounded-[4px] border border-slate-300 text-black select-none overflow-hidden transition-all flex flex-col"
             :style="{
               width: `${activeTemplate.widthMm * MM_TO_PX * zoom}px`,
               height: `${activeTemplate.heightMm * MM_TO_PX * zoom}px`,
             }"
-            @click.self="activeElementId = null"
+            @click.self="activeElementId = null; selectedTableRowIndex = null"
           >
-            <!-- Optional Faint Grid Guides -->
+            <!-- 1. MODE TABEL BERGARIS -->
             <div
-              v-if="showGuideGrid"
-              class="absolute inset-0 pointer-events-none opacity-10"
-              :style="{
-                backgroundImage: 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
-                backgroundSize: `${gridSizeMm * 2 * MM_TO_PX * zoom}px ${gridSizeMm * 2 * MM_TO_PX * zoom}px`,
-              }"
-            />
-
-            <!-- Placed Elements on Sticker -->
-            <div
-              v-for="el in activeTemplate.elements"
-              :key="el.id"
-              class="absolute cursor-move transition-shadow"
-              :class="[
-                activeElementId === el.id
-                  ? 'ring-2 ring-indigo-600 ring-offset-1 bg-indigo-50/20 z-20'
-                  : 'hover:ring-1 hover:ring-indigo-300 z-10',
-              ]"
-              :style="{
-                left: `${el.x * MM_TO_PX * zoom}px`,
-                top: `${el.y * MM_TO_PX * zoom}px`,
-                width: `${el.w * MM_TO_PX * zoom}px`,
-                height: `${el.h * MM_TO_PX * zoom}px`,
-              }"
-              @pointerdown="startDrag($event, el)"
-              @click.stop="activeElementId = el.id"
+              v-if="isTableMode"
+              class="w-full h-full flex flex-col bg-white text-black box-border overflow-hidden"
+              :class="activeTemplate.tableConfig.showOuterBorder ? 'border-[1.5px] border-black' : ''"
             >
-              <!-- 1. QR Code -->
+              <!-- Kop / Header Table Row -->
               <div
-                v-if="el.type === 'qr'"
-                class="w-full h-full p-0.5 flex items-center justify-center pointer-events-none"
+                v-if="activeTemplate.tableConfig.showHeader"
+                class="w-full px-2 py-0.5 text-center font-extrabold uppercase tracking-tight shrink-0 flex items-center justify-center bg-slate-50/50"
+                :class="activeTemplate.tableConfig.showHeaderBorder ? 'border-b border-black' : ''"
+                :style="{ fontSize: `${activeTemplate.tableConfig.headerFontSize * (zoom / 2.2)}pt` }"
               >
-                <img
-                  :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
-                  class="w-full h-full object-contain pointer-events-none"
-                  alt="QR"
-                />
+                {{ activeTemplate.tableConfig.headerText }}
               </div>
 
-              <!-- 2. Barcode 128 -->
-              <div
-                v-else-if="el.type === 'code128'"
-                class="w-full h-full p-0.5 flex flex-col items-center justify-center pointer-events-none"
-              >
-                <img
-                  :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`"
-                  class="w-full h-[75%] object-contain pointer-events-none"
-                  alt="BC"
-                />
-                <span class="text-[8px] font-mono font-bold leading-tight truncate max-w-full">{{ sampleItem.sku }}</span>
-              </div>
-
-              <!-- 3. Header / Kop -->
-              <div
-                v-else-if="el.type === 'header'"
-                class="w-full h-full flex items-center pointer-events-none uppercase tracking-wide leading-tight truncate px-0.5"
-                :class="[
-                  el.border ? 'border-b border-black' : '',
-                  el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-                ]"
-                :style="{
-                  fontSize: `${(el.fontSize || 6.5) * (zoom / 2)}pt`,
-                  fontWeight: el.bold ? 800 : 600,
-                }"
-              >
-                {{ el.text || 'PEMERINTAH KABUPATEN KSB' }}
-              </div>
-
-              <!-- 4. Dynamic Field from Form -->
-              <div
-                v-else-if="el.type === 'field'"
-                class="w-full h-full flex items-center pointer-events-none leading-tight px-0.5 overflow-hidden"
-                :class="[
-                  el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-                ]"
-                :style="{
-                  fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
-                  fontWeight: el.bold ? 700 : 400,
-                  fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
-                }"
-              >
-                <span class="truncate">{{ resolveFieldValue(sampleItem, el.field, el.prefix) }}</span>
-              </div>
-
-              <!-- 5. Static Text -->
-              <div
-                v-else-if="el.type === 'static_text'"
-                class="w-full h-full flex items-center pointer-events-none leading-tight px-0.5 overflow-hidden"
-                :class="[
-                  el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-                ]"
-                :style="{
-                  fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
-                  fontWeight: el.bold ? 700 : 400,
-                }"
-              >
-                <span class="truncate">{{ el.text }}</span>
-              </div>
-
-              <!-- 6. Line Divider -->
-              <div
-                v-else-if="el.type === 'line'"
-                class="w-full h-full pointer-events-none border-t border-black my-auto"
-              />
-
-              <!-- 7. Logo -->
-              <div
-                v-else-if="el.type === 'logo'"
-                class="w-full h-full p-0.5 flex items-center justify-center pointer-events-none"
-              >
-                <img
-                  v-if="el.logoUrl"
-                  :src="el.logoUrl"
-                  class="w-full h-full object-contain pointer-events-none"
-                  alt="Logo"
-                />
+              <!-- Main Table Body: QR Column + Data Rows -->
+              <div class="flex-1 flex overflow-hidden">
+                <!-- QR Code Column (Left) -->
                 <div
-                  v-else
-                  class="w-full h-full border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-slate-400 p-1"
+                  v-if="activeTemplate.tableConfig.qrPosition === 'left'"
+                  class="shrink-0 flex flex-col items-center justify-center p-1"
+                  :class="activeTemplate.tableConfig.showColBorder ? 'border-r border-black' : ''"
+                  :style="{ width: `${activeTemplate.tableConfig.qrWidthMm * MM_TO_PX * zoom}px` }"
                 >
-                  <i class="pi pi-image text-sm" />
+                  <img
+                    v-if="activeTemplate.tableConfig.qrType === 'qr'"
+                    :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
+                    class="w-full h-full object-contain pointer-events-none"
+                    alt="QR"
+                  />
+                  <div v-else class="w-full h-full flex flex-col items-center justify-center">
+                    <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-[70%] object-contain pointer-events-none" alt="BC" />
+                    <span class="font-mono font-bold leading-none text-center" :style="{ fontSize: `${5.5 * (zoom / 2.2)}pt` }">{{ sampleItem.sku }}</span>
+                  </div>
+                </div>
+
+                <!-- Table Data Rows -->
+                <div class="flex-1 flex flex-col justify-between overflow-hidden">
+                  <div
+                    v-for="(row, rIdx) in activeTemplate.tableConfig.rows"
+                    :key="row.id"
+                    class="flex-1 flex items-center px-1.5 py-0.5 gap-1.5 cursor-pointer hover:bg-indigo-50/50 transition-colors"
+                    :class="[
+                      activeTemplate.tableConfig.showGridLines && rIdx < activeTemplate.tableConfig.rows.length - 1 ? 'border-b border-black' : '',
+                      selectedTableRowIndex === rIdx ? 'bg-indigo-100/70 ring-1 ring-indigo-500' : '',
+                    ]"
+                    :style="{ fontSize: `${(row.fontSize || activeTemplate.tableConfig.defaultFontSize) * (zoom / 2.2)}pt` }"
+                    @click.stop="selectedTableRowIndex = rIdx"
+                  >
+                    <!-- Label Sel Kiri -->
+                    <span class="font-bold shrink-0 text-slate-800 whitespace-nowrap min-w-10">
+                      {{ row.label }}:
+                    </span>
+                    <!-- Value Sel Kanan -->
+                    <span
+                      class="flex-1 truncate"
+                      :class="[
+                        row.bold ? 'font-bold' : 'font-normal',
+                        row.field === 'sku' ? 'font-mono' : '',
+                        row.align === 'center' ? 'text-center' : row.align === 'right' ? 'text-right' : 'text-left',
+                      ]"
+                    >
+                      {{ resolveFieldValue(sampleItem, row.field) }}
+                    </span>
+                  </div>
+
+                  <div
+                    v-if="activeTemplate.tableConfig.rows.length === 0"
+                    class="flex-1 flex items-center justify-center text-slate-400 text-xs p-4 text-center"
+                  >
+                    Tabel kosong. Klik field di sebelah kiri untuk menambah baris.
+                  </div>
+                </div>
+
+                <!-- QR Code Column (Right) -->
+                <div
+                  v-if="activeTemplate.tableConfig.qrPosition === 'right'"
+                  class="shrink-0 flex flex-col items-center justify-center p-1"
+                  :class="activeTemplate.tableConfig.showColBorder ? 'border-l border-black' : ''"
+                  :style="{ width: `${activeTemplate.tableConfig.qrWidthMm * MM_TO_PX * zoom}px` }"
+                >
+                  <img
+                    v-if="activeTemplate.tableConfig.qrType === 'qr'"
+                    :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
+                    class="w-full h-full object-contain pointer-events-none"
+                    alt="QR"
+                  />
+                  <div v-else class="w-full h-full flex flex-col items-center justify-center">
+                    <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-[70%] object-contain pointer-events-none" alt="BC" />
+                    <span class="font-mono font-bold leading-none text-center" :style="{ fontSize: `${5.5 * (zoom / 2.2)}pt` }">{{ sampleItem.sku }}</span>
+                  </div>
                 </div>
               </div>
 
-              <!-- Resize Handle -->
+              <!-- Footer Note Row -->
               <div
-                v-if="activeElementId === el.id"
-                class="absolute -right-1 -bottom-1 w-3.5 h-3.5 bg-indigo-600 border-2 border-white rounded-xs cursor-nwse-resize z-30 shadow-xs"
-                @pointerdown.stop="startResize($event, el)"
-              />
+                v-if="activeTemplate.tableConfig.showFooter"
+                class="w-full px-2 py-0.5 text-center text-slate-700 tracking-tight shrink-0 flex items-center justify-center"
+                :class="activeTemplate.tableConfig.showFooterBorder ? 'border-t border-black' : ''"
+                :style="{ fontSize: `${activeTemplate.tableConfig.footerFontSize * (zoom / 2.2)}pt` }"
+              >
+                {{ activeTemplate.tableConfig.footerText }}
+              </div>
             </div>
+
+            <!-- 2. MODE BEBAS (Free Drag & Drop Elements) -->
+            <template v-else>
+              <div
+                v-for="el in activeTemplate.elements"
+                :key="el.id"
+                class="absolute cursor-move select-none transition-shadow"
+                :class="[
+                  activeElementId === el.id ? 'ring-2 ring-indigo-600 shadow-md z-20' : 'hover:ring-1 hover:ring-slate-400 z-10',
+                ]"
+                :style="{
+                  left: `${el.x * MM_TO_PX * zoom}px`,
+                  top: `${el.y * MM_TO_PX * zoom}px`,
+                  width: `${el.w * MM_TO_PX * zoom}px`,
+                  height: `${el.h * MM_TO_PX * zoom}px`,
+                }"
+                @pointerdown="startDrag($event, el)"
+              >
+                <!-- QR Code -->
+                <div v-if="el.type === 'qr'" class="w-full h-full p-0.5 bg-white pointer-events-none flex items-center justify-center">
+                  <img :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`" class="w-full h-full object-contain" alt="QR" />
+                </div>
+
+                <!-- Barcode 128 -->
+                <div v-else-if="el.type === 'code128'" class="w-full h-full p-0.5 bg-white pointer-events-none flex flex-col items-center justify-center">
+                  <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-[70%] object-contain" alt="BC" />
+                  <span class="text-[7pt] font-mono font-bold leading-none truncate">{{ sampleItem.sku }}</span>
+                </div>
+
+                <!-- Header -->
+                <div
+                  v-else-if="el.type === 'header'"
+                  class="w-full h-full px-1 flex items-center uppercase tracking-wide leading-tight truncate pointer-events-none"
+                  :class="[
+                    el.border ? 'border-b border-black' : '',
+                    el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+                  ]"
+                  :style="{
+                    fontSize: `${(el.fontSize || 6.5) * (zoom / 2)}pt`,
+                    fontWeight: el.bold ? 800 : 600,
+                  }"
+                >
+                  <span class="truncate">{{ el.text }}</span>
+                </div>
+
+                <!-- Field -->
+                <div
+                  v-else-if="el.type === 'field'"
+                  class="w-full h-full px-1 flex items-center leading-tight truncate pointer-events-none"
+                  :class="[
+                    el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+                  ]"
+                  :style="{
+                    fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
+                    fontWeight: el.bold ? 700 : 400,
+                    fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
+                  }"
+                >
+                  <span class="truncate">{{ resolveFieldValue(sampleItem, el.field, el.prefix) }}</span>
+                </div>
+
+                <!-- Static Text -->
+                <div
+                  v-else-if="el.type === 'static_text'"
+                  class="w-full h-full px-1 flex items-center leading-tight truncate pointer-events-none"
+                  :class="[
+                    el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+                  ]"
+                  :style="{
+                    fontSize: `${(el.fontSize || 7) * (zoom / 2)}pt`,
+                    fontWeight: el.bold ? 700 : 400,
+                  }"
+                >
+                  <span class="truncate">{{ el.text }}</span>
+                </div>
+
+                <!-- Line Divider -->
+                <div v-else-if="el.type === 'line'" class="w-full h-full pointer-events-none border-t border-black my-auto" />
+
+                <!-- Resize Handle -->
+                <div
+                  v-if="activeElementId === el.id"
+                  class="absolute -right-1 -bottom-1 w-3.5 h-3.5 bg-indigo-600 border-2 border-white rounded-xs cursor-nwse-resize z-30 shadow-xs"
+                  @pointerdown.stop="startResize($event, el)"
+                />
+              </div>
+            </template>
           </div>
         </div>
       </div>
 
       <!-- RIGHT COLUMN: PROPERTIES INSPECTOR -->
-      <div class="w-80 shrink-0 border-l border-slate-200 bg-white p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
+      <div class="w-84 shrink-0 border-l border-slate-200 bg-white p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
         <div class="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between pb-2 border-b border-slate-200">
-          <span>Pengaturan Elemen</span>
-          <Tag v-if="activeElement" :value="activeElement.type.toUpperCase()" severity="info" class="!text-[9px] !py-0" />
+          <span>{{ isTableMode ? 'Pengaturan Tabel & Baris' : 'Pengaturan Elemen' }}</span>
+          <Tag :value="isTableMode ? 'MODE TABEL' : 'MODE BEBAS'" severity="info" class="!text-[9px] !py-0" />
         </div>
 
-        <div v-if="activeElement" class="flex flex-col gap-3">
-          <!-- 1. Text Field Inputs -->
+        <!-- 1. INSPECTOR UNTUK MODE TABEL -->
+        <div v-if="isTableMode" class="flex flex-col gap-3">
+          <!-- A. Pengaturan Baris Terpilih -->
+          <div v-if="selectedTableRow" class="p-3 bg-indigo-50/60 rounded-lg border border-indigo-200 flex flex-col gap-2.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-indigo-900 text-xs">Edit Baris #{{ (selectedTableRowIndex ?? 0) + 1 }}</span>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="p-1 rounded bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40"
+                  :disabled="selectedTableRowIndex === 0"
+                  title="Pindah Baris ke Atas"
+                  @click="moveRowUp(selectedTableRowIndex!)"
+                >
+                  <i class="pi pi-arrow-up text-xs" />
+                </button>
+                <button
+                  type="button"
+                  class="p-1 rounded bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40"
+                  :disabled="selectedTableRowIndex === activeTemplate.tableConfig.rows.length - 1"
+                  title="Pindah Baris ke Bawah"
+                  @click="moveRowDown(selectedTableRowIndex!)"
+                >
+                  <i class="pi pi-arrow-down text-xs" />
+                </button>
+                <button
+                  type="button"
+                  class="p-1 rounded bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 ml-1"
+                  title="Hapus Baris Ini"
+                  @click="removeTableRow(selectedTableRowIndex!)"
+                >
+                  <i class="pi pi-trash text-xs" />
+                </button>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label class="text-[11px] font-semibold text-slate-600">Label Judul Baris</label>
+              <InputText v-model="selectedTableRow.label" class="w-full !text-xs !py-1" />
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label class="text-[11px] font-semibold text-slate-600">Field Data Barang</label>
+              <Select
+                v-model="selectedTableRow.field"
+                :options="AVAILABLE_FIELDS"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full !text-xs"
+              />
+            </div>
+
+            <div class="flex items-center justify-between pt-1 border-t border-indigo-100">
+              <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
+                <Checkbox v-model="selectedTableRow.bold" binary />
+                <span class="font-bold">Teks Tebal (Bold)</span>
+              </label>
+
+              <div class="flex items-center gap-1">
+                <span class="text-[11px] text-slate-500">Ukuran:</span>
+                <input
+                  type="number"
+                  v-model.number="selectedTableRow.fontSize"
+                  min="4"
+                  max="14"
+                  step="0.5"
+                  class="w-12 text-center font-bold text-xs bg-white rounded border border-slate-300 py-0.5"
+                />
+                <span class="text-[10px] text-slate-400">pt</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-500 text-xs text-center">
+            👉 Klik salah satu baris pada kanvas stiker untuk mengatur label, ukuran huruf, atau mengubah urutannya.
+          </div>
+
+          <!-- B. Header Kop & Footer Tabel -->
+          <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2.5">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-1.5 cursor-pointer text-slate-800 font-bold text-xs">
+                <Checkbox v-model="activeTemplate.tableConfig.showHeader" binary />
+                <span>Kop / Header Instansi</span>
+              </label>
+            </div>
+            <div v-if="activeTemplate.tableConfig.showHeader" class="flex flex-col gap-1.5 pt-1 border-t border-slate-200">
+              <InputText v-model="activeTemplate.tableConfig.headerText" placeholder="PEMERINTAH KABUPATEN..." class="w-full !text-xs !py-1" />
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] text-slate-500">Ukuran Huruf Kop:</span>
+                <div class="flex items-center gap-1">
+                  <input
+                    type="number"
+                    v-model.number="activeTemplate.tableConfig.headerFontSize"
+                    min="5"
+                    max="14"
+                    step="0.5"
+                    class="w-12 text-center font-bold text-xs bg-white rounded border border-slate-300 py-0.5"
+                  />
+                  <span class="text-[10px] text-slate-400">pt</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- C. Footer Catatan Aset -->
+          <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2.5">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-1.5 cursor-pointer text-slate-800 font-bold text-xs">
+                <Checkbox v-model="activeTemplate.tableConfig.showFooter" binary />
+                <span>Catatan Kaki (Footer)</span>
+              </label>
+            </div>
+            <div v-if="activeTemplate.tableConfig.showFooter" class="flex flex-col gap-1.5 pt-1 border-t border-slate-200">
+              <InputText v-model="activeTemplate.tableConfig.footerText" placeholder="DILARANG DILEPAS..." class="w-full !text-xs !py-1" />
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] text-slate-500">Ukuran Huruf Footer:</span>
+                <div class="flex items-center gap-1">
+                  <input
+                    type="number"
+                    v-model.number="activeTemplate.tableConfig.footerFontSize"
+                    min="4"
+                    max="10"
+                    step="0.5"
+                    class="w-12 text-center font-bold text-xs bg-white rounded border border-slate-300 py-0.5"
+                  />
+                  <span class="text-[10px] text-slate-400">pt</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- D. Daftar Urutan Baris Aktif -->
+          <div class="flex flex-col gap-1.5">
+            <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Daftar Baris Tabel ({{ activeTemplate.tableConfig.rows.length }})</span>
+            <div class="flex flex-col gap-1 max-h-48 overflow-y-auto">
+              <div
+                v-for="(r, idx) in activeTemplate.tableConfig.rows"
+                :key="r.id"
+                class="flex items-center justify-between px-2 py-1 rounded border text-xs cursor-pointer transition-colors"
+                :class="selectedTableRowIndex === idx ? 'bg-indigo-100 border-indigo-400 font-bold text-indigo-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'"
+                @click="selectedTableRowIndex = idx"
+              >
+                <div class="flex items-center gap-1.5 truncate">
+                  <span class="text-slate-400 text-[10px]">{{ idx + 1 }}.</span>
+                  <span class="truncate">{{ r.label }} ({{ r.field }})</span>
+                </div>
+                <button
+                  type="button"
+                  class="text-rose-500 hover:text-rose-700 p-0.5"
+                  @click.stop="removeTableRow(idx)"
+                >
+                  <i class="pi pi-times text-[10px]" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. INSPECTOR UNTUK MODE BEBAS (Drag & Drop) -->
+        <div v-else-if="activeElement" class="flex flex-col gap-3">
           <div v-if="activeElement.type === 'header' || activeElement.type === 'static_text'" class="flex flex-col gap-1">
             <label class="text-slate-600 font-semibold text-[11px]">Teks Tampilan</label>
             <InputText v-model="activeElement.text" class="w-full !text-xs !py-1" />
           </div>
 
-          <!-- 2. Form Field Selector & Prefix -->
           <div v-if="activeElement.type === 'field'" class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
             <div class="flex flex-col gap-1">
               <label class="text-slate-600 font-semibold text-[11px]">Field dari Formulir</label>
@@ -967,187 +1418,41 @@ function printLabels() {
                 class="w-full !text-xs"
               />
             </div>
-
             <div class="flex flex-col gap-1">
               <label class="text-slate-600 font-semibold text-[11px]">Teks Awalan (Prefix)</label>
-              <InputText
-                v-model="activeElement.prefix"
-                placeholder="Contoh: NUP: , Thn: , dll"
-                class="w-full !text-xs !py-1"
-              />
-              <span class="text-[10px] text-slate-400">Contoh hasil: "{{ resolveFieldValue(sampleItem, activeElement.field, activeElement.prefix) }}"</span>
+              <InputText v-model="activeElement.prefix" placeholder="Contoh: NUP: " class="w-full !text-xs !py-1" />
             </div>
           </div>
 
-          <!-- 3. Logo Controls -->
-          <div v-if="activeElement.type === 'logo'" class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <label class="text-[11px] text-slate-700 font-bold">File Gambar Logo</label>
-            <div v-if="activeElement.logoUrl" class="flex items-center gap-2">
-              <img :src="activeElement.logoUrl" class="w-12 h-12 object-contain bg-white rounded p-1 border border-slate-300" alt="Preview" />
-              <div class="flex flex-col gap-1 flex-1">
-                <span class="text-[10.5px] text-emerald-600 font-semibold">✓ Logo terpasang</span>
-                <button
-                  type="button"
-                  class="text-[10px] text-rose-600 hover:text-rose-700 text-left font-semibold"
-                  @click="activeElement.logoUrl = ''"
-                >
-                  Hapus Logo
-                </button>
-              </div>
-            </div>
-
-            <label class="cursor-pointer w-full flex items-center justify-center gap-2 py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold transition-colors">
-              <i class="pi pi-upload text-xs" />
-              <span>{{ activeElement.logoUrl ? 'Ganti Logo' : 'Unggah File Logo (PNG/JPG)' }}</span>
-              <input type="file" accept="image/*" class="hidden" @change="handleLogoUpload" />
-            </label>
-          </div>
-
-          <!-- 4. Dimension & Position (mm) - Clean Native Inputs, Never Overflow -->
-          <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2.5">
+          <!-- Position & Dimension -->
+          <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2">
             <span class="text-[11px] font-bold text-slate-700">Posisi &amp; Ukuran (mm)</span>
             <div class="grid grid-cols-2 gap-2">
-              <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] text-slate-500 font-medium">Posisi X</label>
-                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
-                  <input
-                    type="number"
-                    v-model.number="activeElement.x"
-                    :min="0"
-                    :step="0.5"
-                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
-                  />
-                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
-                </div>
+              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
+                <span class="text-slate-400 text-[10px] mr-1">X:</span>
+                <input type="number" v-model.number="activeElement.x" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
               </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] text-slate-500 font-medium">Posisi Y</label>
-                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
-                  <input
-                    type="number"
-                    v-model.number="activeElement.y"
-                    :min="0"
-                    :step="0.5"
-                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
-                  />
-                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
-                </div>
+              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
+                <span class="text-slate-400 text-[10px] mr-1">Y:</span>
+                <input type="number" v-model.number="activeElement.y" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
               </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] text-slate-500 font-medium">Lebar (W)</label>
-                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
-                  <input
-                    type="number"
-                    v-model.number="activeElement.w"
-                    :min="2"
-                    :step="0.5"
-                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
-                  />
-                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
-                </div>
+              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
+                <span class="text-slate-400 text-[10px] mr-1">P:</span>
+                <input type="number" v-model.number="activeElement.w" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
               </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] text-slate-500 font-medium">Tinggi (H)</label>
-                <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 focus-within:ring-1 focus-within:ring-indigo-500">
-                  <input
-                    type="number"
-                    v-model.number="activeElement.h"
-                    :min="1"
-                    :step="0.5"
-                    class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 focus:outline-hidden"
-                  />
-                  <span class="text-[10px] text-slate-400 font-mono ml-1">mm</span>
-                </div>
+              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
+                <span class="text-slate-400 text-[10px] mr-1">L:</span>
+                <input type="number" v-model.number="activeElement.h" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
               </div>
             </div>
           </div>
 
-          <!-- 5. Typography -->
-          <div v-if="!['qr', 'code128', 'line', 'logo'].includes(activeElement.type)" class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2.5">
-            <div class="flex items-center justify-between gap-2">
-              <label class="text-[11px] font-semibold text-slate-700">Ukuran Huruf</label>
-              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1 w-24 focus-within:ring-1 focus-within:ring-indigo-500">
-                <input
-                  type="number"
-                  v-model.number="activeElement.fontSize"
-                  :min="4"
-                  :max="36"
-                  :step="0.5"
-                  class="w-full bg-transparent text-xs font-mono font-bold text-slate-800 text-center focus:outline-hidden"
-                />
-                <span class="text-[10px] text-slate-400 font-mono ml-1">pt</span>
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between pt-1.5 border-t border-slate-200">
-              <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-[11px]">
-                <Checkbox v-model="activeElement.bold" binary />
-                <span class="font-bold">Tebal (Bold)</span>
-              </label>
-
-              <label v-if="activeElement.type === 'header'" class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-[11px]">
-                <Checkbox v-model="activeElement.border" binary />
-                <span>Garis Bawah</span>
-              </label>
-            </div>
-
-            <div class="flex items-center justify-between pt-1.5 border-t border-slate-200">
-              <span class="text-[11px] text-slate-600">Perataan:</span>
-              <div class="flex items-center gap-1 bg-white p-0.5 rounded border border-slate-200">
-                <button
-                  type="button"
-                  class="align-btn"
-                  :class="activeElement.align === 'left' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'"
-                  title="Rata Kiri"
-                  @click="activeElement.align = 'left'"
-                >
-                  <i class="pi pi-align-left text-xs" />
-                </button>
-                <button
-                  type="button"
-                  class="align-btn"
-                  :class="activeElement.align === 'center' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'"
-                  title="Rata Tengah"
-                  @click="activeElement.align = 'center'"
-                >
-                  <i class="pi pi-align-center text-xs" />
-                </button>
-                <button
-                  type="button"
-                  class="align-btn"
-                  :class="activeElement.align === 'right' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'"
-                  title="Rata Kanan"
-                  @click="activeElement.align = 'right'"
-                >
-                  <i class="pi pi-align-right text-xs" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 6. Actions (Duplicate & Delete) -->
           <div class="flex items-center gap-2 pt-1">
-            <Button
-              icon="pi pi-copy"
-              label="Duplikat"
-              size="small"
-              severity="secondary"
-              outlined
-              class="w-1/2 !text-xs !py-1"
-              @click="duplicateActiveElement"
-            />
-            <Button
-              icon="pi pi-trash"
-              label="Hapus"
-              size="small"
-              severity="danger"
-              class="w-1/2 !text-xs !py-1"
-              @click="removeActiveElement"
-            />
+            <Button icon="pi pi-copy" label="Duplikat" size="small" severity="secondary" outlined class="w-1/2 !text-xs !py-1" @click="duplicateActiveElement" />
+            <Button icon="pi pi-trash" label="Hapus" size="small" severity="danger" class="w-1/2 !text-xs !py-1" @click="removeActiveElement" />
           </div>
         </div>
 
-        <!-- Empty State in Inspector -->
         <div v-else class="flex flex-col items-center justify-center p-8 text-center text-slate-400">
           <i class="pi pi-mouse text-3xl mb-2 text-slate-300" />
           <p class="text-xs">Klik salah satu elemen pada stiker untuk mengatur ukuran, teks, atau posisinya.</p>
@@ -1168,92 +1473,171 @@ function printLabels() {
           height: `${activeTemplate.heightMm}mm`,
         }"
       >
-        <div
-          v-for="el in activeTemplate.elements"
-          :key="el.id"
-          class="custom-print-el"
-          :style="{
-            left: `${el.x}mm`,
-            top: `${el.y}mm`,
-            width: `${el.w}mm`,
-            height: `${el.h}mm`,
-          }"
+        <!-- 1. Print Mode: Native HTML Table with Real Print Borders -->
+        <table
+          v-if="activeTemplate.layoutMode === 'table'"
+          class="custom-print-table"
+          :class="activeTemplate.tableConfig.showOuterBorder ? 'with-outer-border' : ''"
         >
-          <!-- QR Code -->
-          <img
-            v-if="el.type === 'qr'"
-            :src="`/api/barcode/${it.id}.png?fmt=qr`"
-            class="w-full h-full object-contain"
-            alt="QR"
-          />
+          <!-- Kop Row -->
+          <tr v-if="activeTemplate.tableConfig.showHeader">
+            <th
+              colspan="2"
+              class="print-header-cell"
+              :class="activeTemplate.tableConfig.showHeaderBorder ? 'with-bottom-border' : ''"
+              :style="{ fontSize: `${activeTemplate.tableConfig.headerFontSize}pt` }"
+            >
+              {{ activeTemplate.tableConfig.headerText }}
+            </th>
+          </tr>
 
-          <!-- Barcode 128 -->
-          <div v-else-if="el.type === 'code128'" class="w-full h-full flex flex-col items-center justify-center">
-            <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="w-full h-[75%] object-contain" alt="BC" />
-            <span class="text-[7pt] font-mono font-bold leading-none truncate">{{ it.sku }}</span>
-          </div>
+          <!-- Body Row: QR Column + Subtable of Rows -->
+          <tr>
+            <!-- Left QR Cell -->
+            <td
+              v-if="activeTemplate.tableConfig.qrPosition === 'left'"
+              class="print-qr-cell"
+              :class="activeTemplate.tableConfig.showColBorder ? 'with-right-border' : ''"
+              :style="{ width: `${activeTemplate.tableConfig.qrWidthMm}mm` }"
+            >
+              <img
+                v-if="activeTemplate.tableConfig.qrType === 'qr'"
+                :src="`/api/barcode/${it.id}.png?fmt=qr`"
+                class="print-qr-img"
+                alt="QR"
+              />
+              <div v-else class="print-barcode-box">
+                <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="print-barcode-img" alt="BC" />
+                <span class="print-barcode-sku">{{ it.sku }}</span>
+              </div>
+            </td>
 
-          <!-- Header -->
+            <!-- Data Rows Subtable Cell -->
+            <td class="print-data-cell">
+              <table class="print-subtable">
+                <tr
+                  v-for="(r, rIdx) in activeTemplate.tableConfig.rows"
+                  :key="r.id"
+                  class="print-data-row"
+                  :class="activeTemplate.tableConfig.showGridLines && rIdx < activeTemplate.tableConfig.rows.length - 1 ? 'with-bottom-border' : ''"
+                  :style="{ fontSize: `${r.fontSize || activeTemplate.tableConfig.defaultFontSize}pt` }"
+                >
+                  <td class="print-label-col">
+                    {{ r.label }}:
+                  </td>
+                  <td
+                    class="print-val-col"
+                    :class="[
+                      r.bold ? 'font-bold' : '',
+                      r.field === 'sku' ? 'font-mono' : '',
+                    ]"
+                  >
+                    {{ resolveFieldValue(it, r.field) }}
+                  </td>
+                </tr>
+              </table>
+            </td>
+
+            <!-- Right QR Cell -->
+            <td
+              v-if="activeTemplate.tableConfig.qrPosition === 'right'"
+              class="print-qr-cell"
+              :class="activeTemplate.tableConfig.showColBorder ? 'with-left-border' : ''"
+              :style="{ width: `${activeTemplate.tableConfig.qrWidthMm}mm` }"
+            >
+              <img
+                v-if="activeTemplate.tableConfig.qrType === 'qr'"
+                :src="`/api/barcode/${it.id}.png?fmt=qr`"
+                class="print-qr-img"
+                alt="QR"
+              />
+              <div v-else class="print-barcode-box">
+                <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="print-barcode-img" alt="BC" />
+                <span class="print-barcode-sku">{{ it.sku }}</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Footer Row -->
+          <tr v-if="activeTemplate.tableConfig.showFooter">
+            <td
+              colspan="2"
+              class="print-footer-cell"
+              :class="activeTemplate.tableConfig.showFooterBorder ? 'with-top-border' : ''"
+              :style="{ fontSize: `${activeTemplate.tableConfig.footerFontSize}pt` }"
+            >
+              {{ activeTemplate.tableConfig.footerText }}
+            </td>
+          </tr>
+        </table>
+
+        <!-- 2. Print Mode: Free Form Absolute Positions -->
+        <template v-else>
           <div
-            v-else-if="el.type === 'header'"
-            class="w-full h-full flex items-center uppercase tracking-wide leading-tight truncate"
-            :class="[
-              el.border ? 'border-b border-black' : '',
-              el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-            ]"
+            v-for="el in activeTemplate.elements"
+            :key="el.id"
+            class="custom-print-el"
             :style="{
-              fontSize: `${el.fontSize || 6.5}pt`,
-              fontWeight: el.bold ? 800 : 600,
+              left: `${el.x}mm`,
+              top: `${el.y}mm`,
+              width: `${el.w}mm`,
+              height: `${el.h}mm`,
             }"
           >
-            {{ el.text }}
+            <img
+              v-if="el.type === 'qr'"
+              :src="`/api/barcode/${it.id}.png?fmt=qr`"
+              class="w-full h-full object-contain"
+              alt="QR"
+            />
+            <div v-else-if="el.type === 'code128'" class="w-full h-full flex flex-col items-center justify-center">
+              <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="w-full h-[75%] object-contain" alt="BC" />
+              <span class="text-[7pt] font-mono font-bold leading-none truncate">{{ it.sku }}</span>
+            </div>
+            <div
+              v-else-if="el.type === 'header'"
+              class="w-full h-full flex items-center uppercase tracking-wide leading-tight truncate"
+              :class="[
+                el.border ? 'border-b border-black' : '',
+                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+              ]"
+              :style="{
+                fontSize: `${el.fontSize || 6.5}pt`,
+                fontWeight: el.bold ? 800 : 600,
+              }"
+            >
+              {{ el.text }}
+            </div>
+            <div
+              v-else-if="el.type === 'field'"
+              class="w-full h-full flex items-center leading-tight truncate"
+              :class="[
+                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+              ]"
+              :style="{
+                fontSize: `${el.fontSize || 7}pt`,
+                fontWeight: el.bold ? 700 : 400,
+                fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
+              }"
+            >
+              {{ resolveFieldValue(it, el.field, el.prefix) }}
+            </div>
+            <div
+              v-else-if="el.type === 'static_text'"
+              class="w-full h-full flex items-center leading-tight truncate"
+              :class="[
+                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
+              ]"
+              :style="{
+                fontSize: `${el.fontSize || 7}pt`,
+                fontWeight: el.bold ? 700 : 400,
+              }"
+            >
+              {{ el.text }}
+            </div>
+            <div v-else-if="el.type === 'line'" class="w-full h-full border-t border-black my-auto" />
           </div>
-
-          <!-- Dynamic Field from Form -->
-          <div
-            v-else-if="el.type === 'field'"
-            class="w-full h-full flex items-center leading-tight truncate"
-            :class="[
-              el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-            ]"
-            :style="{
-              fontSize: `${el.fontSize || 7}pt`,
-              fontWeight: el.bold ? 700 : 400,
-              fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
-            }"
-          >
-            {{ resolveFieldValue(it, el.field, el.prefix) }}
-          </div>
-
-          <!-- Static Text -->
-          <div
-            v-else-if="el.type === 'static_text'"
-            class="w-full h-full flex items-center leading-tight truncate"
-            :class="[
-              el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-            ]"
-            :style="{
-              fontSize: `${el.fontSize || 7}pt`,
-              fontWeight: el.bold ? 700 : 400,
-            }"
-          >
-            {{ el.text }}
-          </div>
-
-          <!-- Line Divider -->
-          <div
-            v-else-if="el.type === 'line'"
-            class="w-full h-full border-t border-black my-auto"
-          />
-
-          <!-- Logo -->
-          <img
-            v-else-if="el.type === 'logo' && el.logoUrl"
-            :src="el.logoUrl"
-            class="w-full h-full object-contain"
-            alt="Logo"
-          />
-        </div>
+        </template>
       </div>
     </div>
   </teleport>
@@ -1315,14 +1699,6 @@ function printLabels() {
   border-color: #6366f1;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
-
-.align-btn {
-  padding: 3px 6px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.1s ease;
-}
 </style>
 
 <style>
@@ -1355,6 +1731,101 @@ function printLabels() {
     box-sizing: border-box !important;
     display: flex !important;
     overflow: hidden !important;
+  }
+
+  /* Table Mode Print Styling */
+  .custom-print-table {
+    width: 100% !important;
+    height: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .custom-print-table.with-outer-border {
+    border: 1.5px solid #000000 !important;
+  }
+  .print-header-cell {
+    padding: 1mm 1.5mm !important;
+    text-align: center !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    vertical-align: middle !important;
+  }
+  .print-header-cell.with-bottom-border {
+    border-bottom: 1px solid #000000 !important;
+  }
+  .print-qr-cell {
+    padding: 1mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+  .print-qr-cell.with-right-border {
+    border-right: 1px solid #000000 !important;
+  }
+  .print-qr-cell.with-left-border {
+    border-left: 1px solid #000000 !important;
+  }
+  .print-qr-img {
+    width: 100% !important;
+    height: 100% !important;
+    object-contain: fit !important;
+  }
+  .print-barcode-box {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .print-barcode-img {
+    width: 100% !important;
+    height: 70% !important;
+    object-fit: contain !important;
+  }
+  .print-barcode-sku {
+    font-family: monospace !important;
+    font-size: 6pt !important;
+    font-weight: bold !important;
+  }
+  .print-data-cell {
+    padding: 0 !important;
+    vertical-align: top !important;
+  }
+  .print-subtable {
+    width: 100% !important;
+    height: 100% !important;
+    border-collapse: collapse !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .print-data-row {
+    height: 1% !important;
+  }
+  .print-data-row.with-bottom-border {
+    border-bottom: 1px solid #000000 !important;
+  }
+  .print-label-col {
+    padding: 0.6mm 1mm !important;
+    font-weight: bold !important;
+    white-space: nowrap !important;
+    width: 25% !important;
+    vertical-align: middle !important;
+  }
+  .print-val-col {
+    padding: 0.6mm 1mm !important;
+    vertical-align: middle !important;
+    overflow: hidden !important;
+  }
+  .print-footer-cell {
+    padding: 0.8mm 1mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+  .print-footer-cell.with-top-border {
+    border-top: 1px solid #000000 !important;
   }
 }
 </style>

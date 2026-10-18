@@ -375,10 +375,20 @@ func (h *BulkHandler) BulkAdjust(c *gin.Context) {
 }
 
 func (h *BulkHandler) adjustSingleItem(ctx context.Context, sku string, actual int32, person, note string) (int32, error) {
+	if actual < 0 {
+		return 0, fmt.Errorf("stok aktual tidak boleh negatif")
+	}
+
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("gagal memulai transaksi database: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	var current int32
 	var name, unit string
 	var trackStock bool
-	err := h.pool.QueryRow(ctx, `SELECT current_stock, name, unit, COALESCE(track_stock, true) FROM inventory_items WHERE sku=$1`, sku).
+	err = tx.QueryRow(ctx, `SELECT current_stock, name, unit, COALESCE(track_stock, true) FROM inventory_items WHERE sku=$1 FOR UPDATE`, sku).
 		Scan(&current, &name, &unit, &trackStock)
 	if err != nil {
 		return 0, fmt.Errorf("SKU tidak terdaftar di sistem")
@@ -399,16 +409,20 @@ func (h *BulkHandler) adjustSingleItem(ctx context.Context, sku string, actual i
 		absDiff = -diff
 	}
 
-	_, err = h.pool.Exec(ctx, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE sku=$1`, sku, actual)
+	_, err = tx.Exec(ctx, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE sku=$1`, sku, actual)
 	if err != nil {
 		return 0, fmt.Errorf("gagal update stok: %w", err)
 	}
 
-	_, err = h.pool.Exec(ctx, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes)
+	_, err = tx.Exec(ctx, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes)
 		VALUES ($1, (SELECT id FROM inventory_items WHERE sku=$2), $2, $3, $4, $5, $6, $7, $8, $9)`,
 		txType, sku, name, absDiff, unit, current, actual, nullableS(person), nullableS(note))
 	if err != nil {
 		return 0, fmt.Errorf("gagal mencatat transaksi: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("gagal menyimpan perubahan: %w", err)
 	}
 
 	if h.tg != nil {

@@ -447,13 +447,17 @@ func generateSKU(h *ItemHandler, c *gin.Context, category string) string {
 	if len(prefix) > 4 {
 		prefix = prefix[:4]
 	}
+	if prefix == "" {
+		prefix = "BRG"
+	}
 	year := strconv.Itoa(getCurrentYear())
-	pattern := prefix + "-" + year + "-%"
+	prefixYear := prefix + "-" + year + "-"
+	pattern := prefixYear + "%"
 	var last string
-	h.pool.QueryRow(c, `SELECT sku FROM inventory_items WHERE sku LIKE $1 ORDER BY sku DESC LIMIT 1`, pattern).Scan(&last)
+	h.pool.QueryRow(c, `SELECT sku FROM inventory_items WHERE sku LIKE $1 ORDER BY LENGTH(sku) DESC, sku DESC LIMIT 1`, pattern).Scan(&last)
 	serial := 1
-	if len(last) > len(prefix)+6 {
-		if n, e := strconv.Atoi(last[len(prefix)+6:]); e == nil {
+	if strings.HasPrefix(last, prefixYear) {
+		if n, e := strconv.Atoi(last[len(prefixYear):]); e == nil {
 			serial = n + 1
 		}
 	}

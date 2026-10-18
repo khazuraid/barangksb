@@ -46,11 +46,10 @@ p, petugas, /api/movement/*, POST
 p, petugas, /api/transactions, GET
 p, petugas, /api/barcode/*, GET
 p, petugas, /api/upload, POST
+p, petugas, /api/photos*, *
 p, petugas, /api/export/*, GET
 p, petugas, /api/report*, GET
 p, petugas, /api/adjust/*, *
-p, petugas, /api/audit*, *
-p, petugas, /api/settings/telegram*, *
 `
 
 func NewEnforcer() (*casbin.Enforcer, error) {

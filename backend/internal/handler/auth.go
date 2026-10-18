@@ -10,6 +10,7 @@ import (
 
 	"inventariskantor/internal/auth"
 	"inventariskantor/internal/config"
+	"inventariskantor/internal/middleware"
 )
 
 type AuthHandler struct {
@@ -51,6 +52,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
 		return
 	}
+
+	middleware.ResetLoginAttempts(c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,

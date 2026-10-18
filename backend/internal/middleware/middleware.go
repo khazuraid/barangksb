@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/casbin/casbin/v2"
@@ -13,10 +14,10 @@ import (
 func AuthMiddleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// public routes: login, scan landing, barcode images, barcode sheet
-		path := c.Request.URL.Path
-		if path == "/api/auth/login" ||
-			strings.HasPrefix(path, "/api/scan/") ||
-			strings.HasPrefix(path, "/api/barcode/") {
+		p := path.Clean(c.Request.URL.Path)
+		if p == "/api/auth/login" ||
+			strings.HasPrefix(p, "/api/scan/") ||
+			strings.HasPrefix(p, "/api/barcode/") {
 			c.Next()
 			return
 		}
@@ -51,10 +52,10 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 func RBACMiddleware(enforcer *casbin.Enforcer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// skip public routes (same set as AuthMiddleware)
-		path := c.Request.URL.Path
-		if path == "/api/auth/login" ||
-			strings.HasPrefix(path, "/api/scan/") ||
-			strings.HasPrefix(path, "/api/barcode/") {
+		p := path.Clean(c.Request.URL.Path)
+		if p == "/api/auth/login" ||
+			strings.HasPrefix(p, "/api/scan/") ||
+			strings.HasPrefix(p, "/api/barcode/") {
 			c.Next()
 			return
 		}
@@ -66,7 +67,7 @@ func RBACMiddleware(enforcer *casbin.Enforcer) gin.HandlerFunc {
 		}
 		method := c.Request.Method
 
-		allowed, err := enforcer.Enforce(roleStr, path, method)
+		allowed, err := enforcer.Enforce(roleStr, p, method)
 		if err != nil || !allowed {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			c.Abort()

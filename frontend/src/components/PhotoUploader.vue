@@ -224,8 +224,14 @@ async function loadTileBlobImage(lat: number, lng: number): Promise<HTMLImageEle
     const blobUrl = URL.createObjectURL(blob)
     return new Promise((resolve) => {
       const img = new Image()
-      img.onload = () => resolve(img)
-      img.onerror = () => resolve(null)
+      img.onload = () => {
+        URL.revokeObjectURL(blobUrl)
+        resolve(img)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(blobUrl)
+        resolve(null)
+      }
       img.src = blobUrl
     })
   } catch {

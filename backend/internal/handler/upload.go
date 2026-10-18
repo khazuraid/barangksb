@@ -517,7 +517,12 @@ func (h *UploadHandler) CleanOrphaned(c *gin.Context) {
 	var freedBytes int64
 
 	dir := getUploadDir()
+	now := time.Now()
 	for _, f := range files {
+		// Cegah race condition: file yang baru diunggah (< 2 jam) tidak boleh dihapus
+		if !f.modTime.IsZero() && now.Sub(f.modTime) < 2*time.Hour {
+			continue
+		}
 		if len(refMap[f.name]) == 0 {
 			_ = os.Remove(filepath.Join(dir, f.name))
 			_ = os.Remove(filepath.Join("uploads", f.name))
@@ -554,7 +559,7 @@ func formatBytes(b int64) string {
 func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string, clientStamped bool) ([]byte, error) {
 	img, err := imaging.Decode(bytes.NewReader(src))
 	if err != nil {
-		return src, nil
+		return nil, fmt.Errorf("berkas bukan gambar yang valid: %w", err)
 	}
 	if b := img.Bounds(); b.Dx() > 1920 || b.Dy() > 1920 {
 		img = imaging.Resize(img, 1920, 0, imaging.Lanczos)
@@ -564,7 +569,7 @@ func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string, clientStamped boo
 	}
 	var out bytes.Buffer
 	if err := imaging.Encode(&out, img, imaging.JPEG, imaging.JPEGQuality(88)); err != nil {
-		return src, nil
+		return nil, fmt.Errorf("gagal encoding jpeg: %w", err)
 	}
 	return out.Bytes(), nil
 }

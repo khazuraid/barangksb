@@ -48,7 +48,7 @@ func (h *BarcodeHandler) PNG(c *gin.Context) {
 	content := sku
 	if format == "qr" || format == "" {
 		scheme := "http"
-		if c.Request.TLS != nil {
+		if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 			scheme = "https"
 		}
 		content = fmt.Sprintf("%s://%s/scan/%s", scheme, c.Request.Host, id)

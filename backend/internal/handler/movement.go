@@ -78,12 +78,19 @@ func (h *MovementHandler) doMovement(c *gin.Context, txType string) {
 	var txSKU string
 	tx.QueryRow(c, `SELECT sku FROM inventory_items WHERE id::text=$1`, itemID).Scan(&txSKU)
 
-	tx.Exec(c, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, photo_url)
+	_, err = tx.Exec(c, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, photo_url)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		txType, itemID, txSKU, name, req.Quantity, unit, prev, next,
 		nullableS(req.Person), nullableS(req.Notes), nullableS(req.PhotoURL))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mencatat transaksi: " + err.Error()})
+		return
+	}
 
-	tx.Commit(c)
+	if err := tx.Commit(c); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menyimpan perubahan stok: " + err.Error()})
+		return
+	}
 
 	if h.tg != nil {
 		go h.tg.NotifyMovement(context.Background(), txType, txSKU, name, req.Quantity, unit, prev, next, req.Person, req.Notes)
@@ -104,10 +111,21 @@ func (h *MovementHandler) Adjust(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if req.Quantity < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "stok hasil opname tidak boleh negatif"})
+		return
+	}
+
+	tx, err := h.pool.Begin(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer tx.Rollback(c)
 
 	var current int32
 	var name, unit, sku string
-	err := h.pool.QueryRow(c, `SELECT current_stock, name, unit, sku FROM inventory_items WHERE id::text=$1`, req.ItemID).
+	err = tx.QueryRow(c, `SELECT current_stock, name, unit, sku FROM inventory_items WHERE id::text=$1 FOR UPDATE`, req.ItemID).
 		Scan(&current, &name, &unit, &sku)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "barang tidak ditemukan"})
@@ -125,11 +143,22 @@ func (h *MovementHandler) Adjust(c *gin.Context) {
 	absDiff := diff
 	if absDiff < 0 { absDiff = -absDiff }
 
-	h.pool.Exec(c, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, req.ItemID, req.Quantity)
-	h.pool.Exec(c, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, photo_url)
+	if _, err := tx.Exec(c, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, req.ItemID, req.Quantity); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal update stok: " + err.Error()})
+		return
+	}
+	if _, err := tx.Exec(c, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, photo_url)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		txType, req.ItemID, sku, name, absDiff, unit, current, req.Quantity,
-		nullableS(req.Person), nullableS("Opname: "+req.Notes), nullableS(req.PhotoURL))
+		nullableS(req.Person), nullableS("Opname: "+req.Notes), nullableS(req.PhotoURL)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mencatat transaksi opname: " + err.Error()})
+		return
+	}
+
+	if err := tx.Commit(c); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menyimpan opname: " + err.Error()})
+		return
+	}
 
 	if h.tg != nil {
 		go h.tg.NotifyMovement(context.Background(), txType, sku, name, absDiff, unit, current, req.Quantity, req.Person, "Opname: "+req.Notes)

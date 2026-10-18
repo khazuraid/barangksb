@@ -59,11 +59,19 @@ func (h *UserHandler) Create(c *gin.Context) {
 	if req.Role != "admin" && req.Role != "petugas" {
 		req.Role = "petugas"
 	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+
+	var exists bool
+	_ = h.pool.QueryRow(c, `SELECT TRUE FROM users WHERE email=$1`, email).Scan(&exists)
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email sudah terdaftar di sistem"})
+		return
+	}
+
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	_, err := h.pool.Exec(c,
-		`INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,$4)
-		 ON CONFLICT (email) DO UPDATE SET name=$1, password_hash=$3, role=$4`,
-		req.Name, strings.ToLower(req.Email), string(hash), req.Role)
+		`INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,$4)`,
+		req.Name, email, string(hash), req.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -72,7 +80,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 }
 
 func (h *UserHandler) UpdateRole(c *gin.Context) {
-	email := c.Param("email")
+	email := strings.ToLower(c.Param("email"))
 	var req struct {
 		Role string `json:"role"`
 	}
@@ -84,12 +92,48 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "role tidak valid"})
 		return
 	}
+
+	// Cegah demosi admin terakhir
+	if req.Role != "admin" {
+		var currentRole string
+		_ = h.pool.QueryRow(c, `SELECT role FROM users WHERE email=$1`, email).Scan(&currentRole)
+		if currentRole == "admin" {
+			var adminCount int
+			_ = h.pool.QueryRow(c, `SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&adminCount)
+			if adminCount <= 1 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "tidak dapat mengubah role admin terakhir"})
+				return
+			}
+		}
+	}
+
 	h.pool.Exec(c, `UPDATE users SET role=$2 WHERE email=$1`, email, req.Role)
 	c.JSON(http.StatusOK, gin.H{"message": "role updated"})
 }
 
 func (h *UserHandler) Delete(c *gin.Context) {
-	email := c.Param("email")
+	email := strings.ToLower(c.Param("email"))
+	currentEmail := strings.ToLower(c.GetString("email"))
+	if email == currentEmail {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tidak dapat menghapus akun Anda sendiri"})
+		return
+	}
+
+	var role string
+	err := h.pool.QueryRow(c, `SELECT role FROM users WHERE email=$1`, email).Scan(&role)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user tidak ditemukan"})
+		return
+	}
+	if role == "admin" {
+		var adminCount int
+		_ = h.pool.QueryRow(c, `SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&adminCount)
+		if adminCount <= 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tidak dapat menghapus admin terakhir"})
+			return
+		}
+	}
+
 	h.pool.Exec(c, `DELETE FROM users WHERE email=$1`, email)
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }

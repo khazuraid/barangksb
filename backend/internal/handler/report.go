@@ -29,7 +29,11 @@ func (h *ReportHandler) ItemsXLSX(c *gin.Context) {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		f.SetCellValue(sheet, cell, hd)
 	}
-	rows, _ := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit, condition_status FROM inventory_items ORDER BY name`)
+	rows, err := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit, condition_status FROM inventory_items ORDER BY name`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca data barang: " + err.Error()})
+		return
+	}
 	defer rows.Close()
 	r := 2
 	for rows.Next() {
@@ -65,7 +69,11 @@ func (h *ReportHandler) PDF(c *gin.Context) {
 	}
 	pdf.Ln(-1)
 	pdf.SetFont("Arial", "", 8)
-	rows, _ := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit FROM inventory_items ORDER BY name`)
+	rows, err := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit FROM inventory_items ORDER BY name`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca data barang: " + err.Error()})
+		return
+	}
 	defer rows.Close()
 	for rows.Next() {
 		var sku, name, cat, loc, unit string

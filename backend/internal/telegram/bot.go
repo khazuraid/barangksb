@@ -188,9 +188,6 @@ func (b *Bot) allowed(chatID int64) bool {
 	if err == nil && exists {
 		return active
 	}
-	if len(b.chatIDs) == 0 {
-		return true
-	}
 	return false
 }
 
@@ -254,15 +251,16 @@ func (b *Bot) autoRegisterSubscriber(ctx context.Context, chat *models.Chat, fro
 	bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	initActive := b.chatIDs[chatID]
 	_, _ = b.pool.Exec(bgCtx, `
 		INSERT INTO telegram_subscribers (chat_id, type, title, username, notify_in, notify_out, notify_adjust, notify_low_stock, active)
-		VALUES ($1, $2, $3, $4, TRUE, TRUE, FALSE, TRUE, TRUE)
+		VALUES ($1, $2, $3, $4, TRUE, TRUE, FALSE, TRUE, $5)
 		ON CONFLICT (chat_id) DO UPDATE SET
 			title = CASE WHEN EXCLUDED.title != '' AND telegram_subscribers.title = '' THEN EXCLUDED.title ELSE telegram_subscribers.title END,
 			username = CASE WHEN EXCLUDED.username != '' THEN EXCLUDED.username ELSE telegram_subscribers.username END,
 			type = EXCLUDED.type,
 			updated_at = now()`,
-		chatID, chatType, chatTitle, chatUsername)
+		chatID, chatType, chatTitle, chatUsername, initActive)
 
 	// Also register individual user if message originated from a group
 	if from != nil && from.ID != 0 && from.ID != chatID {
@@ -273,14 +271,15 @@ func (b *Bot) autoRegisterSubscriber(ctx context.Context, chat *models.Chat, fro
 		if fromName == "" {
 			fromName = fmt.Sprintf("User %d", from.ID)
 		}
+		fromActive := b.chatIDs[from.ID]
 		_, _ = b.pool.Exec(bgCtx, `
 			INSERT INTO telegram_subscribers (chat_id, type, title, username, notify_in, notify_out, notify_adjust, notify_low_stock, active)
-			VALUES ($1, 'private', $2, $3, TRUE, TRUE, FALSE, TRUE, TRUE)
+			VALUES ($1, 'private', $2, $3, TRUE, TRUE, FALSE, TRUE, $4)
 			ON CONFLICT (chat_id) DO UPDATE SET
 				title = CASE WHEN EXCLUDED.title != '' AND telegram_subscribers.title = '' THEN EXCLUDED.title ELSE telegram_subscribers.title END,
 				username = CASE WHEN EXCLUDED.username != '' THEN EXCLUDED.username ELSE telegram_subscribers.username END,
 				updated_at = now()`,
-			from.ID, fromName, from.Username)
+			from.ID, fromName, from.Username, fromActive)
 	}
 }
 

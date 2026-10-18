@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/csv"
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,14 +20,19 @@ func NewExportHandler(pool *pgxpool.Pool) *ExportHandler {
 var masterHeaders = []string{"SKU", "Nama", "Kategori", "Lokasi", "Stok", "Satuan", "Kondisi", "Merk"}
 
 func (h *ExportHandler) ItemsCSV(c *gin.Context) {
+	rows, err := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit, condition_status, merk FROM inventory_items ORDER BY name`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca data barang: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	w := c.Writer
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="master_barang.csv"`)
 	w.Write([]byte("\xEF\xBB\xBF"))
 	cw := csv.NewWriter(w)
 	cw.Write(masterHeaders)
-	rows, _ := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit, condition_status, merk FROM inventory_items ORDER BY name`)
-	defer rows.Close()
 	for rows.Next() {
 		var sku, name, cat, loc, unit, cond, merk string
 		var stock int32
@@ -37,14 +43,19 @@ func (h *ExportHandler) ItemsCSV(c *gin.Context) {
 }
 
 func (h *ExportHandler) TxCSV(c *gin.Context) {
+	rows, err := h.pool.Query(c, `SELECT timestamp, type, item_sku, item_name, quantity, unit, received_by FROM stock_transactions ORDER BY timestamp DESC`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca log transaksi: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
 	w := c.Writer
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="log_transaksi.csv"`)
 	w.Write([]byte("\xEF\xBB\xBF"))
 	cw := csv.NewWriter(w)
 	cw.Write([]string{"Waktu", "Jenis", "SKU", "Nama", "Qty", "Unit", "Petugas"})
-	rows, _ := h.pool.Query(c, `SELECT timestamp, type, item_sku, item_name, quantity, unit, received_by FROM stock_transactions ORDER BY timestamp DESC`)
-	defer rows.Close()
 	for rows.Next() {
 		var ts interface{}
 		var tType, sku, name, unit, by string
