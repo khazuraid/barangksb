@@ -571,6 +571,37 @@ const selectedTableCellIndex = ref<number | null>(0)
 const copies = ref(1)
 const isPrinting = ref(false)
 const paletteTab = ref<'data' | 'borders' | 'header_footer' | 'free_components'>('data')
+const tableLogoFileInput = ref<HTMLInputElement | null>(null)
+
+function triggerTableLogoUpload() {
+  tableLogoFileInput.value?.click()
+}
+
+function onTableLogoSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files?.length) return
+  const f = input.files[0]
+  if (!f.type.startsWith('image/')) {
+    toast.add({ severity: 'error', summary: 'Format File Salah', detail: 'Pilih file gambar (PNG, JPG, SVG, WebP)', life: 2500 })
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    if (activeTemplate.value.tableConfig) {
+      activeTemplate.value.tableConfig.logoUrl = ev.target?.result as string
+      activeTemplate.value.tableConfig.showLogo = true
+      toast.add({ severity: 'success', summary: 'Logo Berhasil Diganti', life: 1500 })
+    }
+  }
+  reader.readAsDataURL(f)
+}
+
+function resetTableLogo() {
+  if (activeTemplate.value.tableConfig) {
+    activeTemplate.value.tableConfig.logoUrl = ''
+    toast.add({ severity: 'info', summary: 'Logo Direset ke Lambang Resmi', life: 1500 })
+  }
+}
 
 // Helper untuk normalisasi sel pada setiap baris
 function getRowCells(row: TableRowConfig): TableCellConfig[] {
@@ -1947,10 +1978,33 @@ function printLabels() {
                   <span>Lambang Kota di Atas QR (Atas-Bawah)</span>
                 </label>
 
-                <div v-if="activeTemplate.tableConfig.showLogo" class="flex flex-col gap-1.5 pl-4 border-l-2 border-indigo-200">
+                <div v-if="activeTemplate.tableConfig.showLogo" class="flex flex-col gap-2 pl-4 border-l-2 border-indigo-200">
+                  <input type="file" ref="tableLogoFileInput" accept="image/*" class="hidden" @change="onTableLogoSelected" />
+                  <div class="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      icon="pi pi-upload"
+                      label="Unggah / Ganti Logo"
+                      size="small"
+                      class="!text-xs !py-1 flex-1"
+                      @click="triggerTableLogoUpload"
+                    />
+                    <Button
+                      v-if="activeTemplate.tableConfig.logoUrl"
+                      type="button"
+                      icon="pi pi-refresh"
+                      label="Reset"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      class="!text-xs !py-1 shrink-0"
+                      title="Kembalikan ke lambang resmi Kota Cirebon"
+                      @click="resetTableLogo"
+                    />
+                  </div>
                   <div class="flex flex-col gap-1">
-                    <label class="text-[10px] text-slate-500 font-semibold">URL Foto/Logo (Kosongkan untuk Lambang Kota Cirebon):</label>
-                    <InputText v-model="activeTemplate.tableConfig.logoUrl" placeholder="Kosongkan untuk Lambang Resmi Kota Cirebon" class="w-full !text-xs !py-1" />
+                    <label class="text-[10px] text-slate-500 font-semibold">Atau Masukkan URL Logo:</label>
+                    <InputText v-model="activeTemplate.tableConfig.logoUrl" placeholder="Kosongkan untuk Lambang Kota Cirebon" class="w-full !text-xs !py-1" />
                   </div>
                   <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
                     <Checkbox v-model="activeTemplate.tableConfig.showItemNameUnderLogo" binary />
@@ -2284,7 +2338,7 @@ function printLabels() {
                         ]"
                         :style="{
                           padding: `${activeTemplate.tableConfig.cellPaddingMm * MM_TO_PX * (zoom / 2.2)}px 4px`,
-                          borderRight: (activeTemplate.tableConfig.showLabelColBorder || activeTemplate.tableConfig.showColBorder) && cIdx < getRowCells(row).length - 1
+                          borderRight: activeTemplate.tableConfig.showLabelColBorder && cIdx < getRowCells(row).length - 1
                             ? `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
                             : 'none',
                           fontSize: `${(cell.fontSize || row.fontSize || activeTemplate.tableConfig.defaultFontSize) * (zoom / 2.2)}pt`,
@@ -3085,7 +3139,7 @@ function printLabels() {
                       class="print-cell"
                       :style="{
                         fontSize: `${cell.fontSize || r.fontSize || activeTemplate.tableConfig.defaultFontSize}pt`,
-                        borderRight: (activeTemplate.tableConfig.showLabelColBorder || activeTemplate.tableConfig.showColBorder) && cIdx < getRowCells(r).length - 1
+                        borderRight: activeTemplate.tableConfig.showLabelColBorder && cIdx < getRowCells(r).length - 1
                           ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
                           : 'none',
                         padding: `${activeTemplate.tableConfig.cellPaddingMm}mm 1mm`,
