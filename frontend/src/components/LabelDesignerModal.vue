@@ -79,6 +79,8 @@ export interface TableLayoutConfig {
   showLogo: boolean
   logoUrl: string
   logoWidthMm: number
+  logoPosition?: 'above_qr' | 'header'
+  showItemNameUnderLogo?: boolean
 
   // Barcode / QR
   qrPosition: 'left' | 'right' | 'none'
@@ -143,6 +145,80 @@ const AVAILABLE_FIELDS = [
 
 // Preset Desain Standar KSB Full Custom
 const DEFAULT_PRESETS: LabelTemplate[] = [
+  {
+    id: 'preset_cirebon_stacked_qr',
+    name: '🏛️ Kota Cirebon BMD (65 × 30 mm) - Lambang & QR Berdampingan Atas-Bawah',
+    widthMm: 65,
+    heightMm: 30,
+    layoutMode: 'table',
+    tableConfig: {
+      borderWidth: 1.5,
+      borderStyle: 'solid',
+      borderColor: '#000000',
+      showOuterBorder: true,
+      showGridLines: true,
+      showColBorder: true,
+      showLabelColBorder: false,
+      showHeaderBorder: false,
+      showFooterBorder: false,
+      cellPaddingMm: 0.6,
+      labelColWidthPercent: 0,
+      showHeader: false,
+      headerText: '',
+      headerSubText: '',
+      headerFontSize: 6.5,
+      headerStyle: 'standard',
+      showLogo: true,
+      logoUrl: '',
+      logoWidthMm: 12,
+      logoPosition: 'above_qr',
+      showItemNameUnderLogo: true,
+      qrPosition: 'left',
+      qrType: 'qr',
+      qrWidthMm: 20,
+      showFooter: false,
+      footerText: '',
+      footerFontSize: 5.5,
+      defaultFontSize: 8,
+      rows: [
+        {
+          id: 'r1',
+          type: 'cells',
+          field: 'register_number',
+          label: '',
+          bold: true,
+          fontSize: 8.5,
+          bgColor: 'white',
+          hasBottomBorder: true,
+          cells: [{ id: 'c1', field: 'register_number', label: '', bold: true, fontSize: 8.5, align: 'center', bgColor: 'white' }],
+        },
+        {
+          id: 'r2',
+          type: 'cells',
+          field: 'item_code',
+          label: '',
+          bold: true,
+          fontSize: 8.5,
+          bgColor: 'white',
+          hasBottomBorder: true,
+          cells: [{ id: 'c1', field: 'item_code', label: '', bold: true, fontSize: 8.5, align: 'center', bgColor: 'white' }],
+        },
+        {
+          id: 'r3',
+          type: 'custom',
+          field: '',
+          label: '',
+          customText: 'PEMERINTAH KOTA CIREBON',
+          bold: true,
+          fontSize: 7.5,
+          bgColor: 'white',
+          hasBottomBorder: false,
+          cells: [{ id: 'c1', field: '', label: '', customText: 'PEMERINTAH KOTA CIREBON', bold: true, fontSize: 7.5, align: 'center', bgColor: 'white' }],
+        },
+      ],
+    },
+    elements: [],
+  },
   {
     id: 'preset_tj_103_table',
     name: '🌟 T&J 103 (64 × 32 mm) - Tabel Bergaris Lengkap',
@@ -534,6 +610,8 @@ function ensureTableConfig(tpl: LabelTemplate) {
     if (tpl.tableConfig.showLogo === undefined) tpl.tableConfig.showLogo = false
     if (tpl.tableConfig.logoUrl === undefined) tpl.tableConfig.logoUrl = ''
     if (tpl.tableConfig.logoWidthMm === undefined) tpl.tableConfig.logoWidthMm = 8
+    if (!tpl.tableConfig.logoPosition) tpl.tableConfig.logoPosition = 'above_qr'
+    if (tpl.tableConfig.showItemNameUnderLogo === undefined) tpl.tableConfig.showItemNameUnderLogo = false
 
     tpl.tableConfig.rows?.forEach((r) => {
       if (!r.type) r.type = 'cells'
@@ -1750,6 +1828,25 @@ function printLabels() {
                   <span class="text-[10px] text-slate-400">mm</span>
                 </div>
               </div>
+
+              <!-- Lambang Kota / Logo di Atas Barcode / QR -->
+              <div class="pt-2 border-t border-slate-200 flex flex-col gap-2">
+                <label class="flex items-center gap-1.5 cursor-pointer text-slate-800 font-bold text-xs">
+                  <Checkbox v-model="activeTemplate.tableConfig.showLogo" binary />
+                  <span>Lambang Kota di Atas QR (Atas-Bawah)</span>
+                </label>
+
+                <div v-if="activeTemplate.tableConfig.showLogo" class="flex flex-col gap-1.5 pl-4 border-l-2 border-indigo-200">
+                  <div class="flex flex-col gap-1">
+                    <label class="text-[10px] text-slate-500 font-semibold">URL Foto/Logo (Kosongkan untuk Lambang Kota Cirebon):</label>
+                    <InputText v-model="activeTemplate.tableConfig.logoUrl" placeholder="Kosongkan untuk Lambang Resmi Kota Cirebon" class="w-full !text-xs !py-1" />
+                  </div>
+                  <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
+                    <Checkbox v-model="activeTemplate.tableConfig.showItemNameUnderLogo" binary />
+                    <span>Tampilkan Nama Barang di Bawah (- Nama)</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1966,7 +2063,7 @@ function printLabels() {
                 <!-- QR Code Column (Left) -->
                 <div
                   v-if="activeTemplate.tableConfig.qrPosition === 'left'"
-                  class="shrink-0 flex flex-col items-center justify-center p-1"
+                  class="shrink-0 flex flex-col items-center justify-between overflow-hidden"
                   :style="{
                     width: `${activeTemplate.tableConfig.qrWidthMm * MM_TO_PX * zoom}px`,
                     borderRight: activeTemplate.tableConfig.showColBorder
@@ -1974,15 +2071,64 @@ function printLabels() {
                       : 'none',
                   }"
                 >
-                  <img
-                    v-if="activeTemplate.tableConfig.qrType === 'qr'"
-                    :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
-                    class="w-full h-full object-contain pointer-events-none"
-                    alt="QR"
-                  />
-                  <div v-else class="w-full h-full flex flex-col items-center justify-center">
-                    <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-[70%] object-contain pointer-events-none" alt="BC" />
-                    <span class="font-mono font-bold leading-none text-center" :style="{ fontSize: `${5.5 * (zoom / 2.2)}pt` }">{{ sampleItem.sku }}</span>
+                  <!-- Lambang Kota di Atas jika showLogo aktif -->
+                  <div
+                    v-if="activeTemplate.tableConfig.showLogo"
+                    class="w-full flex-1 flex flex-col items-center justify-center p-0.5 overflow-hidden"
+                    :style="{
+                      borderBottom: `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`,
+                      minHeight: `${(activeTemplate.tableConfig.logoWidthMm || 10) * MM_TO_PX * (zoom / 2.2) * 0.6}px`,
+                    }"
+                  >
+                    <img
+                      v-if="activeTemplate.tableConfig.logoUrl"
+                      :src="activeTemplate.tableConfig.logoUrl"
+                      class="max-w-full max-h-full object-contain pointer-events-none"
+                      alt="Logo"
+                    />
+                    <svg
+                      v-else
+                      viewBox="0 0 100 120"
+                      class="w-full h-full max-h-12 object-contain pointer-events-none"
+                    >
+                      <path d="M14 10 H86 V72 C86 98 50 114 50 114 C50 114 14 98 14 72 Z" fill="#ffffff" stroke="#1e293b" stroke-width="3" />
+                      <path d="M16 12 H84 V56 C84 56 50 64 50 64 C50 64 16 56 16 56 Z" fill="#38bdf8" />
+                      <polygon points="50,17 53,24 61,24 54,29 57,36 50,31 43,36 46,29 39,24 47,24" fill="#facc15" stroke="#ca8a04" stroke-width="0.8" />
+                      <rect x="22" y="38" width="56" height="14" fill="#1e293b" />
+                      <rect x="25" y="34" width="8" height="4" fill="#1e293b" />
+                      <rect x="37" y="34" width="8" height="4" fill="#1e293b" />
+                      <rect x="49" y="34" width="8" height="4" fill="#1e293b" />
+                      <rect x="61" y="34" width="8" height="4" fill="#1e293b" />
+                      <path d="M16 56 Q33 50 50 58 Q67 66 84 56 V72 C84 96 50 112 50 112 C50 112 16 96 16 72 Z" fill="#0284c7" />
+                      <path d="M16 66 Q33 60 50 68 Q67 76 84 66 V76 C84 96 50 112 50 112 C50 112 16 96 16 76 Z" fill="#0369a1" />
+                      <path d="M38 72 C32 68 36 60 48 62 C58 64 63 70 58 76 C52 82 42 80 38 74" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" />
+                      <circle cx="56" cy="71" r="2.5" fill="#f97316" />
+                      <path d="M22 96 Q50 88 78 96" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
+                      <text x="50" y="98" font-size="5" font-weight="900" text-anchor="middle" fill="#0f172a" font-family="sans-serif">CIREBON</text>
+                    </svg>
+                  </div>
+
+                  <!-- QR Code di Bawah Lambang -->
+                  <div class="w-full flex-1 flex flex-col items-center justify-center p-1 overflow-hidden">
+                    <img
+                      v-if="activeTemplate.tableConfig.qrType === 'qr'"
+                      :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
+                      class="w-full h-full object-contain pointer-events-none"
+                      alt="QR"
+                    />
+                    <div v-else class="w-full h-full flex flex-col items-center justify-center">
+                      <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-[70%] object-contain pointer-events-none" alt="BC" />
+                      <span class="font-mono font-bold leading-none text-center" :style="{ fontSize: `${5.5 * (zoom / 2.2)}pt` }">{{ sampleItem.sku }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Nama Barang di Bawah Logo/QR jika aktif -->
+                  <div
+                    v-if="activeTemplate.tableConfig.showItemNameUnderLogo"
+                    class="w-full py-0.5 px-0.5 text-center truncate font-bold text-slate-800 border-t border-slate-300"
+                    :style="{ fontSize: `${5 * (zoom / 2.2)}pt` }"
+                  >
+                    - {{ sampleItem.name }}
                   </div>
                 </div>
 
@@ -2645,17 +2791,65 @@ function printLabels() {
                 borderRight: activeTemplate.tableConfig.showColBorder
                   ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
                   : 'none',
+                padding: '0',
+                verticalAlign: 'top',
               }"
             >
-              <img
-                v-if="activeTemplate.tableConfig.qrType === 'qr'"
-                :src="`/api/barcode/${it.id}.png?fmt=qr`"
-                class="print-qr-img"
-                alt="QR"
-              />
-              <div v-else class="print-barcode-box">
-                <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="print-barcode-img" alt="BC" />
-                <span class="print-barcode-sku">{{ it.sku }}</span>
+              <div style="display: flex; flex-direction: column; height: 100%; width: 100%; justify-content: space-between; box-sizing: border-box;">
+                <!-- Lambang Kota / Logo Atas -->
+                <div
+                  v-if="activeTemplate.tableConfig.showLogo"
+                  style="width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; padding: 1mm 0.5mm; box-sizing: border-box;"
+                  :style="{
+                    borderBottom: `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`,
+                  }"
+                >
+                  <img
+                    v-if="activeTemplate.tableConfig.logoUrl"
+                    :src="activeTemplate.tableConfig.logoUrl"
+                    style="max-width: 95%; max-height: 12mm; object-fit: contain;"
+                    alt="Logo"
+                  />
+                  <svg v-else viewBox="0 0 100 120" style="max-width: 90%; max-height: 12mm; object-fit: contain;">
+                    <path d="M14 10 H86 V72 C86 98 50 114 50 114 C50 114 14 98 14 72 Z" fill="#ffffff" stroke="#1e293b" stroke-width="3" />
+                    <path d="M16 12 H84 V56 C84 56 50 64 50 64 C50 64 16 56 16 56 Z" fill="#38bdf8" />
+                    <polygon points="50,17 53,24 61,24 54,29 57,36 50,31 43,36 46,29 39,24 47,24" fill="#facc15" stroke="#ca8a04" stroke-width="0.8" />
+                    <rect x="22" y="38" width="56" height="14" fill="#1e293b" />
+                    <rect x="25" y="34" width="8" height="4" fill="#1e293b" />
+                    <rect x="37" y="34" width="8" height="4" fill="#1e293b" />
+                    <rect x="49" y="34" width="8" height="4" fill="#1e293b" />
+                    <rect x="61" y="34" width="8" height="4" fill="#1e293b" />
+                    <path d="M16 56 Q33 50 50 58 Q67 66 84 56 V72 C84 96 50 112 50 112 C50 112 16 96 16 72 Z" fill="#0284c7" />
+                    <path d="M16 66 Q33 60 50 68 Q67 76 84 66 V76 C84 96 50 112 50 112 C50 112 16 96 16 76 Z" fill="#0369a1" />
+                    <path d="M38 72 C32 68 36 60 48 62 C58 64 63 70 58 76 C52 82 42 80 38 74" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" />
+                    <circle cx="56" cy="71" r="2.5" fill="#f97316" />
+                    <path d="M22 96 Q50 88 78 96" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
+                    <text x="50" y="98" font-size="5" font-weight="900" text-anchor="middle" fill="#0f172a" font-family="sans-serif">CIREBON</text>
+                  </svg>
+                </div>
+
+                <!-- QR Code di Bawah Lambang -->
+                <div style="width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; padding: 1mm 0.5mm; box-sizing: border-box;">
+                  <img
+                    v-if="activeTemplate.tableConfig.qrType === 'qr'"
+                    :src="`/api/barcode/${it.id}.png?fmt=qr`"
+                    class="print-qr-img"
+                    style="width: 90%; height: 90%; object-fit: contain;"
+                    alt="QR"
+                  />
+                  <div v-else class="print-barcode-box">
+                    <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="print-barcode-img" alt="BC" />
+                    <span class="print-barcode-sku">{{ it.sku }}</span>
+                  </div>
+                </div>
+
+                <!-- Nama Barang di Bawah Kotak (- Nama) -->
+                <div
+                  v-if="activeTemplate.tableConfig.showItemNameUnderLogo"
+                  style="width: 100%; font-size: 5pt; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0.5mm 0; border-top: 0.5pt solid #cbd5e1;"
+                >
+                  - {{ it.name }}
+                </div>
               </div>
             </td>
 

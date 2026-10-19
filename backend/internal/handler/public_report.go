@@ -31,7 +31,7 @@ type CreateReportInput struct {
 	ItemSKU         string  `json:"item_sku"`
 	ItemName        string  `json:"item_name"`
 	ReporterName    string  `json:"reporter_name" binding:"required"`
-	ReporterContact string  `json:"reporter_contact" binding:"required"`
+	ReporterContact string  `json:"reporter_contact"`
 	ReportType      string  `json:"report_type" binding:"required"`
 	Description     string  `json:"description" binding:"required"`
 	Location        string  `json:"location" binding:"required"`
@@ -56,8 +56,12 @@ func generateReportNumber() string {
 func (h *PublicReportHandler) PublicCreate(c *gin.Context) {
 	var in CreateReportInput
 	if err := c.ShouldBindJSON(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Mohon lengkapi data wajib: Nama, Kontak, Jenis Laporan, dan Deskripsi"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Mohon lengkapi data wajib: Nama, Jenis Laporan, Lokasi, dan Deskripsi"})
 		return
+	}
+
+	if in.ReporterContact == "" {
+		in.ReporterContact = "-"
 	}
 
 	reportNum := generateReportNumber()
@@ -177,14 +181,18 @@ func (h *PublicReportHandler) PublicUploadPhoto(c *gin.Context) {
 	}
 
 	filename := "report_" + uuid.NewString() + ext
-	uploadDir := filepath.Join("data", "uploads")
-	_ = os.MkdirAll(uploadDir, 0755)
-	destPath := filepath.Join(uploadDir, filename)
-
+	dir := getUploadDir()
+	destPath := filepath.Join(dir, filename)
 	out, err := os.Create(destPath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan file foto"})
-		return
+		// fallback to local uploads
+		_ = os.MkdirAll("uploads", 0755)
+		destPath = filepath.Join("uploads", filename)
+		out, err = os.Create(destPath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan file foto"})
+			return
+		}
 	}
 	defer out.Close()
 
