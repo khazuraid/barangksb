@@ -159,7 +159,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
       showGridLines: true,
       showColBorder: true,
       showLabelColBorder: false,
-      showHeaderBorder: false,
+      showHeaderBorder: true,
       showFooterBorder: false,
       cellPaddingMm: 0.6,
       labelColWidthPercent: 0,
@@ -212,7 +212,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
           bold: true,
           fontSize: 7.5,
           bgColor: 'white',
-          hasBottomBorder: false,
+          hasBottomBorder: true,
           cells: [{ id: 'c1', field: '', label: '', customText: 'PEMERINTAH KOTA CIREBON', bold: true, fontSize: 7.5, align: 'center', bgColor: 'white' }],
         },
       ],
@@ -612,6 +612,9 @@ function ensureTableConfig(tpl: LabelTemplate) {
     if (tpl.tableConfig.logoWidthMm === undefined) tpl.tableConfig.logoWidthMm = 8
     if (!tpl.tableConfig.logoPosition) tpl.tableConfig.logoPosition = 'above_qr'
     if (tpl.tableConfig.showItemNameUnderLogo === undefined) tpl.tableConfig.showItemNameUnderLogo = false
+    if (tpl.tableConfig.showHeaderBorder === undefined || (tpl.tableConfig.showHeader && !tpl.tableConfig.showHeaderBorder)) {
+      tpl.tableConfig.showHeaderBorder = true
+    }
 
     tpl.tableConfig.rows?.forEach((r) => {
       if (!r.type) r.type = 'cells'
@@ -648,6 +651,15 @@ onMounted(() => {
   ensureTableConfig(activeTemplate.value)
   loadSavedTemplates()
 })
+
+watch(
+  () => activeTemplate.value.tableConfig?.showHeader,
+  (val) => {
+    if (val && activeTemplate.value.tableConfig) {
+      activeTemplate.value.tableConfig.showHeaderBorder = true
+    }
+  }
+)
 
 const isTableMode = computed(() => activeTemplate.value.layoutMode === 'table')
 
@@ -1956,6 +1968,10 @@ function printLabels() {
                 <Checkbox v-model="activeTemplate.tableConfig.showHeader" binary />
                 <span>Kop / Header Instansi</span>
               </label>
+              <label v-if="activeTemplate.tableConfig.showHeader" class="flex items-center gap-1.5 cursor-pointer text-indigo-700 text-xs font-semibold">
+                <Checkbox v-model="activeTemplate.tableConfig.showHeaderBorder" binary />
+                <span>Garis Bawah Kop</span>
+              </label>
             </div>
 
             <div v-if="activeTemplate.tableConfig.showHeader" class="flex flex-col gap-2 pt-1 border-t border-slate-200">
@@ -2138,7 +2154,7 @@ function printLabels() {
                 class="w-full px-2 py-0.5 text-center font-extrabold uppercase tracking-tight shrink-0 flex flex-col items-center justify-center"
                 :class="activeTemplate.tableConfig.headerStyle === 'inverted' ? 'bg-black text-white' : 'bg-slate-50/70 text-slate-900'"
                 :style="{
-                  borderBottom: activeTemplate.tableConfig.showHeaderBorder
+                  borderBottom: activeTemplate.tableConfig.showHeaderBorder !== false
                     ? activeTemplate.tableConfig.headerStyle === 'double_line'
                       ? `${activeTemplate.tableConfig.borderWidth * 2.2 * (zoom / 2.2)}px double ${activeTemplate.tableConfig.borderColor}`
                       : `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
@@ -2374,16 +2390,6 @@ function printLabels() {
                     </div>
                   </div>
 
-                  <!-- Tombol Tambah Baris di Bawah Tabel -->
-                  <div
-                    class="py-1 px-2 border-t border-dashed border-slate-300 bg-slate-50/60 hover:bg-indigo-50/60 flex items-center justify-center cursor-pointer text-slate-500 hover:text-indigo-600 transition-colors text-[10px] font-bold gap-1 shrink-0"
-                    title="Klik untuk tambah baris baru"
-                    @click="addNewRow('name', 'Nama')"
-                  >
-                    <i class="pi pi-plus-circle text-xs" />
-                    <span>+ Tambah Baris Baru</span>
-                  </div>
-
                   <div
                     v-if="activeTemplate.tableConfig.rows.length === 0"
                     class="flex-1 flex flex-col items-center justify-center text-slate-400 text-xs p-4 text-center gap-2"
@@ -2537,6 +2543,18 @@ function printLabels() {
                 />
               </div>
             </template>
+          </div>
+
+          <!-- Tombol Tambah Baris Cepat (di Luar Stiker) -->
+          <div v-if="isTableMode" class="mt-3 flex items-center justify-center">
+            <button
+              type="button"
+              class="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 rounded-md border border-indigo-200 shadow-2xs text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              @click="addNewRow('location', 'Ruang')"
+            >
+              <i class="pi pi-plus-circle text-xs" />
+              <span>+ Tambah Baris Baru</span>
+            </button>
           </div>
         </div>
       </div>
@@ -2951,7 +2969,7 @@ function printLabels() {
               :class="activeTemplate.tableConfig.headerStyle === 'inverted' ? 'print-inverted-kop' : ''"
               :style="{
                 fontSize: `${activeTemplate.tableConfig.headerFontSize}pt`,
-                borderBottom: activeTemplate.tableConfig.showHeaderBorder
+                borderBottom: activeTemplate.tableConfig.showHeaderBorder !== false
                   ? activeTemplate.tableConfig.headerStyle === 'double_line'
                     ? `${activeTemplate.tableConfig.borderWidth * 2}pt double ${activeTemplate.tableConfig.borderColor}`
                     : `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
