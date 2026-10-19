@@ -858,6 +858,105 @@ function removeCellFromRow(rowIndex: number, cellIndex: number) {
   }
 }
 
+// ==== OPERASI MERGE (GABUNG) DAN SPLIT (PECAH) ====
+function mergeRowWithNext(rowIndex: number) {
+  if (!activeTemplate.value.tableConfig?.rows) return
+  const rows = activeTemplate.value.tableConfig.rows
+  if (rowIndex < 0 || rowIndex >= rows.length - 1) return
+
+  const currentRow = rows[rowIndex]
+  const nextRow = rows[rowIndex + 1]
+  const currentCells = getRowCells(currentRow)
+  const nextCells = getRowCells(nextRow)
+
+  nextCells.forEach((c) => {
+    currentCells.push({
+      ...JSON.parse(JSON.stringify(c)),
+      id: `c_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 5)}`,
+    })
+  })
+
+  currentRow.cells = currentCells
+  currentRow.type = 'cells'
+
+  rows.splice(rowIndex + 1, 1)
+  selectedTableRowIndex.value = rowIndex
+  selectedTableCellIndex.value = currentCells.length - 1
+  toast.add({
+    severity: 'success',
+    summary: 'Baris Digabung (Merged)',
+    detail: `Baris #${rowIndex + 1} kini digabung (${currentCells.length} kolom)`,
+    life: 1800,
+  })
+}
+
+function mergeCellsWithNext(rowIndex: number, cellIndex: number) {
+  if (!activeTemplate.value.tableConfig?.rows) return
+  const row = activeTemplate.value.tableConfig.rows[rowIndex]
+  if (!row) return
+  const cells = getRowCells(row)
+  if (cellIndex < 0 || cellIndex >= cells.length - 1) return
+
+  const c1 = cells[cellIndex]
+  const c2 = cells[cellIndex + 1]
+
+  const mergedLabel = [c1.label, c2.label].filter(Boolean).join(' / ')
+  const val1 = c1.customText || (c1.field ? resolveFieldValue(sampleItem.value, c1.field) : '')
+  const val2 = c2.customText || (c2.field ? resolveFieldValue(sampleItem.value, c2.field) : '')
+  const mergedCustom = [val1, val2].filter(Boolean).join(' - ')
+
+  c1.label = mergedLabel
+  c1.customText = mergedCustom
+  c1.field = ''
+
+  cells.splice(cellIndex + 1, 1)
+  row.cells = cells
+  selectedTableCellIndex.value = cellIndex
+  toast.add({
+    severity: 'success',
+    summary: 'Sel Berhasil Digabung (Merged)',
+    detail: '2 sel digabung jadi satu kolom',
+    life: 1500,
+  })
+}
+
+function splitCell(rowIndex: number, cellIndex: number) {
+  if (!activeTemplate.value.tableConfig?.rows) return
+  const row = activeTemplate.value.tableConfig.rows[rowIndex]
+  if (!row) return
+  const cells = getRowCells(row)
+  const currentCell = cells[cellIndex]
+
+  const newCell: TableCellConfig = {
+    id: `c_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 5)}`,
+    field: 'location',
+    label: 'Kolom Baru',
+    bold: false,
+    fontSize: currentCell?.fontSize || activeTemplate.value.tableConfig.defaultFontSize,
+    align: 'left',
+    bgColor: 'white',
+  }
+
+  cells.splice(cellIndex + 1, 0, newCell)
+  row.cells = cells
+  row.type = 'cells'
+  selectedTableCellIndex.value = cellIndex + 1
+  toast.add({
+    severity: 'info',
+    summary: 'Kolom Ditambah / Sel Dipecah (Split)',
+    life: 1500,
+  })
+}
+
+function clearAllRows() {
+  if (!activeTemplate.value.tableConfig) return
+  if (!confirm('Yakin ingin menghapus seluruh baris tabel ini? Anda dapat menambah baris baru tanpa batasan.')) return
+  activeTemplate.value.tableConfig.rows = []
+  selectedTableRowIndex.value = null
+  selectedTableCellIndex.value = null
+  toast.add({ severity: 'warn', summary: 'Seluruh Baris Dihapus', life: 1500 })
+}
+
 // Tambah baris preset
 function addMultiCellRow(cellDefs: Array<{ field: string; label: string }>) {
   ensureTableConfig(activeTemplate.value)
@@ -2199,16 +2298,37 @@ function printLabels() {
                           {{ cell.customText || resolveFieldValue(sampleItem, cell.field) }}
                         </span>
 
-                        <!-- Tombol Cepat Hapus Sel Ini (Muncul saat Hover pada Sel jika lebih dari 1 sel) -->
-                        <button
-                          v-if="getRowCells(row).length > 1"
-                          type="button"
-                          class="opacity-0 group-hover/cell:opacity-100 absolute right-0.5 top-0.5 p-0.5 rounded-full bg-rose-500 text-white text-[9px] hover:bg-rose-700 transition-opacity z-10"
-                          title="Hapus Sel Ini"
-                          @click.stop="removeCellFromRow(rIdx, cIdx)"
-                        >
-                          <i class="pi pi-times text-[8px]" />
-                        </button>
+                        <!-- Tombol Cepat Aksi Sel (Pecah/Split, Gabung/Merge, Hapus Sel) -->
+                        <div class="opacity-0 group-hover/cell:opacity-100 absolute right-0.5 top-0.5 flex items-center gap-0.5 z-10 bg-white/95 rounded px-0.5 shadow-2xs border border-slate-200">
+                          <!-- Split / Pecah Kolom -->
+                          <button
+                            type="button"
+                            class="p-0.5 rounded hover:bg-indigo-600 hover:text-white text-indigo-600 text-[8px]"
+                            title="Pecah Sel / Tambah Kolom (Split)"
+                            @click.stop="splitCell(rIdx, cIdx)"
+                          >
+                            <i class="pi pi-arrows-h text-[8px]" />
+                          </button>
+                          <!-- Merge / Gabung dengan Sel Kanan -->
+                          <button
+                            v-if="cIdx < getRowCells(row).length - 1"
+                            type="button"
+                            class="p-0.5 rounded hover:bg-emerald-600 hover:text-white text-emerald-600 text-[8px]"
+                            title="Gabung dengan Sel Kanan (Merge)"
+                            @click.stop="mergeCellsWithNext(rIdx, cIdx)"
+                          >
+                            <i class="pi pi-link text-[8px]" />
+                          </button>
+                          <!-- Hapus Sel Ini -->
+                          <button
+                            type="button"
+                            class="p-0.5 rounded hover:bg-rose-600 hover:text-white text-rose-500 text-[8px]"
+                            title="Hapus Sel Ini"
+                            @click.stop="removeCellFromRow(rIdx, cIdx)"
+                          >
+                            <i class="pi pi-times text-[8px]" />
+                          </button>
+                        </div>
                       </div>
                     </template>
 
@@ -2231,6 +2351,16 @@ function printLabels() {
                         @click.stop="addNewRow('location', 'Ruang', rIdx)"
                       >
                         <i class="pi pi-plus text-[10px]" />
+                      </button>
+                      <!-- Gabung (Merge) dengan Baris di Bawah Ini -->
+                      <button
+                        v-if="rIdx < activeTemplate.tableConfig.rows.length - 1"
+                        type="button"
+                        class="p-0.5 rounded bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 text-[10px]"
+                        title="Gabung (Merge) dengan Baris di Bawahnya"
+                        @click.stop="mergeRowWithNext(rIdx)"
+                      >
+                        <i class="pi pi-link text-[10px]" />
                       </button>
                       <!-- Hapus Baris Ini -->
                       <button
@@ -2468,15 +2598,27 @@ function printLabels() {
                 <span class="text-[10.5px] font-bold text-slate-700 uppercase">
                   Kolom / Sel ({{ getRowCells(selectedTableRow).length }})
                 </span>
-                <button
-                  type="button"
-                  class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold text-[10px] rounded border border-indigo-200 transition-all flex items-center gap-1"
-                  title="Tambah Sel / Kolom Baru di Baris Ini"
-                  @click="addCellToRow(selectedTableRowIndex!)"
-                >
-                  <i class="pi pi-plus text-[9px]" />
-                  <span>+ Tambah Sel</span>
-                </button>
+                <div class="flex items-center gap-1">
+                  <button
+                    v-if="selectedTableRowIndex !== null && selectedTableRowIndex < activeTemplate.tableConfig.rows.length - 1"
+                    type="button"
+                    class="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 font-bold text-[10px] rounded border border-emerald-200 transition-all flex items-center gap-1"
+                    title="Gabung baris ini dengan baris di bawahnya"
+                    @click="mergeRowWithNext(selectedTableRowIndex!)"
+                  >
+                    <i class="pi pi-link text-[9px]" />
+                    <span>Merge Baris</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold text-[10px] rounded border border-indigo-200 transition-all flex items-center gap-1"
+                    title="Tambah Sel / Kolom Baru di Baris Ini"
+                    @click="addCellToRow(selectedTableRowIndex!)"
+                  >
+                    <i class="pi pi-plus text-[9px]" />
+                    <span>+ Tambah Sel</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Daftar Chips Sel di Baris Ini -->
@@ -2605,6 +2747,28 @@ function printLabels() {
                   </button>
                 </div>
               </div>
+              <!-- Tombol Cepat Aksi Sel (Pecah / Split & Gabung / Merge) -->
+              <div class="flex items-center gap-1.5 pt-2 border-t border-slate-100 flex-wrap">
+                <button
+                  type="button"
+                  class="flex-1 py-1 px-1.5 rounded bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 border border-indigo-200 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
+                  title="Pecah sel ini / tambah kolom baru di sebelahnya"
+                  @click="splitCell(selectedTableRowIndex!, selectedTableCellIndex!)"
+                >
+                  <i class="pi pi-arrows-h text-xs" />
+                  <span>Pecah (Split)</span>
+                </button>
+                <button
+                  type="button"
+                  :disabled="selectedTableCellIndex >= getRowCells(selectedTableRow).length - 1"
+                  class="flex-1 py-1 px-1.5 rounded bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 text-[10px] font-bold flex items-center justify-center gap-1 disabled:opacity-40 transition-colors"
+                  title="Gabung sel ini dengan sel sebelah kanan"
+                  @click="mergeCellsWithNext(selectedTableRowIndex!, selectedTableCellIndex!)"
+                >
+                  <i class="pi pi-link text-xs" />
+                  <span>Gabung (Merge)</span>
+                </button>
+              </div>
             </div>
 
             <!-- Tombol Aksi Hapus Baris -->
@@ -2632,15 +2796,27 @@ function printLabels() {
           <!-- B. Daftar Urutan Baris Aktif -->
           <div class="flex flex-col gap-1.5">
             <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Urutan Baris Tabel ({{ activeTemplate.tableConfig.rows.length }})</span>
-              <button
-                type="button"
-                class="text-indigo-600 hover:text-indigo-800 text-[11px] font-bold flex items-center gap-1"
-                @click="addNewRow('name', 'Nama')"
-              >
-                <i class="pi pi-plus text-[10px]" />
-                <span>Tambah Baris</span>
-              </button>
+              <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Urutan Baris ({{ activeTemplate.tableConfig.rows.length }})</span>
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="activeTemplate.tableConfig.rows.length > 0"
+                  type="button"
+                  class="text-rose-600 hover:text-rose-800 text-[10px] font-bold flex items-center gap-1"
+                  title="Hapus seluruh baris stiker"
+                  @click="clearAllRows"
+                >
+                  <i class="pi pi-trash text-[9px]" />
+                  <span>Kosongkan</span>
+                </button>
+                <button
+                  type="button"
+                  class="text-indigo-600 hover:text-indigo-800 text-[11px] font-bold flex items-center gap-1"
+                  @click="addNewRow('name', 'Nama')"
+                >
+                  <i class="pi pi-plus text-[10px]" />
+                  <span>+ Tambah Baris</span>
+                </button>
+              </div>
             </div>
 
             <div class="flex flex-col gap-1 max-h-56 overflow-y-auto">
@@ -2660,6 +2836,15 @@ function printLabels() {
                   </span>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
+                  <button
+                    v-if="idx < activeTemplate.tableConfig.rows.length - 1"
+                    type="button"
+                    class="text-emerald-600 hover:text-emerald-800 p-0.5"
+                    title="Gabung (Merge) dengan baris di bawahnya"
+                    @click.stop="mergeRowWithNext(idx)"
+                  >
+                    <i class="pi pi-link text-[11px]" />
+                  </button>
                   <button type="button" class="text-indigo-600 hover:text-indigo-800 p-0.5" title="Tambah Sel" @click.stop="addCellToRow(idx)">
                     <i class="pi pi-plus-circle text-[11px]" />
                   </button>
