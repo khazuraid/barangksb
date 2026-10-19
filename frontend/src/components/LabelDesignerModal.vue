@@ -407,6 +407,84 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     },
     elements: [],
   },
+  {
+    id: 'preset_cirebon_bmd_qr',
+    name: '🏛️ Kota Cirebon BMD (50 × 60 mm) - QR Kanan & Garis Dobel',
+    widthMm: 50,
+    heightMm: 60,
+    layoutMode: 'table',
+    tableConfig: {
+      borderWidth: 1.5,
+      borderStyle: 'solid',
+      borderColor: '#000000',
+      showOuterBorder: true,
+      showGridLines: true,
+      showColBorder: true,
+      showLabelColBorder: true,
+      showHeaderBorder: true,
+      showFooterBorder: true,
+      cellPaddingMm: 0.8,
+      labelColWidthPercent: 30,
+      showHeader: true,
+      headerText: 'PEMERINTAH KOTA CIREBON',
+      headerSubText: 'BADAN PENGELOLAAN KEUANGAN DAN ASET DAERAH',
+      headerFontSize: 6.5,
+      headerStyle: 'double_line',
+      showLogo: true,
+      logoUrl: '',
+      logoWidthMm: 8,
+      qrPosition: 'right',
+      qrType: 'qr',
+      qrWidthMm: 22,
+      showFooter: true,
+      footerText: 'Scan QR untuk lapor kerusakan barang',
+      footerFontSize: 5.5,
+      defaultFontSize: 6.5,
+      rows: [
+        {
+          id: 'r1',
+          type: 'cells',
+          field: 'name',
+          label: 'Nama Barang',
+          bold: true,
+          fontSize: 7,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'name', label: 'Nama Barang', bold: true, fontSize: 7, bgColor: 'white' }],
+        },
+        {
+          id: 'r2',
+          type: 'cells',
+          field: 'item_code',
+          label: 'Kode Barang',
+          bold: false,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'item_code', label: 'Kode Barang', bold: false, fontSize: 6.5, bgColor: 'white' }],
+        },
+        {
+          id: 'r3',
+          type: 'cells',
+          field: 'register_number',
+          label: 'NUP',
+          bold: false,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'register_number', label: 'NUP', bold: false, fontSize: 6.5, bgColor: 'white' }],
+        },
+        {
+          id: 'r4',
+          type: 'cells',
+          field: 'location',
+          label: 'Ruangan',
+          bold: false,
+          fontSize: 6.5,
+          bgColor: 'white',
+          cells: [{ id: 'c1', field: 'location', label: 'Ruangan', bold: false, fontSize: 6.5, bgColor: 'white' }],
+        },
+      ],
+    },
+    elements: [],
+  },
 ]
 
 const templates = ref<LabelTemplate[]>([])
@@ -785,6 +863,107 @@ function addBarcodeStripRow() {
   toast.add({ severity: 'info', summary: 'Baris Barcode Garis Ditambahkan', life: 1200 })
 }
 
+// ==== KONVERSI MODE TABEL -> MODE BEBAS ====
+function convertTableToFreeMode() {
+  const tpl = activeTemplate.value
+  const tc = tpl.tableConfig
+  if (!tc || tpl.layoutMode !== 'table') return
+  const W = tpl.widthMm
+  const bw = tc.borderWidth || 1
+  const els: LabelElement[] = []
+  const uid = () => `el_${Math.random().toString(36).slice(2, 9)}`
+  let y = 0
+
+  // Header (Kop) - logo kiri + teks tengah
+  if (tc.showHeader) {
+    const headerH = tc.headerStyle === 'double_line' ? 12 : 8
+    if (tc.showLogo) {
+      els.push({ id: uid(), type: 'logo', logoUrl: tc.logoUrl || '', x: 1, y, w: 8, h: headerH, fontSize: tc.headerFontSize })
+    }
+    const textX = tc.showLogo ? 10 : 1
+    const textW = W - textX - 1
+    if (tc.headerStyle === 'double_line') {
+      els.push({ id: uid(), type: 'header', text: tc.headerText || '', x: textX, y, w: textW, h: headerH / 2, fontSize: tc.headerFontSize, bold: true, align: 'center' })
+      els.push({ id: uid(), type: 'header', text: tc.headerSubText || '', x: textX, y: y + headerH / 2, w: textW, h: headerH / 2, fontSize: (tc.headerFontSize || 6.5) - 0.5, bold: true, align: 'center' })
+      els.push({ id: uid(), type: 'line', lineOrientation: 'horizontal', x: 0, y: y + headerH, w: W, h: 0.5, border: true })
+    } else {
+      els.push({ id: uid(), type: 'header', text: tc.headerText || '', x: textX, y, w: textW, h: headerH, fontSize: tc.headerFontSize, bold: true, align: 'center', border: true })
+    }
+    y += headerH
+  }
+
+  // Zona konten: QR kiri/kanan + baris field
+  const qrW = tc.qrPosition !== 'none' ? tc.qrWidthMm || 20 : 0
+  const rowsH = tc.rows.reduce((sum, r) => sum + 7, 0)
+  const contentX = tc.qrPosition === 'left' ? qrW : 1
+  const contentW = W - (qrW > 0 ? qrW + 2 : 2)
+  const startY = y
+
+  for (const r of tc.rows) {
+    const rowH = 7
+    const cells = r.type === 'cells' && r.cells?.length ? r.cells : [r]
+    const cellH = rowH / cells.length
+    cells.forEach((c, idx) => {
+      if (r.type === 'barcode_strip') {
+        els.push({ id: uid(), type: 'code128', x: contentX, y: y + idx * cellH, w: contentW, h: cellH, fontSize: c.fontSize || 5.5, bold: c.bold, align: c.align })
+        return
+      }
+      const fieldEl: LabelElement = {
+        id: uid(),
+        type: 'field',
+        field: c.field,
+        prefix: c.customText ? `${c.customText} ` : undefined,
+        x: contentX,
+        y: y + idx * cellH,
+        w: contentW,
+        h: cellH,
+        fontSize: c.fontSize || tc.defaultFontSize || 6.5,
+        bold: c.bold,
+        align: c.align,
+      }
+      // Baris pertama & terakhir pakai garis pemisah (pengganti grid)
+      els.push(fieldEl)
+      if (idx < cells.length - 1) {
+        els.push({ id: uid(), type: 'line', lineOrientation: 'horizontal', x: contentX, y: y + (idx + 1) * cellH, w: contentW, h: 0.5, border: true })
+      }
+    })
+    y += rowH
+  }
+
+  // QR / Barcode
+  if (qrW > 0) {
+    const qrType = tc.qrType === 'code128' ? 'code128' : 'qr'
+    els.push({
+      id: uid(),
+      type: qrType,
+      x: tc.qrPosition === 'left' ? 1 : W - qrW - 1,
+      y: startY,
+      w: qrW,
+      h: Math.max(rowsH, 18),
+      fontSize: 5.5,
+    })
+  }
+
+  // Footer
+  if (tc.showFooter) {
+    els.push({ id: uid(), type: 'static_text', text: tc.footerText || '', x: 0, y: y + 0.5, w: W, h: 5, fontSize: tc.footerFontSize || 5.5, align: 'center', border: true })
+  }
+
+  // Bingkai luar
+  if (tc.showOuterBorder) {
+    els.push({ id: uid(), type: 'line', lineOrientation: 'horizontal', x: 0, y: 0, w: W, h: 0.5, border: true })
+    els.push({ id: uid(), type: 'line', lineOrientation: 'horizontal', x: 0, y: tpl.heightMm - 0.5, w: W, h: 0.5, border: true })
+    els.push({ id: uid(), type: 'line', lineOrientation: 'vertical', x: 0, y: 0, w: 0.5, h: tpl.heightMm, border: true })
+    els.push({ id: uid(), type: 'line', lineOrientation: 'vertical', x: W - 0.5, y: 0, w: 0.5, h: tpl.heightMm, border: true })
+  }
+
+  tpl.elements = els
+  tpl.layoutMode = 'free'
+  activeElementId.value = null
+  saveTemplates()
+  toast.add({ severity: 'success', summary: 'Konversi Berhasil', detail: `${els.length} elemen dibuat dari mode tabel. Posisi bisa disesuaikan.`, life: 2500 })
+}
+
 // ==== DRAG & DROP ENGINE (MODE BEBAS) ====
 let isDragging = false
 let isResizing = false
@@ -1053,6 +1232,17 @@ function printLabels() {
             <span>Mode Bebas (Drag)</span>
           </button>
         </div>
+
+        <Button
+          v-if="isTableMode"
+          icon="pi pi-objects-column"
+          label="Konversi ke Mode Bebas"
+          size="small"
+          severity="secondary"
+          outlined
+          class="!text-xs !py-1 shrink-0"
+          @click="convertTableToFreeMode"
+        />
 
         <div class="h-4 w-px bg-slate-200 mx-0.5 shrink-0" />
 
@@ -2021,6 +2211,7 @@ function printLabels() {
                   v-else-if="el.type === 'field'"
                   class="w-full h-full px-1 flex items-center leading-tight truncate pointer-events-none"
                   :class="[
+                    el.border ? 'border border-black' : '',
                     el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
                   ]"
                   :style="{
@@ -2048,7 +2239,19 @@ function printLabels() {
                 </div>
 
                 <!-- Line Divider -->
-                <div v-else-if="el.type === 'line'" class="w-full h-full pointer-events-none border-t border-black my-auto" />
+                <div
+                  v-else-if="el.type === 'line'"
+                  class="pointer-events-none border-black my-auto"
+                  :class="[el.lineOrientation === 'vertical' ? 'h-full mx-auto border-l' : 'w-full border-t']"
+                />
+
+                <!-- Logo -->
+                <div v-else-if="el.type === 'logo'" class="w-full h-full p-0.5 pointer-events-none flex items-center justify-center">
+                  <img v-if="el.logoUrl" :src="el.logoUrl" class="max-w-full max-h-full object-contain" alt="Logo" />
+                  <div v-else class="w-full h-full border border-dashed border-slate-400 rounded-xs flex items-center justify-center text-slate-400" :style="{ fontSize: `${6 * (zoom / 2)}pt` }">
+                    Logo
+                  </div>
+                </div>
 
                 <!-- Resize Handle -->
                 <div
@@ -2596,6 +2799,7 @@ function printLabels() {
               v-else-if="el.type === 'field'"
               class="w-full h-full flex items-center leading-tight truncate"
               :class="[
+                el.border ? 'border border-black' : '',
                 el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
               ]"
               :style="{
@@ -2619,7 +2823,15 @@ function printLabels() {
             >
               {{ el.text }}
             </div>
-            <div v-else-if="el.type === 'line'" class="w-full h-full border-t border-black my-auto" />
+            <div
+              v-else-if="el.type === 'line'"
+              class="border-black my-auto"
+              :class="[el.lineOrientation === 'vertical' ? 'h-full mx-auto border-l' : 'w-full border-t']"
+            />
+            <div v-else-if="el.type === 'logo'" class="w-full h-full flex items-center justify-center">
+              <img v-if="el.logoUrl" :src="el.logoUrl" class="max-w-full max-h-full object-contain" alt="Logo" />
+              <div v-else class="w-full h-full border border-dashed border-black flex items-center justify-center text-[5pt] text-black">Logo</div>
+            </div>
           </div>
         </template>
       </div>

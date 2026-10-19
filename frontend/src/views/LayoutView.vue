@@ -21,6 +21,7 @@ const NAV: { section: string; items: Nav[] }[] = [
   { section: 'Operasional', items: [
     { label: 'Dashboard', icon: 'pi pi-th-large', to: '/' },
     { label: 'Barang', icon: 'pi pi-box', to: '/items' },
+    { label: 'Pengaduan & Laporan', icon: 'pi pi-megaphone', to: '/reports' },
     { label: 'Log & Riwayat', icon: 'pi pi-history', to: '/history' },
   ]},
   { section: 'Master Data', items: [
@@ -51,6 +52,7 @@ const TITLES: Record<string, [string, string]> = {
   '/locations': ['Lokasi', 'Ruangan dan titik penyimpanan'],
   '/movement': ['Mutasi Barang', 'Catat barang masuk, keluar, dan opname'],
   '/history': ['Riwayat Mutasi', 'Jejak seluruh transaksi stok'],
+  '/reports': ['Pengaduan & Pelaporan Aset', 'Kelola laporan kerusakan dan pengaduan dari publik'],
   '/barcode': ['QR Generator', 'Cetak label QR untuk barang'],
   '/adjust/bulk': ['Opname Massal', 'Sesuaikan stok banyak barang via CSV'],
   '/users': ['Pengguna', 'Akun dan hak akses sistem'],

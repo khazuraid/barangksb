@@ -124,6 +124,7 @@ func main() {
 	setH := handler.NewSettingHandler(pool, tgBot)
 	importH := handler.NewImportHandler(pool, itemH)
 	maintH := handler.NewMaintenanceHandler(pool)
+	pubReportH := handler.NewPublicReportHandler(pool)
 
 	middleware.SetDBPool(pool)
 	r := gin.New()
@@ -197,6 +198,18 @@ func main() {
 
 	// Public scan endpoint — returns item detail for QR scan landing page
 	api.GET("/scan/:id", bcH.ScanItem)
+
+	// Public reporting endpoints (accessible without login)
+	api.GET("/public/locations", mvH.Locations)
+	api.POST("/public/reports", pubReportH.PublicCreate)
+	api.GET("/public/reports/:num", pubReportH.PublicGet)
+	api.POST("/public/upload", pubReportH.PublicUploadPhoto)
+
+	// Management reporting endpoints (Admin & Petugas)
+	api.GET("/reports", pubReportH.ListReports)
+	api.GET("/reports/:id", pubReportH.GetReport)
+	api.PUT("/reports/:id/status", pubReportH.UpdateReportStatus)
+	api.DELETE("/reports/:id", pubReportH.DeleteReport)
 
 	api.GET("/export/items.csv", expH.ItemsCSV)
 	api.GET("/export/tx.csv", expH.TxCSV)

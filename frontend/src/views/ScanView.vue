@@ -357,7 +357,26 @@ function rows() {
           </div>
         </div>
 
-        <div class="flex gap-2 mt-4">
+        <!-- Tombol Lapor Kerusakan / Kendala Publik -->
+        <div class="mt-3 flex flex-col gap-1.5">
+          <Button
+            label="⚠️ Laporkan Kerusakan / Kendala Barang Ini"
+            icon="pi pi-megaphone"
+            class="w-full !py-2.5 !text-xs !font-bold !bg-rose-600 hover:!bg-rose-500 !text-white !border-0 !rounded-xl shadow-lg shadow-rose-600/30 cursor-pointer"
+            @click="router.push(`/lapor?id=${item.id}&sku=${item.sku}`)"
+          />
+          <div class="text-center">
+            <button
+              type="button"
+              class="text-[11px] text-ink-400 hover:text-acc-500 underline cursor-pointer"
+              @click="router.push('/lapor')"
+            >
+              Layanan Aspirasi &amp; Lacak Status Aduan Publik
+            </button>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mt-3">
           <Button
             v-if="isLoggedIn && item.id"
             label="Buka Rincian Lengkap"

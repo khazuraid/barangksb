@@ -13,11 +13,12 @@ import (
 
 func AuthMiddleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// public routes: login, scan landing, barcode images, barcode sheet
+		// public routes: login, scan landing, barcode images, barcode sheet, public reporting
 		p := path.Clean(c.Request.URL.Path)
 		if p == "/api/auth/login" ||
 			strings.HasPrefix(p, "/api/scan/") ||
-			strings.HasPrefix(p, "/api/barcode/") {
+			strings.HasPrefix(p, "/api/barcode/") ||
+			strings.HasPrefix(p, "/api/public/") {
 			c.Next()
 			return
 		}
@@ -55,7 +56,8 @@ func RBACMiddleware(enforcer *casbin.Enforcer) gin.HandlerFunc {
 		p := path.Clean(c.Request.URL.Path)
 		if p == "/api/auth/login" ||
 			strings.HasPrefix(p, "/api/scan/") ||
-			strings.HasPrefix(p, "/api/barcode/") {
+			strings.HasPrefix(p, "/api/barcode/") ||
+			strings.HasPrefix(p, "/api/public/") {
 			c.Next()
 			return
 		}

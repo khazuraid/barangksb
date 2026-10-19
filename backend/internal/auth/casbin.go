@@ -49,6 +49,7 @@ p, petugas, /api/upload, POST
 p, petugas, /api/photos*, *
 p, petugas, /api/export/*, GET
 p, petugas, /api/report*, GET
+p, petugas, /api/reports*, *
 p, petugas, /api/adjust/*, *
 `
 
