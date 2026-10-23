@@ -35,23 +35,64 @@ const locationFilter = ref('')
 const fmt = ref<'qr' | 'code128'>('qr')
 const size = ref(160)
 
+// Custom Label Templates dari Database
+const customTemplates = ref<any[]>([])
+const selectedCustomTemplateId = ref<string>('')
+
+async function loadCustomTemplates() {
+  try {
+    const res = await api.get('/barcode/templates')
+    if (res.data && Array.isArray(res.data)) {
+      customTemplates.value = res.data
+    }
+  } catch (err) {
+    console.warn('Gagal memuat template kustom di BarcodeView:', err)
+  }
+}
+
+function openCustomDesignerWithTemplate(templateId?: string) {
+  if (templateId) {
+    selectedCustomTemplateId.value = templateId
+  }
+  showCustomDesigner.value = true
+}
+
 // Thermal Printer, Sticker Sheets & Label Profiles
 const layout = ref('tj_103')
-const layoutOptions = [
-  { label: '🌟 Tom & Jerry No. 103 (12 Label / Lembar · 3x4 · 64x32 mm - Rekomendasi)', value: 'tj_103' },
-  { label: '📄 Tom & Jerry No. 107 (24 Label / Lembar · 3x8 · 50x18 mm)', value: 'tj_107' },
-  { label: '📄 Tom & Jerry No. 108 (40 Label / Lembar · 5x8 · 38x18 mm)', value: 'tj_108' },
-  { label: '📄 Tom & Jerry No. 121 (10 Label / Lembar · 2x5 · 75x38 mm)', value: 'tj_121' },
-  { label: '📄 Kertas Stiker A4 (21 Label / Lembar · 3x7 · 65x38 mm)', value: 'a4_3x7' },
-  { label: '📄 Kertas Stiker A4 (40 Label / Lembar · 4x10 · 48x25.5 mm)', value: 'a4_4x10' },
-  { label: '🖨️ Printer Thermal Roll 58 mm (Struk Kasir)', value: 'thermal_58' },
-  { label: '🖨️ Printer Thermal Roll 80 mm (Struk Lebar)', value: 'thermal_80' },
-  { label: '🏷️ Stiker Rol 50 x 30 mm (Standar Printer Barcode)', value: 'label_50x30' },
-  { label: '🏷️ Stiker Rol 40 x 30 mm (Mini Aset)', value: 'label_40x30' },
-  { label: '🏷️ Stiker Rol 60 x 40 mm (Sedang)', value: 'label_60x40' },
-  { label: '🏷️ Stiker Rol 70 x 50 mm (Besar)', value: 'label_70x50' },
-  { label: '🏷️ Stiker Rol 100 x 50 mm (Stiker Aset Lebar)', value: 'label_100x50' },
-]
+
+const selectedCustomTemplate = computed(() => {
+  if (!layout.value.startsWith('custom_')) return null
+  const id = layout.value.replace('custom_', '')
+  return customTemplates.value.find((t) => t.id === id) || null
+})
+
+const layoutOptions = computed(() => {
+  const list: any[] = []
+  if (customTemplates.value.length > 0) {
+    customTemplates.value.forEach((t) => {
+      list.push({
+        label: `🏷️ [Desain Kustom] ${t.name.replace(/^[🌟🏷️\s]+/, '')} (${t.widthMm}x${t.heightMm} mm)`,
+        value: `custom_${t.id}`,
+      })
+    })
+  }
+  list.push(
+    { label: '🌟 Tom & Jerry No. 103 (12 Label / Lembar · 3x4 · 64x32 mm - Rekomendasi)', value: 'tj_103' },
+    { label: '📄 Tom & Jerry No. 107 (24 Label / Lembar · 3x8 · 50x18 mm)', value: 'tj_107' },
+    { label: '📄 Tom & Jerry No. 108 (40 Label / Lembar · 5x8 · 38x18 mm)', value: 'tj_108' },
+    { label: '📄 Tom & Jerry No. 121 (10 Label / Lembar · 2x5 · 75x38 mm)', value: 'tj_121' },
+    { label: '📄 Kertas Stiker A4 (21 Label / Lembar · 3x7 · 65x38 mm)', value: 'a4_3x7' },
+    { label: '📄 Kertas Stiker A4 (40 Label / Lembar · 4x10 · 48x25.5 mm)', value: 'a4_4x10' },
+    { label: '🖨️ Printer Thermal Roll 58 mm (Struk Kasir)', value: 'thermal_58' },
+    { label: '🖨️ Printer Thermal Roll 80 mm (Struk Lebar)', value: 'thermal_80' },
+    { label: '🏷️ Stiker Rol 50 x 30 mm (Standar Printer Barcode)', value: 'label_50x30' },
+    { label: '🏷️ Stiker Rol 40 x 30 mm (Mini Aset)', value: 'label_40x30' },
+    { label: '🏷️ Stiker Rol 60 x 40 mm (Sedang)', value: 'label_60x40' },
+    { label: '🏷️ Stiker Rol 70 x 50 mm (Besar)', value: 'label_70x50' },
+    { label: '🏷️ Stiker Rol 100 x 50 mm (Stiker Aset Lebar)', value: 'label_100x50' },
+  )
+  return list
+})
 
 const showName = ref(true)
 const showSKU = ref(true)
@@ -105,7 +146,7 @@ async function fetchItems(reset = false) {
 }
 
 onMounted(async () => {
-  await fetchItems()
+  await Promise.all([fetchItems(), loadCustomTemplates()])
   const [c, l] = await Promise.all([api.get('/categories'), api.get('/locations')])
   categoriesRaw.value = c.data || []
   locationsRaw.value = l.data || []
@@ -211,11 +252,23 @@ function openPrintDialog() {
 }
 
 function printNow() {
+  if (layout.value.startsWith('custom_')) {
+    const customId = layout.value.replace('custom_', '')
+    openCustomDesignerWithTemplate(customId)
+    printModalVisible.value = false
+    return
+  }
   const url = getPrintUrl(true)
   window.open(url, '_blank')
 }
 
 function openSheetTab() {
+  if (layout.value.startsWith('custom_')) {
+    const customId = layout.value.replace('custom_', '')
+    openCustomDesignerWithTemplate(customId)
+    printModalVisible.value = false
+    return
+  }
   const url = getPrintUrl(false)
   window.open(url, '_blank')
 }
@@ -257,8 +310,18 @@ const sampleItem = computed(() => {
             size="small"
             severity="info"
             outlined
-            @click="showCustomDesigner = true"
+            @click="openCustomDesignerWithTemplate()"
           />
+          <Tag
+            v-if="customTemplates.length > 0"
+            severity="info"
+            class="cursor-pointer !text-xs !py-1 !px-2 font-semibold shadow-2xs hover:opacity-90"
+            v-tooltip.top="'Buka desain kustom tersimpan'"
+            @click="openCustomDesignerWithTemplate(customTemplates[0].id)"
+          >
+            <i class="pi pi-check-circle mr-1 text-[10px]" />
+            {{ customTemplates.length }} Desain Kustom
+          </Tag>
           <Button
             label="Pratinjau &amp; Cetak Label"
             icon="pi pi-print"
@@ -631,9 +694,46 @@ const sampleItem = computed(() => {
           </div>
 
           <div class="p-4 rounded-xl border grid place-items-center bg-slate-100 dark:bg-slate-900 overflow-x-auto" style="border-color: var(--line)">
+            <!-- 0. Pratinjau Desain Kustom -->
+            <div
+              v-if="layout.startsWith('custom_')"
+              class="bg-white text-black p-4 rounded-xl shadow-lg border-2 border-indigo-400 flex flex-col items-center justify-between"
+              :style="{
+                width: `${Math.min(520, Math.max(300, (selectedCustomTemplate?.widthMm || 64) * 5))}px`,
+                minHeight: `${Math.min(260, Math.max(160, (selectedCustomTemplate?.heightMm || 32) * 5))}px`,
+              }"
+            >
+              <div class="w-full flex items-center justify-between pb-2 mb-2 border-b border-indigo-100 text-xs font-bold text-indigo-950">
+                <span class="flex items-center gap-1.5">
+                  <i class="pi pi-palette text-indigo-600" />
+                  <span>{{ selectedCustomTemplate?.name || 'Desain Kustom' }}</span>
+                </span>
+                <span class="text-[11px] font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                  {{ selectedCustomTemplate?.widthMm }} &times; {{ selectedCustomTemplate?.heightMm }} mm
+                </span>
+              </div>
+              <div class="flex-1 w-full flex flex-col items-center justify-center p-3 text-center bg-indigo-50/40 rounded-lg border border-dashed border-indigo-300 gap-2">
+                <div class="text-xs font-semibold text-slate-800">
+                  Label akan dicetak menggunakan tata letak kustom yang telah Anda buat.
+                </div>
+                <div v-if="selectedCustomTemplate?.tableConfig?.logoUrl" class="flex items-center gap-2 text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                  <i class="pi pi-image" />
+                  <span>Foto logo custom terpasang</span>
+                </div>
+                <Button
+                  label="Buka &amp; Cetak di Desainer Kustom"
+                  icon="pi pi-external-link"
+                  size="small"
+                  severity="help"
+                  class="!text-xs !py-1 mt-1 shadow-xs"
+                  @click="openCustomDesignerWithTemplate(selectedCustomTemplate?.id)"
+                />
+              </div>
+            </div>
+
             <!-- 1. Simulasi Lembar Tom & Jerry No. 103 (Yellow Backing Paper 3x4 Grid, Image #9) -->
             <div
-              v-if="layout === 'tj_103'"
+              v-else-if="layout === 'tj_103'"
               class="rounded-xl shadow-lg border border-amber-300 p-4 max-w-full"
               style="background: #fef08a; width: 560px;"
             >
@@ -804,6 +904,8 @@ const sampleItem = computed(() => {
       v-model:visible="showCustomDesigner"
       :items="items"
       :selectedIds="selected"
+      :initialTemplateId="selectedCustomTemplateId"
+      @template-saved="loadCustomTemplates"
     />
   </div>
 </template>

@@ -107,14 +107,21 @@ export interface LabelTemplate {
   elements: LabelElement[]
 }
 
-const props = defineProps<{
-  visible: boolean
-  items: any[]
-  selectedIds: string[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    visible: boolean
+    items: any[]
+    selectedIds: string[]
+    initialTemplateId?: string
+  }>(),
+  {
+    initialTemplateId: '',
+  }
+)
 
 const emit = defineEmits<{
   (e: 'update:visible', val: boolean): void
+  (e: 'template-saved', template: LabelTemplate): void
 }>()
 
 const toast = useToast()
@@ -573,33 +580,71 @@ const copies = ref(1)
 const isPrinting = ref(false)
 const paletteTab = ref<'data' | 'borders' | 'header_footer' | 'free_components'>('data')
 const tableLogoFileInput = ref<HTMLInputElement | null>(null)
+const isUploadingLogo = ref(false)
 
 function triggerTableLogoUpload() {
   tableLogoFileInput.value?.click()
 }
 
-function onTableLogoSelected(e: Event) {
+async function onTableLogoSelected(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
   const f = input.files[0]
   if (!f.type.startsWith('image/')) {
     toast.add({ severity: 'error', summary: 'Format File Salah', detail: 'Pilih file gambar (PNG, JPG, SVG, WebP)', life: 2500 })
+    input.value = ''
     return
   }
-  const reader = new FileReader()
-  reader.onload = (ev) => {
-    if (activeTemplate.value.tableConfig) {
-      activeTemplate.value.tableConfig.logoUrl = ev.target?.result as string
-      activeTemplate.value.tableConfig.showLogo = true
-      toast.add({ severity: 'success', summary: 'Logo Berhasil Diganti', life: 1500 })
+
+  isUploadingLogo.value = true
+  try {
+    const formData = new FormData()
+    formData.append('photo', f)
+    const res = await api.post('/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+
+    const uploadedUrl = res.data?.url
+    if (!uploadedUrl) {
+      throw new Error('Server tidak mengembalikan URL foto')
     }
+
+    if (activeTemplate.value.tableConfig) {
+      activeTemplate.value.tableConfig.logoUrl = uploadedUrl
+      activeTemplate.value.tableConfig.showLogo = true
+    }
+
+    saveTemplates()
+
+    // Jika sedang di template custom, langsung perbarui di database
+    if (isCustomActive.value) {
+      await api.post('/barcode/templates', activeTemplate.value)
+      emit('template-saved', activeTemplate.value)
+      toast.add({ severity: 'success', summary: 'Foto Logo Tersimpan di Database', detail: activeTemplate.value.name, life: 2500 })
+    } else {
+      toast.add({ severity: 'success', summary: 'Logo Berhasil Diunggah', detail: 'Klik "Simpan Template" untuk menyimpan perubahan secara permanen', life: 3500 })
+    }
+  } catch (err: any) {
+    console.error('Upload logo gagal:', err)
+    toast.add({
+      severity: 'error',
+      summary: 'Gagal Mengunggah Foto Logo',
+      detail: err.response?.data?.error || err.message,
+      life: 4000,
+    })
+  } finally {
+    isUploadingLogo.value = false
+    input.value = ''
   }
-  reader.readAsDataURL(f)
 }
 
 function resetTableLogo() {
   if (activeTemplate.value.tableConfig) {
     activeTemplate.value.tableConfig.logoUrl = ''
+    saveTemplates()
+    if (isCustomActive.value) {
+      api.post('/barcode/templates', activeTemplate.value).catch(() => {})
+    }
     toast.add({ severity: 'info', summary: 'Logo Direset ke Lambang Resmi', life: 1500 })
   }
 }
@@ -660,12 +705,14 @@ function ensureTableConfig(tpl: LabelTemplate) {
   }
 }
 
-async function loadSavedTemplates() {
+async function loadSavedTemplates(preferredId?: string) {
+  let loadedList: LabelTemplate[] = []
+
   // 1. Coba muat dari backend database (PostgreSQL)
   try {
     const res = await api.get('/barcode/templates')
     if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-      const serverTpls: LabelTemplate[] = res.data.map((t: any) => {
+      loadedList = res.data.map((t: any) => {
         const item: LabelTemplate = {
           id: t.id,
           name: t.name,
@@ -678,41 +725,75 @@ async function loadSavedTemplates() {
         ensureTableConfig(item)
         return item
       })
-      templates.value = serverTpls
-      localStorage.setItem('custom_label_templates_v6', JSON.stringify(serverTpls))
-      return
+      templates.value = loadedList
+      try {
+        localStorage.setItem('custom_label_templates_v6', JSON.stringify(loadedList))
+      } catch {}
     }
   } catch (err) {
     console.warn('Gagal memuat template dari database, fallback ke localStorage:', err)
   }
 
-  // 2. Fallback ke localStorage jika offline/backend belum terisi
-  const raw = localStorage.getItem('custom_label_templates_v6')
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw)
-      parsed.forEach((t: LabelTemplate) => ensureTableConfig(t))
-      templates.value = parsed
-    } catch {
+  // 2. Fallback ke localStorage jika belum terisi dari server
+  if (loadedList.length === 0) {
+    const raw = localStorage.getItem('custom_label_templates_v6')
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        parsed.forEach((t: LabelTemplate) => ensureTableConfig(t))
+        templates.value = parsed
+        loadedList = parsed
+      } catch {
+        templates.value = []
+      }
+    } else {
       templates.value = []
     }
-  } else {
-    templates.value = []
   }
 
-  // Restore last active WIP design if present
+  // 3. Tentukan template yang harus aktif (activeTemplate)
+  const targetId = preferredId || props.initialTemplateId
+  if (targetId) {
+    const match = allPresets.value.find((p) => p.id === targetId)
+    if (match) {
+      applyPreset(match)
+      return
+    }
+  }
+
+  // Cek apakah ada saved custom template dari database
+  const customFromDB = loadedList.find((t) => !DEFAULT_PRESETS.some((dp) => dp.id === t.id))
+
+  // Cek lastActive dari browser
   const lastActive = localStorage.getItem('active_custom_label_template_v6')
   if (lastActive) {
     try {
       const parsedActive = JSON.parse(lastActive)
       ensureTableConfig(parsedActive)
+      const stillExists = allPresets.value.find((p) => p.id === parsedActive.id)
+      if (stillExists) {
+        applyPreset(stillExists)
+        return
+      }
       activeTemplate.value = parsedActive
+      return
     } catch {}
   }
+
+  // Jika ada template custom dari DB, otomatis tampilkan template kustom tersebut
+  if (customFromDB) {
+    applyPreset(customFromDB)
+    return
+  }
+
+  // Fallback ke preset 0
+  applyPreset(DEFAULT_PRESETS[0])
 }
 
 function saveTemplates() {
-  localStorage.setItem('custom_label_templates_v6', JSON.stringify(templates.value))
+  try {
+    localStorage.setItem('custom_label_templates_v6', JSON.stringify(templates.value))
+  } catch {}
 }
 
 const allPresets = computed(() => {
@@ -726,8 +807,27 @@ const isCustomActive = computed(() => {
 
 onMounted(() => {
   ensureTableConfig(activeTemplate.value)
-  loadSavedTemplates()
+  loadSavedTemplates(props.initialTemplateId)
 })
+
+watch(
+  () => props.visible,
+  (val) => {
+    if (val) {
+      loadSavedTemplates(props.initialTemplateId)
+    }
+  }
+)
+
+watch(
+  () => props.initialTemplateId,
+  (val) => {
+    if (val) {
+      const match = allPresets.value.find((p) => p.id === val)
+      if (match) applyPreset(match)
+    }
+  }
+)
 
 watch(
   activeTemplate,
@@ -1420,6 +1520,7 @@ async function saveCurrentAsNewTemplate() {
   // Sync ke database
   try {
     await api.post('/barcode/templates', newTpl)
+    emit('template-saved', newTpl)
     toast.add({ severity: 'success', summary: 'Tersimpan di Database', detail: newTpl.name, life: 2500 })
   } catch (err: any) {
     toast.add({ severity: 'warn', summary: 'Tersimpan Lokal', detail: 'Tersimpan di browser, gagal kirim ke database: ' + (err.response?.data?.error || err.message), life: 3500 })
@@ -1436,6 +1537,7 @@ async function updateCurrentCustomTemplate() {
     // Sync ke database
     try {
       await api.post('/barcode/templates', updated)
+      emit('template-saved', updated)
       toast.add({ severity: 'success', summary: 'Database Diperbarui', detail: updated.name, life: 2500 })
     } catch (err: any) {
       toast.add({ severity: 'warn', summary: 'Lokal Diperbarui', detail: 'Gagal sinkron database: ' + (err.response?.data?.error || err.message), life: 3500 })
@@ -1455,6 +1557,7 @@ async function deleteCurrentCustomTemplate() {
   // Sync ke database
   try {
     await api.delete(`/barcode/templates/${target.id}`)
+    emit('template-saved', activeTemplate.value)
     toast.add({ severity: 'info', summary: 'Template Dihapus dari Database', life: 2000 })
   } catch (err: any) {
     toast.add({ severity: 'info', summary: 'Template Dihapus Lokal', life: 1800 })
@@ -2108,7 +2211,9 @@ function printLabels() {
                     <Button
                       type="button"
                       icon="pi pi-upload"
-                      label="Unggah / Ganti Logo"
+                      :label="isUploadingLogo ? 'Mengunggah...' : 'Unggah / Ganti Foto Logo'"
+                      :loading="isUploadingLogo"
+                      :disabled="isUploadingLogo"
                       size="small"
                       class="!text-xs !py-1 flex-1"
                       @click="triggerTableLogoUpload"

@@ -616,6 +616,10 @@ func ProcessPhotoBytes(src []byte, geo GeoTag, petugas string, clientStamped boo
 	}
 	if geo.Valid && !clientStamped {
 		img = stampGeoCard(imaging.Clone(img), geo, petugas)
+	} else {
+		// Flatten transparent background to solid white so PNG logos don't render black in JPEG
+		bg := imaging.New(img.Bounds().Dx(), img.Bounds().Dy(), color.White)
+		img = imaging.Overlay(bg, img, image.Pt(0, 0), 1.0)
 	}
 	var out bytes.Buffer
 	if err := imaging.Encode(&out, img, imaging.JPEG, imaging.JPEGQuality(88)); err != nil {
