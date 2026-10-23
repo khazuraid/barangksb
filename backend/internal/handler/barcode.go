@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/code128"
@@ -957,4 +958,139 @@ func renderCode128(content string) []byte {
 	var buf bytes.Buffer
 	png.Encode(&buf, scaled)
 	return buf.Bytes()
+}
+
+// ---- Label Template CRUD (Database Persistence) ----
+
+type LabelTemplatePayload struct {
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	WidthMm     float64                `json:"widthMm"`
+	HeightMm    float64                `json:"heightMm"`
+	LayoutMode  string                 `json:"layoutMode"`
+	Config      map[string]interface{} `json:"config,omitempty"`
+	TableConfig map[string]interface{} `json:"tableConfig,omitempty"`
+	Elements    []interface{}          `json:"elements,omitempty"`
+}
+
+// GET /api/barcode/templates
+func (h *BarcodeHandler) ListTemplates(c *gin.Context) {
+	rows, err := h.pool.Query(c, `
+		SELECT id, name, width_mm, height_mm, layout_mode, config, updated_at
+		FROM label_templates
+		ORDER BY updated_at DESC, name ASC
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca template: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var list []gin.H
+	for rows.Next() {
+		var id, name, layoutMode string
+		var widthMm, heightMm float64
+		var config map[string]interface{}
+		var updatedAt interface{}
+		if err := rows.Scan(&id, &name, &widthMm, &heightMm, &layoutMode, &config, &updatedAt); err == nil {
+			item := gin.H{
+				"id":         id,
+				"name":       name,
+				"widthMm":    widthMm,
+				"heightMm":   heightMm,
+				"layoutMode": layoutMode,
+				"updated_at": updatedAt,
+			}
+			if tc, ok := config["tableConfig"]; ok {
+				item["tableConfig"] = tc
+			}
+			if el, ok := config["elements"]; ok {
+				item["elements"] = el
+			}
+			list = append(list, item)
+		}
+	}
+	if list == nil {
+		list = []gin.H{}
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+// POST /api/barcode/templates (Create or Update)
+func (h *BarcodeHandler) SaveTemplate(c *gin.Context) {
+	var p LabelTemplatePayload
+	if err := c.ShouldBindJSON(&p); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "format data tidak valid: " + err.Error()})
+		return
+	}
+	if strings.TrimSpace(p.Name) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "nama template wajib diisi"})
+		return
+	}
+	if p.ID == "" {
+		p.ID = fmt.Sprintf("custom_%d", time.Now().UnixMilli())
+	}
+	if p.WidthMm <= 0 {
+		p.WidthMm = 64
+	}
+	if p.HeightMm <= 0 {
+		p.HeightMm = 32
+	}
+	if p.LayoutMode == "" {
+		p.LayoutMode = "table"
+	}
+
+	cfg := p.Config
+	if cfg == nil {
+		cfg = make(map[string]interface{})
+	}
+	if p.TableConfig != nil {
+		cfg["tableConfig"] = p.TableConfig
+	}
+	if p.Elements != nil {
+		cfg["elements"] = p.Elements
+	}
+
+	_, err := h.pool.Exec(c, `
+		INSERT INTO label_templates (id, name, width_mm, height_mm, layout_mode, config, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, now())
+		ON CONFLICT (id) DO UPDATE SET
+			name = EXCLUDED.name,
+			width_mm = EXCLUDED.width_mm,
+			height_mm = EXCLUDED.height_mm,
+			layout_mode = EXCLUDED.layout_mode,
+			config = EXCLUDED.config,
+			updated_at = now()
+	`, p.ID, p.Name, p.WidthMm, p.HeightMm, p.LayoutMode, cfg)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menyimpan template: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Template label berhasil disimpan ke database",
+		"id":      p.ID,
+		"name":    p.Name,
+	})
+}
+
+// DELETE /api/barcode/templates/:id
+func (h *BarcodeHandler) DeleteTemplate(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id template tidak valid"})
+		return
+	}
+
+	res, err := h.pool.Exec(c, `DELETE FROM label_templates WHERE id=$1`, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menghapus template: " + err.Error()})
+		return
+	}
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "template tidak ditemukan"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Template berhasil dihapus dari database"})
 }

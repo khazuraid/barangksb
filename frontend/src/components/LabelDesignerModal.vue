@@ -7,6 +7,7 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
+import api from '@/api'
 
 export interface LabelElement {
   id: string
@@ -659,7 +660,33 @@ function ensureTableConfig(tpl: LabelTemplate) {
   }
 }
 
-function loadSavedTemplates() {
+async function loadSavedTemplates() {
+  // 1. Coba muat dari backend database (PostgreSQL)
+  try {
+    const res = await api.get('/barcode/templates')
+    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+      const serverTpls: LabelTemplate[] = res.data.map((t: any) => {
+        const item: LabelTemplate = {
+          id: t.id,
+          name: t.name,
+          widthMm: t.widthMm || 64,
+          heightMm: t.heightMm || 32,
+          layoutMode: t.layoutMode || 'table',
+          tableConfig: t.tableConfig,
+          elements: t.elements || [],
+        }
+        ensureTableConfig(item)
+        return item
+      })
+      templates.value = serverTpls
+      localStorage.setItem('custom_label_templates_v6', JSON.stringify(serverTpls))
+      return
+    }
+  } catch (err) {
+    console.warn('Gagal memuat template dari database, fallback ke localStorage:', err)
+  }
+
+  // 2. Fallback ke localStorage jika offline/backend belum terisi
   const raw = localStorage.getItem('custom_label_templates_v6')
   if (raw) {
     try {
@@ -1377,7 +1404,7 @@ function resetLayout() {
   toast.add({ severity: 'info', summary: 'Tata Letak Direset ke Bawaan', life: 1500 })
 }
 
-function saveCurrentAsNewTemplate() {
+async function saveCurrentAsNewTemplate() {
   const name = prompt('Beri nama template label ini:', activeTemplate.value.name.replace(/^[🌟🏷️\s]+/, ''))
   if (!name) return
   const newTpl: LabelTemplate = {
@@ -1389,26 +1416,49 @@ function saveCurrentAsNewTemplate() {
   activeTemplate.value.id = newTpl.id
   activeTemplate.value.name = newTpl.name
   saveTemplates()
-  toast.add({ severity: 'success', summary: 'Template Berhasil Disimpan', detail: newTpl.name, life: 2000 })
+
+  // Sync ke database
+  try {
+    await api.post('/barcode/templates', newTpl)
+    toast.add({ severity: 'success', summary: 'Tersimpan di Database', detail: newTpl.name, life: 2500 })
+  } catch (err: any) {
+    toast.add({ severity: 'warn', summary: 'Tersimpan Lokal', detail: 'Tersimpan di browser, gagal kirim ke database: ' + (err.response?.data?.error || err.message), life: 3500 })
+  }
 }
 
-function updateCurrentCustomTemplate() {
+async function updateCurrentCustomTemplate() {
   const idx = templates.value.findIndex((t) => t.id === activeTemplate.value.id)
   if (idx !== -1) {
-    templates.value[idx] = JSON.parse(JSON.stringify(activeTemplate.value))
+    const updated = JSON.parse(JSON.stringify(activeTemplate.value))
+    templates.value[idx] = updated
     saveTemplates()
-    toast.add({ severity: 'success', summary: 'Perubahan Template Disimpan', detail: activeTemplate.value.name, life: 2000 })
+
+    // Sync ke database
+    try {
+      await api.post('/barcode/templates', updated)
+      toast.add({ severity: 'success', summary: 'Database Diperbarui', detail: updated.name, life: 2500 })
+    } catch (err: any) {
+      toast.add({ severity: 'warn', summary: 'Lokal Diperbarui', detail: 'Gagal sinkron database: ' + (err.response?.data?.error || err.message), life: 3500 })
+    }
   } else {
     saveCurrentAsNewTemplate()
   }
 }
 
-function deleteCurrentCustomTemplate() {
-  if (!confirm(`Hapus template "${activeTemplate.value.name}"?`)) return
-  templates.value = templates.value.filter((t) => t.id !== activeTemplate.value.id)
+async function deleteCurrentCustomTemplate() {
+  const target = activeTemplate.value
+  if (!confirm(`Hapus template "${target.name}"?`)) return
+  templates.value = templates.value.filter((t) => t.id !== target.id)
   saveTemplates()
   applyPreset(DEFAULT_PRESETS[0])
-  toast.add({ severity: 'info', summary: 'Template Dihapus', life: 1800 })
+
+  // Sync ke database
+  try {
+    await api.delete(`/barcode/templates/${target.id}`)
+    toast.add({ severity: 'info', summary: 'Template Dihapus dari Database', life: 2000 })
+  } catch (err: any) {
+    toast.add({ severity: 'info', summary: 'Template Dihapus Lokal', life: 1800 })
+  }
 }
 
 function exportJSON() {

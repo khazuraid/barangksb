@@ -44,7 +44,7 @@ p, petugas, /api/categories, GET
 p, petugas, /api/locations, GET
 p, petugas, /api/movement/*, POST
 p, petugas, /api/transactions, GET
-p, petugas, /api/barcode/*, GET
+p, petugas, /api/barcode/*, *
 p, petugas, /api/upload, POST
 p, petugas, /api/photos*, *
 p, petugas, /api/export/*, GET

@@ -195,6 +195,9 @@ func main() {
 
 	api.GET("/barcode/:id", bcH.PNG)
 	api.GET("/barcode/sheet", bcH.Sheet)
+	api.GET("/barcode/templates", bcH.ListTemplates)
+	api.POST("/barcode/templates", bcH.SaveTemplate)
+	api.DELETE("/barcode/templates/:id", bcH.DeleteTemplate)
 
 	// Public scan endpoint — returns item detail for QR scan landing page
 	api.GET("/scan/:id", bcH.ScanItem)
