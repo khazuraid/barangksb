@@ -8,10 +8,16 @@ interface User {
   role: string
 }
 
+let cachedUser: User | null = null
+try {
+  const raw = localStorage.getItem('user')
+  if (raw) cachedUser = JSON.parse(raw)
+} catch {}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token') || '',
-    user: null as User | null,
+    user: cachedUser,
   }),
   getters: {
     isLoggedIn: (state) => !!state.token,
@@ -23,15 +29,22 @@ export const useAuthStore = defineStore('auth', {
       this.token = res.data.token
       this.user = res.data.user
       localStorage.setItem('token', this.token)
+      localStorage.setItem('user', JSON.stringify(this.user))
     },
     async fetchMe() {
-      const res = await api.get('/auth/me')
-      this.user = res.data
+      try {
+        const res = await api.get('/auth/me')
+        this.user = res.data
+        localStorage.setItem('user', JSON.stringify(this.user))
+      } catch {
+        this.logout()
+      }
     },
     logout() {
       this.token = ''
       this.user = null
       localStorage.removeItem('token')
+      localStorage.removeItem('user')
     },
   },
 })

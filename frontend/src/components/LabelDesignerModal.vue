@@ -667,10 +667,20 @@ function loadSavedTemplates() {
       parsed.forEach((t: LabelTemplate) => ensureTableConfig(t))
       templates.value = parsed
     } catch {
-      templates.value = JSON.parse(JSON.stringify(DEFAULT_PRESETS))
+      templates.value = []
     }
   } else {
-    templates.value = JSON.parse(JSON.stringify(DEFAULT_PRESETS))
+    templates.value = []
+  }
+
+  // Restore last active WIP design if present
+  const lastActive = localStorage.getItem('active_custom_label_template_v6')
+  if (lastActive) {
+    try {
+      const parsedActive = JSON.parse(lastActive)
+      ensureTableConfig(parsedActive)
+      activeTemplate.value = parsedActive
+    } catch {}
   }
 }
 
@@ -678,10 +688,29 @@ function saveTemplates() {
   localStorage.setItem('custom_label_templates_v6', JSON.stringify(templates.value))
 }
 
+const allPresets = computed(() => {
+  const customList = templates.value.filter((t) => !DEFAULT_PRESETS.some((dp) => dp.id === t.id))
+  return [...DEFAULT_PRESETS, ...customList]
+})
+
+const isCustomActive = computed(() => {
+  return !DEFAULT_PRESETS.some((p) => p.id === activeTemplate.value.id)
+})
+
 onMounted(() => {
   ensureTableConfig(activeTemplate.value)
   loadSavedTemplates()
 })
+
+watch(
+  activeTemplate,
+  (val) => {
+    try {
+      localStorage.setItem('active_custom_label_template_v6', JSON.stringify(val))
+    } catch {}
+  },
+  { deep: true }
+)
 
 watch(
   () => activeTemplate.value.tableConfig?.showHeader,
@@ -1357,8 +1386,29 @@ function saveCurrentAsNewTemplate() {
     name: `🏷️ ${name.trim()}`,
   }
   templates.value.push(newTpl)
+  activeTemplate.value.id = newTpl.id
+  activeTemplate.value.name = newTpl.name
   saveTemplates()
   toast.add({ severity: 'success', summary: 'Template Berhasil Disimpan', detail: newTpl.name, life: 2000 })
+}
+
+function updateCurrentCustomTemplate() {
+  const idx = templates.value.findIndex((t) => t.id === activeTemplate.value.id)
+  if (idx !== -1) {
+    templates.value[idx] = JSON.parse(JSON.stringify(activeTemplate.value))
+    saveTemplates()
+    toast.add({ severity: 'success', summary: 'Perubahan Template Disimpan', detail: activeTemplate.value.name, life: 2000 })
+  } else {
+    saveCurrentAsNewTemplate()
+  }
+}
+
+function deleteCurrentCustomTemplate() {
+  if (!confirm(`Hapus template "${activeTemplate.value.name}"?`)) return
+  templates.value = templates.value.filter((t) => t.id !== activeTemplate.value.id)
+  saveTemplates()
+  applyPreset(DEFAULT_PRESETS[0])
+  toast.add({ severity: 'info', summary: 'Template Dihapus', life: 1800 })
 }
 
 function exportJSON() {
@@ -1471,14 +1521,25 @@ function printLabels() {
           <span class="text-slate-500 font-semibold">Preset:</span>
           <Select
             v-model="activeTemplate.id"
-            :options="DEFAULT_PRESETS"
+            :options="allPresets"
             optionLabel="name"
             optionValue="id"
             class="w-64 !text-xs"
             @change="(e) => {
-              const p = DEFAULT_PRESETS.find((x) => x.id === e.value)
+              const p = allPresets.find((x) => x.id === e.value)
               if (p) applyPreset(p)
             }"
+          />
+          <Button
+            v-if="isCustomActive"
+            icon="pi pi-trash"
+            text
+            rounded
+            size="small"
+            severity="danger"
+            v-tooltip.top="'Hapus Template Kustom Ini'"
+            class="!p-1 shrink-0"
+            @click="deleteCurrentCustomTemplate"
           />
         </div>
 
@@ -1553,15 +1614,28 @@ function printLabels() {
           <span>Snap 0.5mm</span>
         </label>
 
-        <!-- Save Template -->
-        <Button
-          icon="pi pi-save"
-          label="Simpan Template"
-          size="small"
-          severity="secondary"
-          class="!text-xs !py-1 shrink-0"
-          @click="saveCurrentAsNewTemplate"
-        />
+        <!-- Save / Update Template -->
+        <div class="flex items-center gap-1 shrink-0">
+          <Button
+            v-if="isCustomActive"
+            icon="pi pi-check"
+            label="Perbarui Template"
+            size="small"
+            severity="info"
+            class="!text-xs !py-1 shrink-0"
+            v-tooltip.top="'Simpan perubahan ke template ini'"
+            @click="updateCurrentCustomTemplate"
+          />
+          <Button
+            icon="pi pi-save"
+            :label="isCustomActive ? 'Simpan Baru' : 'Simpan Template'"
+            size="small"
+            severity="secondary"
+            class="!text-xs !py-1 shrink-0"
+            v-tooltip.top="'Simpan sebagai template kustom baru'"
+            @click="saveCurrentAsNewTemplate"
+          />
+        </div>
 
         <!-- Export / Import -->
         <Button icon="pi pi-download" text rounded size="small" severity="secondary" v-tooltip.top="'Ekspor JSON Template'" class="shrink-0" @click="exportJSON" />
@@ -2832,7 +2906,7 @@ function printLabels() {
                 </button>
                 <button
                   type="button"
-                  :disabled="selectedTableCellIndex >= getRowCells(selectedTableRow).length - 1"
+                  :disabled="selectedTableCellIndex === null || selectedTableCellIndex >= getRowCells(selectedTableRow).length - 1"
                   class="flex-1 py-1 px-1.5 rounded bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 text-[10px] font-bold flex items-center justify-center gap-1 disabled:opacity-40 transition-colors"
                   title="Gabung sel ini dengan sel sebelah kanan"
                   @click="mergeCellsWithNext(selectedTableRowIndex!, selectedTableCellIndex!)"

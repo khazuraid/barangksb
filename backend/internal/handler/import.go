@@ -663,23 +663,34 @@ func (h *ImportHandler) Import(c *gin.Context) {
 			sku = generateSKU(h.itemH, c, category)
 		}
 
-		_, err := h.pool.Exec(c, `
+		var newItemID string
+		err := h.pool.QueryRow(c, `
 			INSERT INTO inventory_items (
 				sku, name, category, location, location_code, current_stock, min_stock, unit,
 				price_per_unit, condition_status, merk, type_model, serial_number,
 				procurement_year, funding_source, distributor, akl_akd, description,
 				size, material, item_code, register_number, track_stock
 			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+			RETURNING id::text
 		`, sku, name, category, location, nullable(locCode), stock, minStock, unit,
 			price, condition, nullable(merk), nullable(typeModel), nullable(serialNumber),
 			nullable(procurementYear), nullable(fundingSource), nullable(distributor),
 			nullable(aklAkd), nullable(description), nullable(size), nullable(material),
-			nullable(itemCode), nullable(registerNumber), trackStock)
+			nullable(itemCode), nullable(registerNumber), trackStock).Scan(&newItemID)
 
 		if err != nil {
 			failedCount++
 			errorList = append(errorList, fmt.Sprintf("Baris %d (%s): %s", rowNum, name, err.Error()))
 		} else {
+			if !trackStock {
+				regStr := "0001"
+				if registerNumber != "" {
+					regStr = registerNumber
+				}
+				unitBarcode := sku
+				_, _ = h.pool.Exec(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+					newItemID, 1, regStr, unitBarcode, nullable(serialNumber), nullable(condition), location, nullable(locCode))
+			}
 			seenKeys[dedupKey] = true
 			successCount++
 		}

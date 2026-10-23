@@ -37,15 +37,20 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore()
   if (to.meta.auth && !auth.isLoggedIn) {
     next('/login')
-  } else if (to.meta.admin && !auth.isAdmin) {
-    next('/')
-  } else {
-    next()
+    return
   }
+  if (auth.isLoggedIn && !auth.user) {
+    await auth.fetchMe()
+  }
+  if (to.meta.admin && !auth.isAdmin) {
+    next('/')
+    return
+  }
+  next()
 })
 
 router.onError((error, to) => {

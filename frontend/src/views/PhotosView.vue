@@ -242,7 +242,7 @@ function cleanAllOrphans() {
         label="Foto Yatim (Tak Terhubung)"
         :value="stats.orphan_files + ' foto'"
         icon="pi pi-exclamation-circle"
-        :tone="stats.orphan_files > 0 ? 'critical' : 'neutral'"
+        :tone="stats.orphan_files > 0 ? 'bad' : 'neutral'"
         :hint="stats.orphan_files > 0 ? 'Dapat dibersihkan: ' + formatBytes(stats.orphan_size) : 'Penyimpanan bersih tanpa foto yatim'"
       />
     </div>

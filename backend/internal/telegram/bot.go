@@ -56,7 +56,7 @@ func NewBot(token, chatIDsCSV string, pool *pgxpool.Pool) *Bot {
 			continue
 		}
 		id, err := strconv.ParseInt(s, 10, 64)
-		if err != nil || id <= 0 {
+		if err != nil || id == 0 {
 			continue
 		}
 		ids[id] = true
@@ -2252,7 +2252,7 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 
 func (b *Bot) getLowStockText(ctx context.Context) string {
 	rows, _ := b.pool.Query(ctx,
-		`SELECT name, sku, current_stock, min_stock, unit FROM inventory_items WHERE current_stock <= min_stock ORDER BY current_stock LIMIT 20`)
+		`SELECT name, sku, current_stock, min_stock, unit FROM inventory_items WHERE COALESCE(track_stock, true) = true AND current_stock <= min_stock ORDER BY current_stock LIMIT 20`)
 	defer rows.Close()
 	var sb strings.Builder
 	sb.WriteString("⚠️ *Daftar Barang Stok Menipis:*\n\n")

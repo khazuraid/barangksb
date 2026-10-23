@@ -1157,7 +1157,8 @@ async function deleteMaintRecord(mId: string) {
     <!-- Modal: Pencatatan Stok Masuk & Keluar dengan Foto Geotag -->
     <!-- ======================================================== -->
     <Dialog
-      v-model:visible="stockModalType"
+      :visible="stockModalType !== null"
+      @update:visible="(val) => { if (!val) stockModalType = null }"
       modal
       :header="stockModalType === 'IN' ? 'Catat Stok Masuk (Penerimaan Barang)' : 'Catat Stok Keluar (Pemakaian Barang)'"
       :style="{ width: '560px' }"

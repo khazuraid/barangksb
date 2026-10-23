@@ -382,7 +382,7 @@ func (h *ItemHandler) Dashboard(c *gin.Context) {
 	var totalItems, totalStock int
 	h.pool.QueryRow(c, `SELECT count(*), COALESCE(sum(current_stock),0) FROM inventory_items`).Scan(&totalItems, &totalStock)
 
-	lowRows, _ := h.pool.Query(c, `SELECT name, sku, current_stock, min_stock, unit, location FROM inventory_items WHERE current_stock <= min_stock ORDER BY current_stock LIMIT 10`)
+	lowRows, _ := h.pool.Query(c, `SELECT name, sku, current_stock, min_stock, unit, COALESCE(location, '') FROM inventory_items WHERE COALESCE(track_stock, true) = true AND current_stock <= min_stock ORDER BY current_stock LIMIT 10`)
 	defer lowRows.Close()
 	type lowRow struct {
 		Name string `json:"name"`

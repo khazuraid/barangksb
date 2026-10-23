@@ -389,6 +389,56 @@ func (h *UploadHandler) getDBReferences(ctx context.Context) map[string][]PhotoR
 		}
 	}
 
+	// 4. item_units
+	rows4, err4 := h.pool.Query(ctx, `
+		SELECT u.id::text, COALESCE(i.name, 'Unit'), COALESCE(u.unit_code, ''), u.photo_url
+		FROM item_units u
+		LEFT JOIN inventory_items i ON u.item_id = i.id
+		WHERE u.photo_url IS NOT NULL AND u.photo_url != ''
+	`)
+	if err4 == nil {
+		defer rows4.Close()
+		for rows4.Next() {
+			var id, itemName, unitCode, photoURL string
+			if err := rows4.Scan(&id, &itemName, &unitCode, &photoURL); err == nil {
+				base := filepath.Base(photoURL)
+				if base != "" && base != "." {
+					refMap[base] = append(refMap[base], PhotoReference{
+						Type:  "unit",
+						ID:    id,
+						Title: itemName,
+						Sub:   "Unit: " + unitCode,
+					})
+				}
+			}
+		}
+	}
+
+	// 5. item_reports
+	rows5, err5 := h.pool.Query(ctx, `
+		SELECT r.id::text, COALESCE(i.name, 'Laporan'), COALESCE(r.reporter_name, 'Publik'), r.photo_url
+		FROM item_reports r
+		LEFT JOIN inventory_items i ON r.item_id = i.id
+		WHERE r.photo_url IS NOT NULL AND r.photo_url != ''
+	`)
+	if err5 == nil {
+		defer rows5.Close()
+		for rows5.Next() {
+			var id, itemName, reporter, photoURL string
+			if err := rows5.Scan(&id, &itemName, &reporter, &photoURL); err == nil {
+				base := filepath.Base(photoURL)
+				if base != "" && base != "." {
+					refMap[base] = append(refMap[base], PhotoReference{
+						Type:  "report",
+						ID:    id,
+						Title: itemName,
+						Sub:   "Laporan: " + reporter,
+					})
+				}
+			}
+		}
+	}
+
 	return refMap
 }
 

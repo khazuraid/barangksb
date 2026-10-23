@@ -39,13 +39,14 @@ func (h *ReportHandler) ItemsXLSX(c *gin.Context) {
 	for rows.Next() {
 		var sku, name, cat, loc, unit, cond string
 		var stock int32
-		rows.Scan(&sku, &name, &cat, &loc, &stock, &unit, &cond)
-		vals := []any{sku, name, cat, loc, stock, unit, cond}
-		for i, v := range vals {
-			cell, _ := excelize.CoordinatesToCellName(i+1, r)
-			f.SetCellValue(sheet, cell, v)
+		if err := rows.Scan(&sku, &name, &cat, &loc, &stock, &unit, &cond); err == nil {
+			vals := []any{sku, name, cat, loc, stock, unit, cond}
+			for i, v := range vals {
+				cell, _ := excelize.CoordinatesToCellName(i+1, r)
+				f.SetCellValue(sheet, cell, v)
+			}
+			r++
 		}
-		r++
 	}
 	style, _ := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
 	f.SetCellStyle(sheet, "A1", "G1", style)
@@ -69,7 +70,7 @@ func (h *ReportHandler) PDF(c *gin.Context) {
 	}
 	pdf.Ln(-1)
 	pdf.SetFont("Arial", "", 8)
-	rows, err := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit FROM inventory_items ORDER BY name`)
+	rows, err := h.pool.Query(c, `SELECT sku, name, COALESCE(category, ''), COALESCE(location, ''), current_stock, COALESCE(unit, '') FROM inventory_items ORDER BY name`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca data barang: " + err.Error()})
 		return
@@ -78,12 +79,13 @@ func (h *ReportHandler) PDF(c *gin.Context) {
 	for rows.Next() {
 		var sku, name, cat, loc, unit string
 		var stock int32
-		rows.Scan(&sku, &name, &cat, &loc, &stock, &unit)
-		vals := []string{sku, truncStr(name, 30), truncStr(cat, 25), truncStr(loc, 20), strconv.Itoa(int(stock)), unit}
-		for i, v := range vals {
-			pdf.CellFormat(cols[i], 6, v, "1", 0, "", false, 0, "")
+		if err := rows.Scan(&sku, &name, &cat, &loc, &stock, &unit); err == nil {
+			vals := []string{sku, truncStr(name, 30), truncStr(cat, 25), truncStr(loc, 20), strconv.Itoa(int(stock)), unit}
+			for i, v := range vals {
+				pdf.CellFormat(cols[i], 6, v, "1", 0, "", false, 0, "")
+			}
+			pdf.Ln(-1)
 		}
-		pdf.Ln(-1)
 	}
 	var buf bytes.Buffer
 	pdf.Output(&buf)
@@ -91,8 +93,9 @@ func (h *ReportHandler) PDF(c *gin.Context) {
 }
 
 func truncStr(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
+	return string(r[:n-1]) + "…"
 }

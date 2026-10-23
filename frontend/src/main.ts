@@ -44,16 +44,6 @@ const Industrial = definePreset(Aura, {
       borderRadius: '{border.radius.md}',
       transitionDuration: '0.16s',
     },
-    /* button-specific tokens */
-    button: {
-      gap: '0.375rem',
-      iconOnlyWidth: '2.25rem',
-      roundedBorderRadius: '1.5rem',
-      label: { fontWeight: '600' },
-      sm: {
-        iconOnlyWidth: '1.875rem',
-      },
-    },
     /* surface mapped to ink scale — warm dark, not zinc cool */
     colorScheme: {
       light: {

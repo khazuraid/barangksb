@@ -414,8 +414,7 @@ function removeCmd(c: any) {
                     <div class="text-[13px] font-semibold" style="color: var(--txt)">Daily Low-Stock Alert</div>
                     <div class="text-[11.5px]" style="color: var(--txt-dim)">Kirim rekap barang menipis harian</div>
                   </div>
-                  <ToggleButton v-model="settings.telegram_alert_low_stock"
-                                :modelValue="settings.telegram_alert_low_stock === 'true'"
+                  <ToggleButton :modelValue="settings.telegram_alert_low_stock === 'true'"
                                 @update:modelValue="settings.telegram_alert_low_stock = $event ? 'true' : 'false'"
                                 onLabel="Aktif" offLabel="Mati" onIcon="pi pi-check" offIcon="pi pi-times" />
                 </div>
