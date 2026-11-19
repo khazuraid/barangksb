@@ -44,7 +44,7 @@ services:
       - app-network
 
   minio:
-    image: minio/minio:latest
+    image: elestio/minio:latest
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
