@@ -1516,11 +1516,11 @@ async function saveCurrentAsNewTemplate() {
   activeTemplate.value.id = newTpl.id
   activeTemplate.value.name = newTpl.name
   saveTemplates()
+  emit('template-saved', newTpl)
 
   // Sync ke database
   try {
     await api.post('/barcode/templates', newTpl)
-    emit('template-saved', newTpl)
     toast.add({ severity: 'success', summary: 'Tersimpan di Database', detail: newTpl.name, life: 2500 })
   } catch (err: any) {
     toast.add({ severity: 'warn', summary: 'Tersimpan Lokal', detail: 'Tersimpan di browser, gagal kirim ke database: ' + (err.response?.data?.error || err.message), life: 3500 })
@@ -1533,11 +1533,11 @@ async function updateCurrentCustomTemplate() {
     const updated = JSON.parse(JSON.stringify(activeTemplate.value))
     templates.value[idx] = updated
     saveTemplates()
+    emit('template-saved', updated)
 
     // Sync ke database
     try {
       await api.post('/barcode/templates', updated)
-      emit('template-saved', updated)
       toast.add({ severity: 'success', summary: 'Database Diperbarui', detail: updated.name, life: 2500 })
     } catch (err: any) {
       toast.add({ severity: 'warn', summary: 'Lokal Diperbarui', detail: 'Gagal sinkron database: ' + (err.response?.data?.error || err.message), life: 3500 })
@@ -1553,11 +1553,11 @@ async function deleteCurrentCustomTemplate() {
   templates.value = templates.value.filter((t) => t.id !== target.id)
   saveTemplates()
   applyPreset(DEFAULT_PRESETS[0])
+  emit('template-saved', activeTemplate.value)
 
   // Sync ke database
   try {
     await api.delete(`/barcode/templates/${target.id}`)
-    emit('template-saved', activeTemplate.value)
     toast.add({ severity: 'info', summary: 'Template Dihapus dari Database', life: 2000 })
   } catch (err: any) {
     toast.add({ severity: 'info', summary: 'Template Dihapus Lokal', life: 1800 })

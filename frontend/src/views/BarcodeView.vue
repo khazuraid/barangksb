@@ -35,19 +35,77 @@ const locationFilter = ref('')
 const fmt = ref<'qr' | 'code128'>('qr')
 const size = ref(160)
 
-// Custom Label Templates dari Database
+// Custom Label Templates dari Database & Penyimpanan Lokal
 const customTemplates = ref<any[]>([])
 const selectedCustomTemplateId = ref<string>('')
 
-async function loadCustomTemplates() {
+async function loadCustomTemplates(newTpl?: any) {
+  const map = new Map<string, any>()
+
+  // 1. Muat dari localStorage (instan, tahan reload, tahan offline)
+  const localKeys = ['custom_label_templates_v6', 'custom_label_templates', 'active_custom_label_template_v6']
+  for (const k of localKeys) {
+    try {
+      const raw = localStorage.getItem(k)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          parsed.forEach((t) => {
+            if (t && t.id && !t.id.startsWith('preset_')) {
+              map.set(t.id, t)
+            }
+          })
+        } else if (parsed && parsed.id && !parsed.id.startsWith('preset_')) {
+          map.set(parsed.id, parsed)
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Muat dari backend database (PostgreSQL)
   try {
     const res = await api.get('/barcode/templates')
-    if (res.data && Array.isArray(res.data)) {
-      customTemplates.value = res.data
+    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+      res.data.forEach((t: any) => {
+        if (t && t.id) {
+          map.set(t.id, t)
+        }
+      })
     }
   } catch (err) {
-    console.warn('Gagal memuat template kustom di BarcodeView:', err)
+    console.warn('Gagal memuat template kustom dari server:', err)
   }
+
+  // 3. Gabungkan template yang baru saja di-save jika ada
+  if (newTpl && newTpl.id && !newTpl.id.startsWith('preset_')) {
+    map.set(newTpl.id, newTpl)
+  }
+
+  customTemplates.value = Array.from(map.values())
+
+  // Simpan kembali list lengkap ke localStorage
+  try {
+    localStorage.setItem('custom_label_templates_v6', JSON.stringify(customTemplates.value))
+  } catch {}
+
+  // Jika ada template baru disimpan, otomatis pilih di dropdown
+  if (newTpl && newTpl.id) {
+    const targetVal = newTpl.id.startsWith('custom_') ? newTpl.id : `custom_${newTpl.id}`
+    layout.value = targetVal
+    try {
+      localStorage.setItem('barcode_selected_layout', targetVal)
+    } catch {}
+  }
+}
+
+function onTemplateSaved(savedTpl: any) {
+  loadCustomTemplates(savedTpl)
+  toast.add({
+    severity: 'success',
+    summary: 'Template Berhasil Disimpan',
+    detail: `Template "${(savedTpl?.name || '').replace(/^[🌟🏷️\s]+/, '')}" kini aktif di dropdown`,
+    life: 3000,
+  })
 }
 
 function openCustomDesignerWithTemplate(templateId?: string) {
@@ -58,21 +116,37 @@ function openCustomDesignerWithTemplate(templateId?: string) {
 }
 
 // Thermal Printer, Sticker Sheets & Label Profiles
-const layout = ref('tj_103')
+const savedLayout = localStorage.getItem('barcode_selected_layout')
+const layout = ref(savedLayout || 'tj_103')
+
+watch(layout, (newVal) => {
+  if (newVal) {
+    try {
+      localStorage.setItem('barcode_selected_layout', newVal)
+    } catch {}
+  }
+})
 
 const selectedCustomTemplate = computed(() => {
   if (!layout.value.startsWith('custom_')) return null
-  const id = layout.value.replace('custom_', '')
-  return customTemplates.value.find((t) => t.id === id) || null
+  const rawId = layout.value.replace(/^custom_/, '')
+  return customTemplates.value.find((t) => {
+    const tId = t.id || ''
+    const cleanTId = tId.replace(/^custom_/, '')
+    return tId === layout.value || tId === rawId || cleanTId === rawId
+  }) || null
 })
 
 const layoutOptions = computed(() => {
   const list: any[] = []
   if (customTemplates.value.length > 0) {
     customTemplates.value.forEach((t) => {
+      const rawId = t.id || ''
+      const customVal = rawId.startsWith('custom_') ? rawId : `custom_${rawId}`
+      const cleanName = (t.name || 'Desain Kustom').replace(/^[🌟🏷️\s]+/, '')
       list.push({
-        label: `🏷️ [Desain Kustom] ${t.name.replace(/^[🌟🏷️\s]+/, '')} (${t.widthMm}x${t.heightMm} mm)`,
-        value: `custom_${t.id}`,
+        label: `⭐ [Tersimpan] ${cleanName} (${t.widthMm || 64}x${t.heightMm || 32} mm)`,
+        value: customVal,
       })
     })
   }
@@ -93,6 +167,116 @@ const layoutOptions = computed(() => {
   )
   return list
 })
+
+async function saveCurrentLayoutAsTemplate() {
+  const currentOption = layoutOptions.value.find((o) => o.value === layout.value)
+  const defaultName = currentOption ? currentOption.label.replace(/^[🌟📄🏷️🖨️⭐\s]+/, '').split('(')[0].trim() : 'Template Label'
+  const name = prompt('Beri nama template label untuk disimpan ke dropdown ini:', defaultName)
+  if (!name || !name.trim()) return
+
+  const cleanName = name.trim()
+  const customId = `custom_${Date.now().toString(36)}`
+
+  let widthMm = 64
+  let heightMm = 32
+  if (layout.value.includes('50x30') || layout.value === 'label_50x30') {
+    widthMm = 50; heightMm = 30
+  } else if (layout.value.includes('40x30') || layout.value === 'label_40x30') {
+    widthMm = 40; heightMm = 30
+  } else if (layout.value.includes('60x40') || layout.value === 'label_60x40') {
+    widthMm = 60; heightMm = 40
+  } else if (layout.value.includes('70x50') || layout.value === 'label_70x50') {
+    widthMm = 70; heightMm = 50
+  } else if (layout.value.includes('100x50') || layout.value === 'label_100x50') {
+    widthMm = 100; heightMm = 50
+  } else if (layout.value === 'tj_107') {
+    widthMm = 50; heightMm = 18
+  } else if (layout.value === 'tj_108') {
+    widthMm = 38; heightMm = 18
+  } else if (layout.value === 'tj_121') {
+    widthMm = 75; heightMm = 38
+  } else if (selectedCustomTemplate.value) {
+    widthMm = selectedCustomTemplate.value.widthMm || 64
+    heightMm = selectedCustomTemplate.value.heightMm || 32
+  }
+
+  const newTpl: any = {
+    id: customId,
+    name: `🏷️ ${cleanName}`,
+    widthMm,
+    heightMm,
+    layoutMode: 'table',
+    config: {
+      baseLayout: layout.value,
+      fmt: fmt.value,
+      labelTitle: labelTitle.value || 'INVENTARIS KANTOR',
+      showName: showName.value,
+      showSKU: showSKU.value,
+      showLoc: showLoc.value,
+      showBorder: showBorder.value,
+      copies: copies.value,
+    },
+    tableConfig: selectedCustomTemplate.value?.tableConfig || {
+      showHeader: true,
+      headerText: labelTitle.value || 'INVENTARIS KANTOR',
+      showLogo: false,
+      logoUrl: '',
+      logoWidthMm: 12,
+      qrPosition: 'left',
+      qrType: fmt.value,
+      qrWidthMm: 18,
+      showFooter: false,
+      footerText: '',
+      footerFontSize: 6,
+      defaultFontSize: 7,
+      rows: [
+        { label: 'Nama', field: 'name', showLabel: false, isBold: true, fontSize: 8 },
+        { label: 'Kode', field: 'item_code', showLabel: true, isBold: false, fontSize: 7 },
+        { label: 'Ruang', field: 'location', showLabel: true, isBold: false, fontSize: 7 },
+      ],
+    },
+  }
+
+  try {
+    await api.post('/barcode/templates', newTpl)
+  } catch (err) {
+    console.warn('Disimpan di penyimpanan lokal browser:', err)
+  }
+
+  await loadCustomTemplates(newTpl)
+  toast.add({
+    severity: 'success',
+    summary: 'Template Disimpan',
+    detail: `"${cleanName}" berhasil ditambahkan ke dropdown`,
+    life: 3000,
+  })
+}
+
+async function deleteSelectedCustomTemplate() {
+  if (!selectedCustomTemplate.value) return
+  const tpl = selectedCustomTemplate.value
+  const cleanName = (tpl.name || '').replace(/^[🌟🏷️\s]+/, '')
+  if (!confirm(`Hapus template tersimpan "${cleanName}" dari dropdown?`)) return
+
+  customTemplates.value = customTemplates.value.filter((t) => t.id !== tpl.id)
+  try {
+    localStorage.setItem('custom_label_templates_v6', JSON.stringify(customTemplates.value))
+  } catch {}
+
+  try {
+    await api.delete(`/barcode/templates/${tpl.id}`)
+  } catch (err) {
+    console.warn('Gagal hapus dari database server:', err)
+  }
+
+  layout.value = 'tj_103'
+  toast.add({
+    severity: 'info',
+    summary: 'Template Dihapus',
+    detail: `Template "${cleanName}" telah dihapus`,
+    life: 2500,
+  })
+}
 
 const showName = ref(true)
 const showSKU = ref(true)
@@ -411,14 +595,45 @@ const sampleItem = computed(() => {
           class="!text-[12px] !py-0.5 w-[130px]"
         />
 
-        <Select
-          v-model="layout"
-          :options="layoutOptions"
-          optionLabel="label"
-          optionValue="value"
-          class="!text-[12px] !py-0.5 w-[230px]"
-          v-tooltip.top="'Pilih ukuran label / jenis printer'"
-        />
+        <div class="flex items-center gap-1">
+          <Select
+            v-model="layout"
+            :options="layoutOptions"
+            optionLabel="label"
+            optionValue="value"
+            class="!text-[12px] !py-0.5 w-[250px] sm:w-[280px]"
+            v-tooltip.top="'Pilih ukuran label / template tersimpan'"
+          />
+          <Button
+            icon="pi pi-bookmark"
+            size="small"
+            severity="secondary"
+            outlined
+            class="!p-1.5 !text-xs shrink-0"
+            v-tooltip.top="'Simpan profil label saat ini ke dropdown'"
+            @click="saveCurrentLayoutAsTemplate"
+          />
+          <Button
+            v-if="selectedCustomTemplate"
+            icon="pi pi-pencil"
+            size="small"
+            severity="info"
+            outlined
+            class="!p-1.5 !text-xs shrink-0"
+            v-tooltip.top="'Buka & edit di Desainer Kustom'"
+            @click="openCustomDesignerWithTemplate(selectedCustomTemplate.id)"
+          />
+          <Button
+            v-if="selectedCustomTemplate"
+            icon="pi pi-trash"
+            size="small"
+            severity="danger"
+            outlined
+            class="!p-1.5 !text-xs shrink-0"
+            v-tooltip.top="'Hapus template ini dari dropdown'"
+            @click="deleteSelectedCustomTemplate"
+          />
+        </div>
 
         <Button
           v-if="q || categoryFilter || locationFilter"
@@ -590,14 +805,36 @@ const sampleItem = computed(() => {
         <!-- Settings Form Grid -->
         <div class="grid sm:grid-cols-2 gap-3.5 p-3 rounded-xl border" style="background: var(--panel-2); border-color: var(--line)">
           <div class="flex flex-col gap-1.5 sm:col-span-2">
-            <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Pilihan Ukuran Stiker / Jenis Printer</label>
-            <Select
-              v-model="layout"
-              :options="layoutOptions"
-              optionLabel="label"
-              optionValue="value"
-              class="w-full !text-[12.5px]"
-            />
+            <div class="flex items-center justify-between">
+              <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Pilihan Ukuran Stiker / Jenis Printer</label>
+              <button
+                type="button"
+                class="text-[11px] text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                @click="saveCurrentLayoutAsTemplate"
+              >
+                <i class="pi pi-bookmark text-[10px]" />
+                <span>Simpan Pengaturan Ini ke Dropdown</span>
+              </button>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <Select
+                v-model="layout"
+                :options="layoutOptions"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full !text-[12.5px]"
+              />
+              <Button
+                v-if="selectedCustomTemplate"
+                icon="pi pi-trash"
+                size="small"
+                severity="danger"
+                outlined
+                class="!p-2 shrink-0"
+                v-tooltip.top="'Hapus template ini dari dropdown'"
+                @click="deleteSelectedCustomTemplate"
+              />
+            </div>
           </div>
 
           <div class="flex flex-col gap-1.5">
@@ -905,7 +1142,7 @@ const sampleItem = computed(() => {
       :items="items"
       :selectedIds="selected"
       :initialTemplateId="selectedCustomTemplateId"
-      @template-saved="loadCustomTemplates"
+      @template-saved="onTemplateSaved"
     />
   </div>
 </template>
