@@ -1,67 +1,12 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-inventaris}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-inventaris}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - app-network
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    command: >
-      redis-server
-      --requirepass ${REDIS_PASSWORD:-dev-redis-secure-password-2024}
-      --rename-command FLUSHALL ""
-      --rename-command FLUSHDB ""
-      --rename-command CONFIG ""
-      --rename-command KEYS ""
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --appendonly yes
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-dev-redis-secure-password-2024}", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - app-network
-
-  minio:
-    image: elestio/minio:latest
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    command: server /data
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes:
-      - miniodata:/data
-    networks:
-      - app-network
-
   app:
     build: .
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.app.loadbalancer.server.port=8080"
     environment:
       DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-inventaris}?sslmode=disable
       REDIS_URL: ${REDIS_URL:-redis://default:${REDIS_PASSWORD:-dev-redis-secure-password-2024}@redis:6379/0}
@@ -100,6 +45,8 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    labels:
+      - "traefik.enable=false"
     command: ["-worker"]
     environment:
       APP_ROLE: worker
@@ -122,6 +69,70 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=false"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-inventaris}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-inventaris}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=false"
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-dev-redis-secure-password-2024}
+      --rename-command FLUSHALL ""
+      --rename-command FLUSHDB ""
+      --rename-command CONFIG ""
+      --rename-command KEYS ""
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-dev-redis-secure-password-2024}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app-network
+
+  minio:
+    image: elestio/minio:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=false"
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - miniodata:/data
     networks:
       - app-network
 
