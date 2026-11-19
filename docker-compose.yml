@@ -16,16 +16,14 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-inventaris}
       PORT: "8080"
       APP_ENV: ${APP_ENV:-dev}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@kantor.id}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS}
+    volumes:
+      - uploads:/uploads
     expose:
       - "8080"
     ports:
@@ -35,8 +33,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_started
     networks:
       - app-network
 
@@ -57,13 +53,11 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-dev-redis-secure-password-2024}
       REDIS_DB: ${REDIS_DB:-0}
       JWT_SECRET: ${JWT_SECRET}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-inventaris}
       APP_ENV: ${APP_ENV:-dev}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS}
+    volumes:
+      - uploads:/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,26 +114,10 @@ services:
     networks:
       - app-network
 
-  minio:
-    image: elestio/minio:latest
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    labels:
-      - "traefik.enable=false"
-    command: server /data
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes:
-      - miniodata:/data
-    networks:
-      - app-network
-
 volumes:
   pgdata:
-  miniodata:
   redisdata:
+  uploads:
 
 networks:
   app-network:
