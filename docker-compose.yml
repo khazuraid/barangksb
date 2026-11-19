@@ -48,14 +48,12 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: server /data --console-address ":9001"
+    command: server /data
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - miniodata:/data
-    ports:
-      - "127.0.0.1:9001:9001"
     networks:
       - app-network
 
