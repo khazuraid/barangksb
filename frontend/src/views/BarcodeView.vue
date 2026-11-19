@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -15,11 +16,15 @@ import EmptyState from '@/components/EmptyState.vue'
 import LabelDesignerModal from '@/components/LabelDesignerModal.vue'
 
 const toast = useToast()
+const confirm = useConfirm()
 const items = ref<any[]>([])
 const total = ref(0)
 const selected = ref<string[]>([])
 const loading = ref(true)
 const showCustomDesigner = ref(false)
+const saveTemplateDialog = ref(false)
+const saveTemplateName = ref('')
+const savingTemplate = ref(false)
 
 const page = ref(0)
 const perPage = ref(24)
@@ -116,7 +121,10 @@ function openCustomDesignerWithTemplate(templateId?: string) {
 }
 
 // Thermal Printer, Sticker Sheets & Label Profiles
-const savedLayout = localStorage.getItem('barcode_selected_layout')
+let savedLayout: string | null = null
+try {
+  savedLayout = localStorage.getItem('barcode_selected_layout')
+} catch {}
 const layout = ref(savedLayout || 'tj_103')
 
 watch(layout, (newVal) => {
@@ -143,38 +151,47 @@ const layoutOptions = computed(() => {
     customTemplates.value.forEach((t) => {
       const rawId = t.id || ''
       const customVal = rawId.startsWith('custom_') ? rawId : `custom_${rawId}`
-      const cleanName = (t.name || 'Desain Kustom').replace(/^[🌟🏷️\s]+/, '')
+      const cleanName = (t.name || 'Desain Kustom').replace(/^[🌟🏷️🖨️📄⭐\s]+/, '')
       list.push({
-        label: `⭐ [Tersimpan] ${cleanName} (${t.widthMm || 64}x${t.heightMm || 32} mm)`,
+        label: `[Tersimpan] ${cleanName} (${t.widthMm || 64}x${t.heightMm || 32} mm)`,
         value: customVal,
       })
     })
   }
   list.push(
-    { label: '🌟 Tom & Jerry No. 103 (12 Label / Lembar · 3x4 · 64x32 mm - Rekomendasi)', value: 'tj_103' },
-    { label: '📄 Tom & Jerry No. 107 (24 Label / Lembar · 3x8 · 50x18 mm)', value: 'tj_107' },
-    { label: '📄 Tom & Jerry No. 108 (40 Label / Lembar · 5x8 · 38x18 mm)', value: 'tj_108' },
-    { label: '📄 Tom & Jerry No. 121 (10 Label / Lembar · 2x5 · 75x38 mm)', value: 'tj_121' },
-    { label: '📄 Kertas Stiker A4 (21 Label / Lembar · 3x7 · 65x38 mm)', value: 'a4_3x7' },
-    { label: '📄 Kertas Stiker A4 (40 Label / Lembar · 4x10 · 48x25.5 mm)', value: 'a4_4x10' },
-    { label: '🖨️ Printer Thermal Roll 58 mm (Struk Kasir)', value: 'thermal_58' },
-    { label: '🖨️ Printer Thermal Roll 80 mm (Struk Lebar)', value: 'thermal_80' },
-    { label: '🏷️ Stiker Rol 50 x 30 mm (Standar Printer Barcode)', value: 'label_50x30' },
-    { label: '🏷️ Stiker Rol 40 x 30 mm (Mini Aset)', value: 'label_40x30' },
-    { label: '🏷️ Stiker Rol 60 x 40 mm (Sedang)', value: 'label_60x40' },
-    { label: '🏷️ Stiker Rol 70 x 50 mm (Besar)', value: 'label_70x50' },
-    { label: '🏷️ Stiker Rol 100 x 50 mm (Stiker Aset Lebar)', value: 'label_100x50' },
+    { label: 'Tom & Jerry No. 103 (12 Label / Lembar · 3x4 · 64x32 mm - Rekomendasi)', value: 'tj_103' },
+    { label: 'Tom & Jerry No. 107 (24 Label / Lembar · 3x8 · 50x18 mm)', value: 'tj_107' },
+    { label: 'Tom & Jerry No. 108 (40 Label / Lembar · 5x8 · 38x18 mm)', value: 'tj_108' },
+    { label: 'Tom & Jerry No. 121 (10 Label / Lembar · 2x5 · 75x38 mm)', value: 'tj_121' },
+    { label: 'Kertas Stiker A4 (21 Label / Lembar · 3x7 · 65x38 mm)', value: 'a4_3x7' },
+    { label: 'Kertas Stiker A4 (40 Label / Lembar · 4x10 · 48x25.5 mm)', value: 'a4_4x10' },
+    { label: 'Printer Thermal Roll 58 mm (Struk Kasir)', value: 'thermal_58' },
+    { label: 'Printer Thermal Roll 80 mm (Struk Lebar)', value: 'thermal_80' },
+    { label: 'Stiker Rol 50 x 30 mm (Standar Printer Barcode)', value: 'label_50x30' },
+    { label: 'Stiker Rol 40 x 30 mm (Mini Aset)', value: 'label_40x30' },
+    { label: 'Stiker Rol 60 x 40 mm (Sedang)', value: 'label_60x40' },
+    { label: 'Stiker Rol 70 x 50 mm (Besar)', value: 'label_70x50' },
+    { label: 'Stiker Rol 100 x 50 mm (Stiker Aset Lebar)', value: 'label_100x50' },
   )
   return list
 })
 
-async function saveCurrentLayoutAsTemplate() {
+function saveCurrentLayoutAsTemplate() {
   const currentOption = layoutOptions.value.find((o) => o.value === layout.value)
-  const defaultName = currentOption ? currentOption.label.replace(/^[🌟📄🏷️🖨️⭐\s]+/, '').split('(')[0].trim() : 'Template Label'
-  const name = prompt('Beri nama template label untuk disimpan ke dropdown ini:', defaultName)
-  if (!name || !name.trim()) return
+  const defaultName = currentOption
+    ? currentOption.label.replace(/^(\[Tersimpan\]|[🌟📄🏷️🖨️⭐])+\s*/g, '').split('(')[0].trim()
+    : 'Template Label'
+  saveTemplateName.value = defaultName || 'Template Label'
+  saveTemplateDialog.value = true
+}
 
-  const cleanName = name.trim()
+async function confirmSaveLayoutAsTemplate() {
+  const cleanName = saveTemplateName.value.trim()
+  if (!cleanName) {
+    toast.add({ severity: 'warn', summary: 'Nama template wajib diisi', life: 2500 })
+    return
+  }
+  savingTemplate.value = true
   const customId = `custom_${Date.now().toString(36)}`
 
   let widthMm = 64
@@ -202,7 +219,7 @@ async function saveCurrentLayoutAsTemplate() {
 
   const newTpl: any = {
     id: customId,
-    name: `🏷️ ${cleanName}`,
+    name: cleanName,
     widthMm,
     heightMm,
     layoutMode: 'table',
@@ -238,43 +255,56 @@ async function saveCurrentLayoutAsTemplate() {
   }
 
   try {
-    await api.post('/barcode/templates', newTpl)
-  } catch (err) {
-    console.warn('Disimpan di penyimpanan lokal browser:', err)
-  }
+    try {
+      await api.post('/barcode/templates', newTpl)
+    } catch (err) {
+      console.warn('Disimpan di penyimpanan lokal browser:', err)
+    }
 
-  await loadCustomTemplates(newTpl)
-  toast.add({
-    severity: 'success',
-    summary: 'Template Disimpan',
-    detail: `"${cleanName}" berhasil ditambahkan ke dropdown`,
-    life: 3000,
-  })
+    await loadCustomTemplates(newTpl)
+    saveTemplateDialog.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Template Disimpan',
+      detail: `"${cleanName}" berhasil ditambahkan ke dropdown`,
+      life: 3000,
+    })
+  } finally {
+    savingTemplate.value = false
+  }
 }
 
-async function deleteSelectedCustomTemplate() {
+function deleteSelectedCustomTemplate() {
   if (!selectedCustomTemplate.value) return
   const tpl = selectedCustomTemplate.value
-  const cleanName = (tpl.name || '').replace(/^[🌟🏷️\s]+/, '')
-  if (!confirm(`Hapus template tersimpan "${cleanName}" dari dropdown?`)) return
+  const cleanName = (tpl.name || '').replace(/^[🌟🏷️🖨️📄⭐\s]+/, '')
+  confirm.require({
+    message: `Hapus template tersimpan "${cleanName}" dari dropdown?`,
+    header: 'Hapus Template Label',
+    icon: 'pi pi-trash',
+    acceptClass: 'p-button-danger',
+    acceptLabel: 'Hapus',
+    rejectLabel: 'Batal',
+    accept: async () => {
+      customTemplates.value = customTemplates.value.filter((t) => t.id !== tpl.id)
+      try {
+        localStorage.setItem('custom_label_templates_v6', JSON.stringify(customTemplates.value))
+      } catch {}
 
-  customTemplates.value = customTemplates.value.filter((t) => t.id !== tpl.id)
-  try {
-    localStorage.setItem('custom_label_templates_v6', JSON.stringify(customTemplates.value))
-  } catch {}
+      try {
+        await api.delete(`/barcode/templates/${tpl.id}`)
+      } catch (err) {
+        console.warn('Gagal hapus dari database server:', err)
+      }
 
-  try {
-    await api.delete(`/barcode/templates/${tpl.id}`)
-  } catch (err) {
-    console.warn('Gagal hapus dari database server:', err)
-  }
-
-  layout.value = 'tj_103'
-  toast.add({
-    severity: 'info',
-    summary: 'Template Dihapus',
-    detail: `Template "${cleanName}" telah dihapus`,
-    life: 2500,
+      layout.value = 'tj_103'
+      toast.add({
+        severity: 'info',
+        summary: 'Template Dihapus',
+        detail: `Template "${cleanName}" telah dihapus`,
+        life: 2500,
+      })
+    },
   })
 }
 
@@ -443,7 +473,7 @@ function printNow() {
     return
   }
   const url = getPrintUrl(true)
-  window.open(url, '_blank')
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 function openSheetTab() {
@@ -454,7 +484,7 @@ function openSheetTab() {
     return
   }
   const url = getPrintUrl(false)
-  window.open(url, '_blank')
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 function downloadOne(item: any) {
@@ -531,6 +561,7 @@ const sampleItem = computed(() => {
         :value="selected.length"
         icon="pi pi-check-square"
         tone="accent"
+        featured
         :hint="selected.length ? selected.length + ' label siap dicetak' : 'Centang barang di bawah'"
       />
       <StatCard
@@ -538,7 +569,7 @@ const sampleItem = computed(() => {
         :value="layout.startsWith('tj_') ? 'Lembar Tom & Jerry' : layout.startsWith('thermal') ? 'Printer Thermal' : layout.startsWith('a4') ? 'Kertas A4' : 'Stiker Rol'"
         icon="pi pi-print"
         tone="info"
-        :hint="layoutOptions.find(o => o.value === layout)?.label?.slice(2) || layout"
+        :hint="layoutOptions.find(o => o.value === layout)?.label || layout"
       />
     </div>
 
@@ -546,7 +577,7 @@ const sampleItem = computed(() => {
     <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
       <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
         <div class="relative flex-1 min-w-[190px] max-w-sm">
-          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-txt-dim text-xs" aria-hidden="true" />
           <InputText
             v-model="q"
             placeholder="Cari nama, SKU, atau merk…"
@@ -555,10 +586,11 @@ const sampleItem = computed(() => {
           <button
             v-if="q"
             type="button"
-            class="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-200 text-xs p-1"
+            aria-label="Hapus pencarian"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-txt-dim hover:text-txt text-xs p-1 cursor-pointer"
             @click="q = ''"
           >
-            <i class="pi pi-times" />
+            <i class="pi pi-times" aria-hidden="true" />
           </button>
         </div>
 
@@ -620,6 +652,7 @@ const sampleItem = computed(() => {
             severity="info"
             outlined
             class="!p-1.5 !text-xs shrink-0"
+            aria-label="Edit template di Desainer Kustom"
             v-tooltip.top="'Buka & edit di Desainer Kustom'"
             @click="openCustomDesignerWithTemplate(selectedCustomTemplate.id)"
           />
@@ -630,6 +663,7 @@ const sampleItem = computed(() => {
             severity="danger"
             outlined
             class="!p-1.5 !text-xs shrink-0"
+            aria-label="Hapus template dari dropdown"
             v-tooltip.top="'Hapus template ini dari dropdown'"
             @click="deleteSelectedCustomTemplate"
           />
@@ -679,7 +713,7 @@ const sampleItem = computed(() => {
           label="Desain Kustom"
           icon="pi pi-palette"
           size="small"
-          severity="info"
+          severity="secondary"
           outlined
           @click="showCustomDesigner = true"
         />
@@ -693,7 +727,7 @@ const sampleItem = computed(() => {
       </div>
     </div>
 
-    <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat barcode barang…" />
+    <EmptyState v-if="loading" loading title="Memuat barcode barang…" />
     <EmptyState
       v-else-if="!items.length"
       icon="pi pi-qrcode"
@@ -707,20 +741,20 @@ const sampleItem = computed(() => {
         <div
           v-for="it in items"
           :key="it.id"
-          class="panel relative overflow-hidden transition-all cursor-pointer rounded-xl border flex flex-col justify-between hover:shadow-md"
-          :class="selected.includes(it.id) ? 'ring-2 ring-indigo-500 border-indigo-500' : 'hover:border-slate-400 dark:hover:border-slate-600'"
-          style="background: var(--paper-1); border-color: var(--line)"
+          class="panel relative overflow-hidden transition-colors cursor-pointer flex flex-col justify-between"
+          :class="selected.includes(it.id) ? 'ring-2 ring-acc-500 !border-acc-500' : 'hover:border-[var(--acc-border)]'"
           @click="selected.includes(it.id) ? selected.splice(selected.indexOf(it.id), 1) : selected.push(it.id)"
         >
           <span
             v-if="selected.includes(it.id)"
-            class="absolute top-0 left-0 right-0 h-[3px] bg-indigo-500"
+            class="absolute top-0 left-0 right-0 h-[3px] bg-acc-500"
           />
 
           <div class="p-2.5 flex items-start justify-between">
             <Checkbox
               :modelValue="selected.includes(it.id)"
               binary
+              :aria-label="'Pilih ' + it.name"
               @click.stop
               @update:modelValue="() => selected.includes(it.id) ? selected.splice(selected.indexOf(it.id), 1) : selected.push(it.id)"
             />
@@ -730,16 +764,14 @@ const sampleItem = computed(() => {
               rounded
               size="small"
               severity="secondary"
+              aria-label="Unduh satu label"
               v-tooltip.top="'Unduh satu label'"
               @click.stop="downloadOne(it)"
             />
           </div>
 
           <div class="px-3 pb-3 text-center">
-            <div
-              class="grid place-items-center rounded-lg border p-2 mb-2 bg-white shadow-xs"
-              style="border-color: var(--line-soft)"
-            >
+            <div class="grid place-items-center rounded-[8px] border border-line-soft p-2 mb-2 bg-white">
               <img
                 :src="`/api/barcode/${it.id}.png?fmt=${fmt}&size=${size}`"
                 class="max-w-full"
@@ -748,8 +780,8 @@ const sampleItem = computed(() => {
                 :alt="it.sku"
               />
             </div>
-            <div class="text-[12.5px] font-semibold truncate" :title="it.name" style="color: var(--txt)">{{ it.name }}</div>
-            <div class="t-mono text-[11px] mt-0.5" style="color: var(--txt-dim)">{{ it.sku }}</div>
+            <div class="text-[12.5px] font-semibold truncate text-txt" :title="it.name">{{ it.name }}</div>
+            <div class="t-mono text-[11px] mt-0.5 text-txt-dim">{{ it.sku }}</div>
             <div class="mt-2 flex items-center justify-center gap-1 flex-wrap">
               <Tag severity="secondary" :value="it.location || 'Tanpa Lokasi'" class="!text-[10px]" />
             </div>
@@ -758,12 +790,9 @@ const sampleItem = computed(() => {
       </div>
 
       <!-- Pagination Footer -->
-      <div
-        class="panel p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-[12px]"
-        style="background: var(--paper-1); border-color: var(--line)"
-      >
+      <div class="panel p-3 flex flex-wrap items-center justify-between gap-3 text-[12px]">
         <div class="flex items-center gap-2">
-          <span style="color: var(--txt-dim)">{{ range }}</span>
+          <span class="t-mono !text-[11.5px] text-txt-dim">{{ range }}</span>
         </div>
         <div class="flex items-center gap-2">
           <Select
@@ -778,15 +807,17 @@ const sampleItem = computed(() => {
             size="small"
             text
             severity="secondary"
+            aria-label="Halaman sebelumnya"
             :disabled="page === 0"
             @click="page--"
           />
-          <span class="t-num font-semibold px-1" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+          <span class="t-num font-semibold px-1 text-txt">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
           <Button
             icon="pi pi-angle-right"
             size="small"
             text
             severity="secondary"
+            aria-label="Halaman berikutnya"
             :disabled="page >= lastPage"
             @click="page++"
           />
@@ -803,16 +834,16 @@ const sampleItem = computed(() => {
     >
       <div class="flex flex-col gap-4">
         <!-- Settings Form Grid -->
-        <div class="grid sm:grid-cols-2 gap-3.5 p-3 rounded-xl border" style="background: var(--panel-2); border-color: var(--line)">
+        <div class="grid sm:grid-cols-2 gap-3.5 p-3 rounded-[10px] border border-line bg-panel-2">
           <div class="flex flex-col gap-1.5 sm:col-span-2">
-            <div class="flex items-center justify-between">
-              <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Pilihan Ukuran Stiker / Jenis Printer</label>
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <label class="text-[11.5px] font-semibold text-txt">Pilihan Ukuran Stiker / Jenis Printer</label>
               <button
                 type="button"
-                class="text-[11px] text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                class="text-[11px] text-acc-500 hover:underline flex items-center gap-1 font-medium cursor-pointer"
                 @click="saveCurrentLayoutAsTemplate"
               >
-                <i class="pi pi-bookmark text-[10px]" />
+                <i class="pi pi-bookmark text-[10px]" aria-hidden="true" />
                 <span>Simpan Pengaturan Ini ke Dropdown</span>
               </button>
             </div>
@@ -831,6 +862,7 @@ const sampleItem = computed(() => {
                 severity="danger"
                 outlined
                 class="!p-2 shrink-0"
+                aria-label="Hapus template dari dropdown"
                 v-tooltip.top="'Hapus template ini dari dropdown'"
                 @click="deleteSelectedCustomTemplate"
               />
@@ -838,7 +870,7 @@ const sampleItem = computed(() => {
           </div>
 
           <div class="flex flex-col gap-1.5">
-            <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Format Barcode</label>
+            <label class="text-[11.5px] font-semibold text-txt">Format Barcode</label>
             <Select
               v-model="fmt"
               :options="[
@@ -852,7 +884,7 @@ const sampleItem = computed(() => {
           </div>
 
           <div class="flex flex-col gap-1.5">
-            <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Teks Header Label</label>
+            <label class="text-[11.5px] font-semibold text-txt">Teks Header Label</label>
             <InputText
               v-model="labelTitle"
               placeholder="INVENTARIS KANTOR"
@@ -861,7 +893,7 @@ const sampleItem = computed(() => {
           </div>
 
           <div class="flex flex-col gap-1.5">
-            <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Jumlah Rangkap per Barang (Copies)</label>
+            <label class="text-[11.5px] font-semibold text-txt">Jumlah Rangkap per Barang (Copies)</label>
             <InputNumber
               v-model="copies"
               :min="1"
@@ -874,8 +906,8 @@ const sampleItem = computed(() => {
 
           <div v-if="isSheetLayout" class="flex flex-col gap-1.5">
             <div class="flex items-center justify-between">
-              <label class="text-[11.5px] font-semibold" style="color: var(--txt)">Lewati Stiker Terpakai (Offset)</label>
-              <span class="text-[10px] text-slate-500">Slot kosong di awal</span>
+              <label class="text-[11.5px] font-semibold text-txt">Lewati Stiker Terpakai (Offset)</label>
+              <span class="text-[10px] text-txt-dim">Slot kosong di awal</span>
             </div>
             <InputNumber
               v-model="offset"
@@ -888,32 +920,32 @@ const sampleItem = computed(() => {
           </div>
 
           <!-- Element Toggles -->
-          <div class="flex flex-wrap items-center gap-4 sm:col-span-2 pt-2 border-t" style="border-color: var(--line)">
-            <label class="flex items-center gap-2 cursor-pointer text-[12px]" style="color: var(--txt)">
+          <div class="flex flex-wrap items-center gap-4 sm:col-span-2 pt-2 border-t border-line">
+            <label class="flex items-center gap-2 cursor-pointer text-[12px] text-txt">
               <Checkbox v-model="showName" binary />
               <span>Tampilkan Nama Barang</span>
             </label>
-            <label class="flex items-center gap-2 cursor-pointer text-[12px]" style="color: var(--txt)">
+            <label class="flex items-center gap-2 cursor-pointer text-[12px] text-txt">
               <Checkbox v-model="showSKU" binary />
               <span>Tampilkan Kode SKU</span>
             </label>
-            <label class="flex items-center gap-2 cursor-pointer text-[12px]" style="color: var(--txt)">
+            <label class="flex items-center gap-2 cursor-pointer text-[12px] text-txt">
               <Checkbox v-model="showLoc" binary />
               <span>Tampilkan Ruangan / Lokasi</span>
             </label>
-            <label class="flex items-center gap-2 cursor-pointer text-[12px]" style="color: var(--txt)">
+            <label class="flex items-center gap-2 cursor-pointer text-[12px] text-txt">
               <Checkbox v-model="showBorder" binary />
               <span>Garis Batas Stiker (Border)</span>
             </label>
           </div>
 
           <!-- Bulk Summary Banner -->
-          <div class="sm:col-span-2 p-2.5 rounded-lg border text-[11.5px] flex flex-wrap items-center justify-between gap-2" style="background: var(--panel-1); border-color: var(--line)">
-            <div class="flex items-center gap-2">
-              <i class="pi pi-print text-indigo-500 text-sm" />
-              <span><strong>{{ selected.length }}</strong> barang &times; <strong>{{ copies }}</strong> rangkap = <strong>{{ totalLabelsToPrint }}</strong> label stiker</span>
+          <div class="sm:col-span-2 p-2.5 rounded-[8px] border border-line bg-panel text-[11.5px] flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2 text-txt">
+              <i class="pi pi-print text-acc-500 text-sm" aria-hidden="true" />
+              <span><strong class="t-num">{{ selected.length }}</strong> barang &times; <strong class="t-num">{{ copies }}</strong> rangkap = <strong class="t-num">{{ totalLabelsToPrint }}</strong> label stiker</span>
             </div>
-            <div v-if="isSheetLayout" class="font-semibold text-indigo-600 dark:text-indigo-400">
+            <div v-if="isSheetLayout" class="font-semibold text-acc-500 t-num">
               Kebutuhan kertas: &plusmn; {{ estimatedSheets }} lembar ({{ labelsPerSheet }} label/lembar)
             </div>
           </div>
@@ -922,60 +954,59 @@ const sampleItem = computed(() => {
         <!-- Live Visual Preview of Labels -->
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
-            <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">
+            <span class="t-label">
               {{ layout === 'tj_103' ? 'Pratinjau Lembar Tom & Jerry No. 103 (3 Kolom × 4 Baris)' : 'Pratinjau Nyata Label' }}
             </span>
-            <span class="text-[11px] font-mono" style="color: var(--txt-dim)">
+            <span class="t-mono !text-[11px] text-txt-dim">
               {{ totalLabelsToPrint }} label akan dicetak
             </span>
           </div>
 
-          <div class="p-4 rounded-xl border grid place-items-center bg-slate-100 dark:bg-slate-900 overflow-x-auto" style="border-color: var(--line)">
+          <div class="p-4 rounded-[10px] border border-line grid place-items-center bg-panel-2 overflow-x-auto">
             <!-- 0. Pratinjau Desain Kustom -->
             <div
               v-if="layout.startsWith('custom_')"
-              class="bg-white text-black p-4 rounded-xl shadow-lg border-2 border-indigo-400 flex flex-col items-center justify-between"
+              class="bg-white text-black p-4 rounded-[10px] shadow-sm border-2 border-acc-500 flex flex-col items-center justify-between"
               :style="{
                 width: `${Math.min(520, Math.max(300, (selectedCustomTemplate?.widthMm || 64) * 5))}px`,
                 minHeight: `${Math.min(260, Math.max(160, (selectedCustomTemplate?.heightMm || 32) * 5))}px`,
               }"
             >
-              <div class="w-full flex items-center justify-between pb-2 mb-2 border-b border-indigo-100 text-xs font-bold text-indigo-950">
+              <div class="w-full flex items-center justify-between pb-2 mb-2 border-b border-slate-200 text-xs font-bold text-slate-900">
                 <span class="flex items-center gap-1.5">
-                  <i class="pi pi-palette text-indigo-600" />
-                  <span>{{ selectedCustomTemplate?.name || 'Desain Kustom' }}</span>
+                  <i class="pi pi-palette text-acc-600" aria-hidden="true" />
+                  <span>{{ (selectedCustomTemplate?.name || 'Desain Kustom').replace(/^[🌟🏷️🖨️📄⭐\s]+/, '') }}</span>
                 </span>
-                <span class="text-[11px] font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                <span class="t-mono !text-[11px] text-acc-600 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
                   {{ selectedCustomTemplate?.widthMm }} &times; {{ selectedCustomTemplate?.heightMm }} mm
                 </span>
               </div>
-              <div class="flex-1 w-full flex flex-col items-center justify-center p-3 text-center bg-indigo-50/40 rounded-lg border border-dashed border-indigo-300 gap-2">
+              <div class="flex-1 w-full flex flex-col items-center justify-center p-3 text-center bg-slate-50 rounded-[8px] border border-dashed border-slate-300 gap-2">
                 <div class="text-xs font-semibold text-slate-800">
                   Label akan dicetak menggunakan tata letak kustom yang telah Anda buat.
                 </div>
                 <div v-if="selectedCustomTemplate?.tableConfig?.logoUrl" class="flex items-center gap-2 text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                  <i class="pi pi-image" />
+                  <i class="pi pi-image" aria-hidden="true" />
                   <span>Foto logo custom terpasang</span>
                 </div>
                 <Button
                   label="Buka &amp; Cetak di Desainer Kustom"
                   icon="pi pi-external-link"
                   size="small"
-                  severity="help"
-                  class="!text-xs !py-1 mt-1 shadow-xs"
+                  class="!text-xs !py-1 mt-1"
                   @click="openCustomDesignerWithTemplate(selectedCustomTemplate?.id)"
                 />
               </div>
             </div>
 
-            <!-- 1. Simulasi Lembar Tom & Jerry No. 103 (Yellow Backing Paper 3x4 Grid, Image #9) -->
+            <!-- 1. Simulasi Lembar Tom & Jerry No. 103 (Yellow Backing Paper 3x4 Grid) -->
             <div
               v-else-if="layout === 'tj_103'"
-              class="rounded-xl shadow-lg border border-amber-300 p-4 max-w-full"
+              class="rounded-[10px] shadow-sm border border-amber-300 p-4 max-w-full"
               style="background: #fef08a; width: 560px;"
             >
               <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-amber-300/80 text-[11px] font-extrabold text-amber-950 uppercase tracking-wider">
-                <span>🌟 Tom &amp; Jerry No. 103 (64 &times; 32 mm)</span>
+                <span>Tom &amp; Jerry No. 103 (64 &times; 32 mm)</span>
                 <span class="font-normal text-[10px] text-amber-900">12 Label / Lembar</span>
               </div>
               <div class="grid grid-cols-3 gap-2">
@@ -999,7 +1030,7 @@ const sampleItem = computed(() => {
                       <div class="text-[7.5px] font-extrabold uppercase border-b border-black pb-0.5 leading-tight truncate">{{ labelTitle }}</div>
                       <div v-if="showName" class="text-[8.5px] font-bold mt-0.5 line-clamp-1 leading-tight">{{ sampleItem.name }}</div>
                       <div v-if="showSKU" class="text-[7.5px] font-mono font-bold mt-0.5">{{ sampleItem.sku }}</div>
-                      <div v-if="showLoc && sampleItem.location" class="text-[7px] text-slate-700 truncate">📍 {{ sampleItem.location }}</div>
+                      <div v-if="showLoc && sampleItem.location" class="text-[7px] text-slate-700 truncate">{{ sampleItem.location }}</div>
                     </div>
                   </template>
                   <!-- Unused Slot on sheet -->
@@ -1016,7 +1047,7 @@ const sampleItem = computed(() => {
             <!-- 2. Stiker Label 50x30 mm -->
             <div
               v-else-if="layout === 'label_50x30'"
-              class="bg-white text-black p-2 rounded shadow-md border border-slate-300 flex items-center justify-between"
+              class="bg-white text-black p-2 rounded shadow-sm border border-slate-300 flex items-center justify-between"
               style="width: 280px; height: 168px;"
             >
               <div class="w-1/2 flex items-center justify-center p-1">
@@ -1026,14 +1057,14 @@ const sampleItem = computed(() => {
                 <div class="text-[9px] font-extrabold uppercase border-b border-black pb-0.5 tracking-wider">{{ labelTitle }}</div>
                 <div v-if="showName" class="text-[11px] font-bold mt-1 line-clamp-2 leading-tight">{{ sampleItem.name }}</div>
                 <div v-if="showSKU" class="text-[10px] font-mono font-bold mt-1">{{ sampleItem.sku }}</div>
-                <div v-if="showLoc && sampleItem.location" class="text-[9px] text-slate-700 mt-0.5 truncate">📍 {{ sampleItem.location }}</div>
+                <div v-if="showLoc && sampleItem.location" class="text-[9px] text-slate-700 mt-0.5 truncate">{{ sampleItem.location }}</div>
               </div>
             </div>
 
             <!-- 3. Stiker Label 40x30 mm -->
             <div
               v-else-if="layout === 'label_40x30'"
-              class="bg-white text-black p-1.5 rounded shadow-md border border-slate-300 flex items-center justify-between"
+              class="bg-white text-black p-1.5 rounded shadow-sm border border-slate-300 flex items-center justify-between"
               style="width: 240px; height: 180px;"
             >
               <div class="w-1/2 flex items-center justify-center">
@@ -1050,7 +1081,7 @@ const sampleItem = computed(() => {
             <!-- 4. Thermal Roll 58 mm -->
             <div
               v-else-if="layout === 'thermal_58'"
-              class="bg-white text-black p-3 rounded shadow-md border border-slate-300 text-center flex flex-col items-center"
+              class="bg-white text-black p-3 rounded shadow-sm border border-slate-300 text-center flex flex-col items-center"
               style="width: 260px;"
             >
               <div class="text-[10px] font-bold uppercase tracking-wider border-b border-black pb-1 w-full">{{ labelTitle }}</div>
@@ -1059,14 +1090,14 @@ const sampleItem = computed(() => {
               </div>
               <div v-if="showName" class="text-[11px] font-bold leading-tight">{{ sampleItem.name }}</div>
               <div v-if="showSKU" class="text-[10px] font-mono font-bold mt-0.5">{{ sampleItem.sku }}</div>
-              <div v-if="showLoc && sampleItem.location" class="text-[9px] text-slate-700 mt-0.5">📍 {{ sampleItem.location }}</div>
+              <div v-if="showLoc && sampleItem.location" class="text-[9px] text-slate-700 mt-0.5">{{ sampleItem.location }}</div>
               <div class="w-full border-b border-dashed border-slate-400 mt-2" />
             </div>
 
             <!-- 5. Thermal Roll 80 mm -->
             <div
               v-else-if="layout === 'thermal_80'"
-              class="bg-white text-black p-4 rounded shadow-md border border-slate-300 text-center flex flex-col items-center"
+              class="bg-white text-black p-4 rounded shadow-sm border border-slate-300 text-center flex flex-col items-center"
               style="width: 320px;"
             >
               <div class="text-[11px] font-extrabold uppercase tracking-wider border-b-2 border-black pb-1 w-full">{{ labelTitle }}</div>
@@ -1075,14 +1106,14 @@ const sampleItem = computed(() => {
               </div>
               <div v-if="showName" class="text-[12.5px] font-bold leading-tight">{{ sampleItem.name }}</div>
               <div v-if="showSKU" class="text-[11px] font-mono font-bold mt-1">{{ sampleItem.sku }}</div>
-              <div v-if="showLoc && sampleItem.location" class="text-[10px] text-slate-700 mt-0.5">📍 {{ sampleItem.location }}</div>
+              <div v-if="showLoc && sampleItem.location" class="text-[10px] text-slate-700 mt-0.5">{{ sampleItem.location }}</div>
               <div class="w-full border-b border-dashed border-slate-400 mt-3" />
             </div>
 
             <!-- 6. Stiker Lebar 60x40 / 70x50 / 100x50 / A4 / TJ lainnya -->
             <div
               v-else
-              class="bg-white text-black p-3 rounded shadow-md border border-slate-300 flex items-center justify-between"
+              class="bg-white text-black p-3 rounded shadow-sm border border-slate-300 flex items-center justify-between"
               style="width: 340px; height: 180px;"
             >
               <div class="w-1/2 flex items-center justify-center p-2">
@@ -1092,7 +1123,7 @@ const sampleItem = computed(() => {
                 <div class="text-[10px] font-extrabold uppercase border-b border-black pb-1 tracking-wider">{{ labelTitle }}</div>
                 <div v-if="showName" class="text-[12px] font-bold mt-1.5 line-clamp-2 leading-tight">{{ sampleItem.name }}</div>
                 <div v-if="showSKU" class="text-[11px] font-mono font-bold mt-1">{{ sampleItem.sku }}</div>
-                <div v-if="showLoc && sampleItem.location" class="text-[10px] text-slate-700 mt-0.5 truncate">📍 {{ sampleItem.location }}</div>
+                <div v-if="showLoc && sampleItem.location" class="text-[10px] text-slate-700 mt-0.5 truncate">{{ sampleItem.location }}</div>
               </div>
             </div>
           </div>
@@ -1100,7 +1131,7 @@ const sampleItem = computed(() => {
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between w-full pt-2">
+        <div class="flex items-center justify-between w-full pt-2 flex-wrap gap-2">
           <Button
             label="Batal"
             text
@@ -1108,12 +1139,12 @@ const sampleItem = computed(() => {
             size="small"
             @click="printModalVisible = false"
           />
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <Button
-              label="🎨 Desain Kustom (Drag &amp; Drop)"
+              label="Desain Kustom"
               icon="pi pi-palette"
               size="small"
-              severity="info"
+              severity="secondary"
               outlined
               @click="printModalVisible = false; showCustomDesigner = true"
             />
@@ -1126,13 +1157,43 @@ const sampleItem = computed(() => {
               @click="openSheetTab"
             />
             <Button
-              label="Cetak Sekarang (Print)"
+              label="Cetak Sekarang"
               icon="pi pi-print"
               size="small"
               @click="printNow"
             />
           </div>
         </div>
+      </template>
+    </Dialog>
+
+    <!-- Save Template Name Dialog (replaces native prompt) -->
+    <Dialog
+      v-model:visible="saveTemplateDialog"
+      modal
+      header="Simpan Pengaturan ke Dropdown"
+      :style="{ width: '420px' }"
+    >
+      <form @submit.prevent="confirmSaveLayoutAsTemplate" class="flex flex-col gap-3 pt-1">
+        <label class="text-[12px] text-txt-dim">
+          Beri nama template label agar mudah dipilih kembali dari dropdown cetak:
+        </label>
+        <InputText
+          v-model="saveTemplateName"
+          placeholder="mis. Stiker Aset Ruangan 64x32"
+          class="w-full"
+          autofocus
+        />
+      </form>
+      <template #footer>
+        <Button label="Batal" text severity="secondary" size="small" @click="saveTemplateDialog = false" />
+        <Button
+          label="Simpan Template"
+          icon="pi pi-bookmark"
+          size="small"
+          :loading="savingTemplate"
+          @click="confirmSaveLayoutAsTemplate"
+        />
       </template>
     </Dialog>
 

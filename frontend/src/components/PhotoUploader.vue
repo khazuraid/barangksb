@@ -1025,10 +1025,10 @@ async function downloadPhoto() {
 <template>
   <div class="flex flex-col gap-2">
     <div class="flex items-center justify-between">
-      <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
+      <span class="text-[11.5px] font-semibold text-txt-dim">
         {{ label }}
       </span>
-      <span v-if="hint" class="text-[10.5px]" style="color: var(--txt-dim)">
+      <span v-if="hint" class="text-[10.5px] text-txt-dim">
         {{ hint }}
       </span>
     </div>
@@ -1043,22 +1043,20 @@ async function downloadPhoto() {
     />
 
     <!-- GPS Bar -->
-    <div
-      class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded border text-[11.5px]"
-      style="background: var(--paper-1); border-color: var(--line)"
-    >
+    <div class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-[8px] border border-line bg-panel text-[11.5px]">
       <div class="flex items-center gap-2">
         <i
           class="pi"
           :class="gettingGeo ? 'pi-spin pi-spinner text-acc-500' : coords ? 'pi-map-marker text-sig-ok' : 'pi-map-marker text-sig-bad'"
+          aria-hidden="true"
         />
-        <div v-if="gettingGeo" class="t-mono text-[11px]" style="color: var(--txt-dim)">
+        <div v-if="gettingGeo" class="t-mono text-[11px] text-txt-dim">
           Mendeteksi GPS…
         </div>
         <div v-else-if="coords" class="flex flex-wrap items-center gap-1.5">
           <span class="font-semibold text-sig-ok">GPS Terkunci:</span>
-          <span class="t-mono font-medium">{{ coords.lat.toFixed(6) }}, {{ coords.lng.toFixed(6) }}</span>
-          <span class="t-mono text-[10.5px]" style="color: var(--txt-dim)">(±{{ coords.acc }}m)</span>
+          <span class="t-mono font-medium text-txt">{{ coords.lat.toFixed(6) }}, {{ coords.lng.toFixed(6) }}</span>
+          <span class="t-mono text-[10.5px] text-txt-dim">(±{{ coords.acc }}m)</span>
         </div>
         <div v-else class="text-sig-bad">
           {{ geoError || 'GPS tidak terdeteksi' }}
@@ -1081,6 +1079,7 @@ async function downloadPhoto() {
           rounded
           size="small"
           severity="secondary"
+          aria-label="Segarkan koordinat GPS"
           :loading="gettingGeo"
           v-tooltip.top="'Segarkan koordinat GPS'"
           @click="fetchGeo"
@@ -1091,10 +1090,9 @@ async function downloadPhoto() {
     <!-- Mini Inline Map Box (OpenStreetMap) -->
     <div
       v-if="showInlineMap && coords"
-      class="rounded-lg overflow-hidden border flex flex-col"
-      style="border-color: var(--line); background: var(--paper-1)"
+      class="rounded-[8px] overflow-hidden border border-line bg-panel flex flex-col"
     >
-      <div class="relative w-full h-44 bg-stone-900">
+      <div class="relative w-full h-44 bg-ink-950">
         <iframe
           :src="osmEmbedUrl"
           class="w-full h-full border-0"
@@ -1102,9 +1100,9 @@ async function downloadPhoto() {
           title="OpenStreetMap Pin"
         />
       </div>
-      <div class="flex items-center justify-between px-3 py-1.5 text-[11px] border-t" style="border-color: var(--line)">
+      <div class="flex items-center justify-between px-3 py-1.5 text-[11px] border-t border-line">
         <span class="t-mono text-sig-ok font-semibold flex items-center gap-1">
-          <i class="pi pi-compass text-[10px]" /> {{ coords.lat.toFixed(5) }}, {{ coords.lng.toFixed(5) }}
+          <i class="pi pi-compass text-[10px]" aria-hidden="true" /> {{ coords.lat.toFixed(5) }}, {{ coords.lng.toFixed(5) }}
         </span>
         <a
           :href="googleMapsUrl"
@@ -1112,7 +1110,7 @@ async function downloadPhoto() {
           rel="noopener noreferrer"
           class="text-acc-500 hover:underline flex items-center gap-1 font-medium"
         >
-          <i class="pi pi-external-link text-[10px]" /> Buka di Google Maps
+          <i class="pi pi-external-link text-[10px]" aria-hidden="true" /> Buka di Google Maps
         </a>
       </div>
     </div>
@@ -1130,15 +1128,14 @@ async function downloadPhoto() {
     <!-- Preview / Upload Container -->
     <div
       v-if="currentPhotoSrc"
-      class="rounded-lg overflow-hidden border flex flex-col gap-2.5 p-3"
-      style="background: var(--paper-1); border-color: var(--line)"
+      class="rounded-[8px] overflow-hidden border border-line bg-panel flex flex-col gap-2.5 p-3"
     >
-      <div class="flex items-center justify-between">
-        <div v-if="hasPendingPhoto" class="flex items-center gap-1.5 text-[12px] font-bold text-amber-500 dark:text-amber-400">
-          <i class="pi pi-clock" /> Pratinjau Siap (Belum Diunggah)
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div v-if="hasPendingPhoto" class="flex items-center gap-1.5 text-[12px] font-bold text-sig-warn">
+          <i class="pi pi-clock" aria-hidden="true" /> Pratinjau Siap (Belum Diunggah)
         </div>
         <div v-else class="flex items-center gap-1.5 text-[12px] font-bold text-sig-ok">
-          <i class="pi pi-check-circle" /> Foto Berstempel GPS Map Camera
+          <i class="pi pi-check-circle" aria-hidden="true" /> Foto Berstempel GPS Map Camera
         </div>
         <div class="flex items-center gap-1">
           <Button
@@ -1180,12 +1177,12 @@ async function downloadPhoto() {
       </div>
 
       <!-- Stamped Item Name & Location Banner indicator -->
-      <div v-if="props.itemName || props.locationName" class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded text-[11.5px] border" style="background: var(--panel-2); border-color: var(--line)">
+      <div v-if="props.itemName || props.locationName" class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[6px] text-[11.5px] border border-line bg-panel-2">
         <div class="flex items-center gap-1.5 overflow-hidden">
-          <i class="pi pi-tag text-indigo-500 text-[10px] shrink-0" />
-          <span style="color: var(--txt-dim)">Nama di Cap:</span>
-          <span class="font-semibold truncate" style="color: var(--txt)">{{ props.itemName || '(Belum ada nama)' }}</span>
-          <span v-if="props.locationName" class="text-indigo-400 truncate">· {{ props.locationName }}</span>
+          <i class="pi pi-tag text-acc-500 text-[10px] shrink-0" aria-hidden="true" />
+          <span class="text-txt-dim">Nama di Cap:</span>
+          <span class="font-semibold truncate text-txt">{{ props.itemName || '(Belum ada nama)' }}</span>
+          <span v-if="props.locationName" class="text-acc-500 truncate">· {{ props.locationName }}</span>
         </div>
         <Button
           v-if="lastRawFile"
@@ -1202,8 +1199,8 @@ async function downloadPhoto() {
 
       <!-- Prominent Preview Image with Cap Geotag clearly visible -->
       <div
-        class="relative w-full rounded-md overflow-hidden bg-black/40 border flex items-center justify-center cursor-pointer group"
-        style="border-color: var(--line); min-height: 180px; max-height: 280px"
+        class="relative w-full rounded-[6px] overflow-hidden bg-ink-950 border border-line flex items-center justify-center cursor-pointer group"
+        style="min-height: 180px; max-height: 280px"
         @click="modalTab = 'photo'; previewOpen = true"
       >
         <img
@@ -1213,23 +1210,23 @@ async function downloadPhoto() {
           class="w-full h-auto max-h-[280px] object-contain group-hover:scale-[1.01] transition-transform"
         />
         <div
-          class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[12px] font-semibold transition-opacity"
+          class="absolute inset-0 bg-ink-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[12px] font-semibold transition-opacity"
         >
-          <span class="bg-black/75 px-3 py-1.5 rounded-full flex items-center gap-1.5">
-            <i class="pi pi-eye" /> Klik untuk melihat ukuran penuh
+          <span class="bg-ink-950/85 border border-white/15 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+            <i class="pi pi-eye" aria-hidden="true" /> Klik untuk melihat ukuran penuh
           </span>
         </div>
       </div>
 
-      <div class="flex items-center justify-between text-[11px] px-1" style="color: var(--txt-dim)">
-        <span v-if="hasPendingPhoto" class="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-          <i class="pi pi-shield text-[10px]" /> Hemat storage: Foto baru diunggah fisik saat tombol simpan ditekan
+      <div class="flex items-center justify-between text-[11px] px-1 text-txt-dim">
+        <span v-if="hasPendingPhoto" class="text-sig-warn font-medium flex items-center gap-1">
+          <i class="pi pi-shield text-[10px]" aria-hidden="true" /> Hemat storage: Foto baru diunggah fisik saat tombol simpan ditekan
         </span>
         <span v-else>
           Stempel peta, alamat lengkap, dan koordinat GPS tercetak langsung di dalam foto
         </span>
         <span v-if="coords" class="t-mono text-[10.5px] text-sig-ok flex items-center gap-1">
-          <i class="pi pi-map-marker text-[9px]" /> GPS Aktif
+          <i class="pi pi-map-marker text-[9px]" aria-hidden="true" /> GPS Aktif
         </span>
       </div>
     </div>
@@ -1237,22 +1234,18 @@ async function downloadPhoto() {
     <!-- Empty Upload State -->
     <div
       v-else
-      class="border-2 border-dashed rounded-lg p-4 text-center flex flex-col items-center justify-center gap-2.5 transition-colors"
-      style="border-color: var(--line); background: var(--paper-1)"
+      class="border-2 border-dashed border-line bg-panel rounded-[8px] p-4 text-center flex flex-col items-center justify-center gap-2.5 transition-colors"
     >
-      <div
-        class="w-10 h-10 rounded-full flex items-center justify-center text-acc-500"
-        style="background: var(--paper-2)"
-      >
-        <i v-if="uploading" class="pi pi-spin pi-spinner text-lg" />
-        <i v-else class="pi pi-camera text-lg" />
+      <div class="w-10 h-10 rounded-full flex items-center justify-center text-acc-500 bg-[var(--acc-50)] border border-[var(--acc-border)]">
+        <i v-if="uploading" class="pi pi-spin pi-spinner text-lg" aria-hidden="true" />
+        <i v-else class="pi pi-camera text-lg" aria-hidden="true" />
       </div>
 
       <div class="flex flex-col gap-0.5">
-        <span class="text-[12.5px] font-semibold">
+        <span class="text-[12.5px] font-semibold text-txt">
           {{ uploading ? 'Memproses cap GPS Map Camera…' : 'Ambil foto berkamera atau unggah berkas' }}
         </span>
-        <span class="text-[11px]" style="color: var(--txt-dim)">
+        <span class="text-[11px] text-txt-dim">
           Format JPG / PNG, cap peta dan alamat otomatis dicetak di dalam foto
         </span>
       </div>
@@ -1278,83 +1271,58 @@ async function downloadPhoto() {
       </div>
     </div>
 
-    <!-- Futuristic Upload & Stamping Radar Animation Modal -->
+    <!-- Clinical Telemetry Upload & Stamping Radar Modal -->
     <Teleport to="body">
       <div
         v-if="isUploadingModal"
-        class="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300"
+        class="fixed inset-0 z-50 bg-ink-950/85 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300"
         @click.self="isUploadingModal = false"
       >
-        <div
-          class="relative max-w-sm w-full bg-slate-900 border border-slate-700/80 rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center overflow-hidden"
-          style="background: linear-gradient(180deg, #0f172a 0%, #090d16 100%)"
-        >
+        <div class="relative max-w-sm w-full bg-ink-950 border border-line rounded-[14px] p-6 shadow-2xl flex flex-col items-center text-center overflow-hidden">
           <!-- Close button -->
           <button
             type="button"
-            class="absolute top-3 right-3 w-7 h-7 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors z-20"
+            aria-label="Tutup"
+            class="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/5 border border-white/10 text-txt-dim hover:text-white flex items-center justify-center cursor-pointer transition-colors z-20"
             title="Tutup"
             @click="isUploadingModal = false"
           >
-            <i class="pi pi-times text-xs" />
+            <i class="pi pi-times text-xs" aria-hidden="true" />
           </button>
 
           <!-- Background Ambient Glow -->
-          <div
-            class="absolute -top-20 -left-20 w-44 h-44 rounded-full bg-cyan-500/20 blur-3xl pointer-events-none"
-          />
-          <div
-            class="absolute -bottom-20 -right-20 w-44 h-44 rounded-full bg-indigo-500/20 blur-3xl pointer-events-none"
-          />
+          <div class="absolute -top-20 -left-20 w-44 h-44 rounded-full bg-acc-500/15 blur-3xl pointer-events-none" />
+          <div class="absolute -bottom-20 -right-20 w-44 h-44 rounded-full bg-acc-500/10 blur-3xl pointer-events-none" />
 
-          <!-- Cool Radar / Satellite Orbit Visual -->
+          <!-- Radar / Satellite Orbit Visual -->
           <div class="relative w-28 h-28 my-3 flex items-center justify-center">
             <!-- Pulsing outer wave -->
             <div
-              class="absolute inset-0 rounded-full border border-cyan-500/30 animate-ping opacity-75"
+              class="absolute inset-0 rounded-full border border-acc-500/30 animate-ping opacity-75"
               style="animation-duration: 2.4s"
             />
             <!-- Outer rotating dashed orbit -->
             <div
-              class="absolute inset-1 rounded-full border border-dashed border-cyan-400/50 animate-spin"
+              class="absolute inset-1 rounded-full border border-dashed border-acc-300/50 animate-spin"
               style="animation-duration: 9s"
             />
             <!-- Middle counter-rotating dashed orbit -->
             <div
-              class="absolute inset-3 rounded-full border border-dashed border-indigo-400/60 animate-spin"
+              class="absolute inset-3 rounded-full border border-dashed border-acc-500/60 animate-spin"
               style="animation-duration: 6s; animation-direction: reverse"
             />
-            <!-- Inner glowing core circle with step icon -->
+            <!-- Inner core circle with step icon -->
             <div
               class="relative w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all duration-500"
-              :class="{
-                'bg-cyan-500/20 border border-cyan-400 text-cyan-300 shadow-cyan-500/40': uploadStep === 'gps',
-                'bg-indigo-500/20 border border-indigo-400 text-indigo-300 shadow-indigo-500/40': uploadStep === 'stamp',
-                'bg-purple-500/20 border border-purple-400 text-purple-300 shadow-purple-500/40': uploadStep === 'compress',
-                'bg-sky-500/20 border border-sky-400 text-sky-300 shadow-sky-500/40': uploadStep === 'upload',
-                'bg-emerald-500/25 border border-emerald-400 text-emerald-300 shadow-emerald-500/50': uploadStep === 'success',
-              }"
+              :class="uploadStep === 'success'
+                ? 'bg-[var(--sig-ok-bg)] border border-[var(--sig-ok-line)] text-sig-ok'
+                : 'bg-[var(--acc-50)] border border-[var(--acc-border)] text-acc-300'"
             >
-              <i
-                v-if="uploadStep === 'gps'"
-                class="pi pi-compass text-2xl animate-pulse"
-              />
-              <i
-                v-else-if="uploadStep === 'stamp'"
-                class="pi pi-camera text-2xl animate-pulse"
-              />
-              <i
-                v-else-if="uploadStep === 'compress'"
-                class="pi pi-sliders-h text-2xl animate-pulse"
-              />
-              <i
-                v-else-if="uploadStep === 'upload'"
-                class="pi pi-cloud-upload text-2xl animate-bounce"
-              />
-              <i
-                v-else
-                class="pi pi-check text-2xl scale-110 font-bold"
-              />
+              <i v-if="uploadStep === 'gps'" class="pi pi-compass text-2xl animate-pulse" aria-hidden="true" />
+              <i v-else-if="uploadStep === 'stamp'" class="pi pi-camera text-2xl animate-pulse" aria-hidden="true" />
+              <i v-else-if="uploadStep === 'compress'" class="pi pi-sliders-h text-2xl animate-pulse" aria-hidden="true" />
+              <i v-else-if="uploadStep === 'upload'" class="pi pi-cloud-upload text-2xl animate-bounce" aria-hidden="true" />
+              <i v-else class="pi pi-check text-2xl scale-110 font-bold" aria-hidden="true" />
             </div>
           </div>
 
@@ -1365,28 +1333,29 @@ async function downloadPhoto() {
             </div>
 
             <!-- Item Name Pill -->
-            <div v-if="props.itemName" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 text-[11px] font-medium mx-auto max-w-[260px] truncate">
-              <i class="pi pi-tag text-[9px] text-indigo-400 shrink-0" />
+            <div v-if="props.itemName" class="inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/80 text-[11px] font-medium mx-auto max-w-[260px] truncate">
+              <i class="pi pi-tag text-[9px] text-acc-300 shrink-0" aria-hidden="true" />
               <span class="truncate">{{ props.itemName }}</span>
             </div>
 
-            <p class="text-[12px] text-slate-400 mt-1 min-h-[32px] flex items-center justify-center gap-1.5 leading-snug">
-              <span v-if="uploadStep !== 'success'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
+            <p class="text-[12px] text-white/65 mt-1 min-h-[32px] flex items-center justify-center gap-1.5 leading-snug">
+              <span v-if="uploadStep !== 'success'" class="w-1.5 h-1.5 rounded-full bg-acc-300 animate-ping inline-block" />
               <span>{{ currentStepText }}</span>
             </p>
           </div>
 
-          <!-- Gradient Progress Bar -->
+          <!-- Progress Bar -->
           <div class="w-full flex flex-col gap-1.5 mt-2 z-10">
             <div class="flex justify-between items-center text-[11px]">
-              <span class="text-slate-400 font-mono text-[10px] uppercase tracking-wider">
+              <span class="text-white/60 t-mono text-[10px] uppercase tracking-wider">
                 {{ uploadStep === 'success' ? 'Selesai 100%' : 'Sedang Diproses' }}
               </span>
-              <span class="font-mono font-bold text-cyan-300">{{ uploadProgress }}%</span>
+              <span class="t-mono t-num font-bold text-acc-300">{{ uploadProgress }}%</span>
             </div>
-            <div class="w-full h-2 rounded-full bg-slate-800 border border-slate-700/60 overflow-hidden p-0.5">
+            <div class="w-full h-2 rounded-full bg-white/10 border border-white/10 overflow-hidden p-0.5">
               <div
-                class="h-full rounded-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-emerald-400 transition-all duration-300 shadow-sm"
+                class="h-full rounded-full transition-all duration-300"
+                :class="uploadStep === 'success' ? 'bg-sig-ok' : 'bg-acc-500'"
                 :style="{ width: `${uploadProgress}%` }"
               />
             </div>
@@ -1417,6 +1386,7 @@ async function downloadPhoto() {
                 icon="pi pi-check"
                 severity="success"
                 size="small"
+                aria-label="Selesai"
                 v-tooltip.top="'Selesai'"
                 @click="isUploadingModal = false"
               />
@@ -1443,30 +1413,29 @@ async function downloadPhoto() {
     <Teleport to="body">
       <div
         v-if="previewOpen"
-        class="fixed inset-0 z-[9999] bg-black/85 flex items-center justify-center p-4 backdrop-blur-xs"
+        class="fixed inset-0 z-50 bg-ink-950/85 flex items-center justify-center p-4 backdrop-blur-xs"
         @click.self="previewOpen = false"
       >
-        <div
-          class="relative max-w-3xl w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col"
-          style="border-color: var(--line)"
-        >
+        <div class="relative max-w-3xl w-full bg-panel rounded-[12px] overflow-hidden border border-line shadow-2xl flex flex-col">
           <!-- Modal Header with Tabs -->
-          <div class="flex items-center justify-between px-4 py-2.5 border-b gap-3" style="border-color: var(--line)">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-line gap-3">
             <div class="flex items-center gap-2">
               <button
-                class="px-3 py-1 rounded text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                :class="modalTab === 'photo' ? 'bg-acc-500 text-ink-950' : 'text-ink-300 hover:bg-paper-2'"
+                type="button"
+                class="px-3 py-1 rounded-[6px] text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                :class="modalTab === 'photo' ? 'bg-acc-500 text-white' : 'text-txt-dim hover:bg-panel-2 hover:text-txt'"
                 @click="modalTab = 'photo'"
               >
-                <i class="pi pi-image text-[11px]" /> Foto Berstempel GPS Map Camera
+                <i class="pi pi-image text-[11px]" aria-hidden="true" /> Foto Berstempel GPS Map Camera
               </button>
               <button
                 v-if="coords"
-                class="px-3 py-1 rounded text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                :class="modalTab === 'map' ? 'bg-acc-500 text-ink-950' : 'text-ink-300 hover:bg-paper-2'"
+                type="button"
+                class="px-3 py-1 rounded-[6px] text-[12px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                :class="modalTab === 'map' ? 'bg-acc-500 text-white' : 'text-txt-dim hover:bg-panel-2 hover:text-txt'"
                 @click="modalTab = 'map'"
               >
-                <i class="pi pi-map text-[11px]" /> Peta Lokasi (OpenStreetMap)
+                <i class="pi pi-map text-[11px]" aria-hidden="true" /> Peta Lokasi (OpenStreetMap)
               </button>
             </div>
             <Button
@@ -1475,12 +1444,13 @@ async function downloadPhoto() {
               rounded
               size="small"
               severity="secondary"
+              aria-label="Tutup pratinjau"
               @click="previewOpen = false"
             />
           </div>
 
           <!-- Modal Body -->
-          <div class="bg-black flex items-center justify-center min-h-[50vh] max-h-[72vh] overflow-hidden">
+          <div class="bg-ink-950 flex items-center justify-center min-h-[50vh] max-h-[72vh] overflow-hidden">
             <!-- Tab 1: Foto Geotag Penuh -->
             <div v-if="modalTab === 'photo'" class="p-3 w-full h-full flex items-center justify-center overflow-auto">
               <img
@@ -1502,11 +1472,11 @@ async function downloadPhoto() {
           </div>
 
           <!-- Modal Footer -->
-          <div class="flex items-center justify-between px-4 py-2.5 border-t text-[11.5px]" style="border-color: var(--line)">
-            <div v-if="coords" class="flex items-center gap-2 t-mono">
-              <i class="pi pi-map-marker text-sig-ok" />
+          <div class="flex items-center justify-between px-4 py-2.5 border-t border-line text-[11.5px] flex-wrap gap-2">
+            <div v-if="coords" class="flex items-center gap-2 t-mono text-txt">
+              <i class="pi pi-map-marker text-sig-ok" aria-hidden="true" />
               <span>{{ coords.lat.toFixed(6) }}, {{ coords.lng.toFixed(6) }}</span>
-              <span style="color: var(--txt-dim)">(±{{ coords.acc }}m)</span>
+              <span class="text-txt-dim">(±{{ coords.acc }}m)</span>
             </div>
             <div v-else></div>
 

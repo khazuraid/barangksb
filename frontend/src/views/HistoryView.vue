@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '@/api'
+import api, { downloadAuthenticatedFile } from '@/api'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Dialog from 'primevue/dialog'
-import Tag from 'primevue/tag'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
 import StatCard from '@/components/StatCard.vue'
@@ -21,7 +20,7 @@ const page = ref(0)
 const perPage = ref(25)
 const sku = ref('')
 const type = ref('')
-const loadingTx = ref(false)
+const loadingTx = ref(true)
 const expandedTx = ref<string | null>(null)
 const photoLightbox = ref(false)
 const lightboxUrl = ref('')
@@ -74,13 +73,18 @@ const summary = computed(() => {
   }
 })
 
-function exportAs(kind: 'csv' | 'xlsx' | 'pdf') {
-  const token = localStorage.getItem('token') || ''
-  const base = kind === 'csv' ? '/api/export/tx.csv' : kind === 'xlsx' ? '/api/export/items.xlsx' : '/api/report.pdf'
-  const url = `${base}?token=${encodeURIComponent(token)}`
-  if (typeof window !== 'undefined') {
-    window.open(url, '_blank')
+async function exportAs(kind: 'csv' | 'xlsx' | 'pdf') {
+  const path = kind === 'csv' ? '/export/tx.csv' : kind === 'xlsx' ? '/export/items.xlsx' : '/report.pdf'
+  const filename = kind === 'csv' ? 'riwayat_mutasi.csv' : kind === 'xlsx' ? 'master_barang.xlsx' : 'laporan_inventaris.pdf'
+  await downloadAuthenticatedFile(path, filename, kind === 'pdf')
+}
+
+function sanitizeCsvCell(v: unknown): string {
+  const s = String(v ?? '')
+  if (/^[\s]*[=+\-@]/.test(s) || /^[\t\r\n]/.test(s)) {
+    return `'${s}`
   }
+  return s
 }
 
 function exportFiltered() {
@@ -98,240 +102,192 @@ function exportFiltered() {
     (t.notes || '').replace(/\n/g, ' '),
   ])
   const csv = [header, ...rows]
-    .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+    .map((r) => r.map((v) => `"${sanitizeCsvCell(v).replace(/"/g, '""')}"`).join(','))
     .join('\n')
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `riwayat_mutasi_halaman_${page.value + 1}.csv`
+  a.href = url
+  a.download = 'riwayat_mutasi_terfilter.csv'
   a.click()
-  URL.revokeObjectURL(a.href)
+  URL.revokeObjectURL(url)
+}
+
+function openPhoto(url: string) {
+  lightboxUrl.value = url
+  photoLightbox.value = true
 }
 </script>
 
 <template>
-  <div class="pb-16 w-full">
+  <div>
     <PageHeader
       crumb="Operasional"
       title="Log &amp; Riwayat Mutasi"
-      sub="Rekaman transaksi pergerakan stok barang masuk, keluar, dan opname fisik inventaris"
+      sub="Jejak lengkap seluruh pergerakan stok masuk, keluar, dan penyesuaian opname."
     >
       <template #actions>
-        <Button
-          label="Ekspor Halaman (CSV)"
-          icon="pi pi-file"
-          size="small"
-          severity="secondary"
-          outlined
-          :disabled="!txs.length"
-          @click="exportFiltered"
-        />
-        <Button
-          label="Ekspor Semua (CSV)"
-          icon="pi pi-download"
-          size="small"
-          severity="secondary"
-          outlined
-          :disabled="!txs.length"
-          @click="exportAs('csv')"
-        />
-        <Button
-          label="Cetak Laporan PDF"
-          icon="pi pi-file-pdf"
-          size="small"
-          @click="exportAs('pdf')"
-        />
+        <Button label="Catat Mutasi" icon="pi pi-plus" size="small" @click="router.push('/movement')" />
       </template>
     </PageHeader>
 
-    <!-- Unified KPI Metric Strip -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
       <StatCard
-        label="Total Mutasi"
+        label="Total Transaksi"
         :value="summary.total"
         icon="pi pi-history"
         tone="accent"
-        hint="Transaksi tercatat"
+        featured
+        hint="Seluruh jejak mutasi"
       />
       <StatCard
         label="Unit Masuk (Hal. Ini)"
         :value="`+${summary.in}`"
-        icon="pi pi-arrow-down-left"
+        icon="pi pi-arrow-down"
         tone="ok"
-        hint="Stok bertambah"
+        hint="Akumulasi barang masuk"
       />
       <StatCard
         label="Unit Keluar (Hal. Ini)"
         :value="`−${summary.out}`"
-        icon="pi pi-arrow-up-right"
+        icon="pi pi-arrow-up"
         tone="bad"
-        hint="Stok berkurang"
+        hint="Akumulasi barang keluar"
       />
       <StatCard
-        label="Baris Opname (Hal. Ini)"
+        label="Opname / Adjust"
         :value="summary.adj"
         icon="pi pi-sliders-h"
-        tone="info"
-        hint="Koreksi fisik stok"
+        tone="warn"
+        hint="Penyesuaian stok halaman ini"
       />
     </div>
 
-    <!-- Clean Unified Toolbar -->
+    <!-- Filter & Export Toolbar -->
     <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
-      <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-        <div class="relative flex-1 min-w-[220px] max-w-md">
-          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
+      <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+        <div class="relative flex-1 min-w-[180px] max-w-xs">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-txt-dim text-[12px]" aria-hidden="true" />
           <InputText
             v-model="sku"
-            placeholder="Cari SKU, nama barang, atau petugas…"
-            class="w-full !pl-8 !text-[12px] !py-1.5"
+            placeholder="Filter SKU barang…"
+            class="w-full !pl-8 !text-[12.5px] t-mono"
             @keyup.enter="fetchTx(true)"
           />
         </div>
-
         <Select
           v-model="type"
           :options="typeOptions"
           optionLabel="label"
           optionValue="value"
-          placeholder="Semua Mutasi"
-          class="!text-[12px] !py-0.5 w-[190px]"
+          class="w-full sm:w-52 !text-[12.5px]"
           @change="fetchTx(true)"
         />
-
-        <Button
-          icon="pi pi-search"
-          size="small"
-          severity="secondary"
-          outlined
-          @click="fetchTx(true)"
-        />
-
+        <Button label="Terapkan" icon="pi pi-filter" size="small" @click="fetchTx(true)" />
         <Button
           v-if="sku || type"
-          label="Reset"
-          icon="pi pi-times"
+          icon="pi pi-filter-slash"
           text
+          rounded
           size="small"
           severity="secondary"
+          aria-label="Reset filter"
           @click="sku = ''; type = ''; fetchTx(true)"
         />
       </div>
 
-      <div class="flex items-center gap-2">
-        <Tag :value="total + ' transaksi'" severity="secondary" class="!text-[11px]" />
+      <div class="flex items-center gap-1.5">
+        <Button label="CSV Terfilter" icon="pi pi-download" size="small" text severity="secondary" @click="exportFiltered" />
+        <Button label="CSV Semua" icon="pi pi-file" size="small" text severity="secondary" @click="exportAs('csv')" />
+        <Button label="Excel" icon="pi pi-file-excel" size="small" text severity="secondary" @click="exportAs('xlsx')" />
+        <Button label="PDF" icon="pi pi-file-pdf" size="small" text severity="secondary" @click="exportAs('pdf')" />
       </div>
     </div>
 
-    <!-- Transaction List Panel -->
-    <Panel title="Daftar Mutasi &amp; Riwayat Transaksi" icon="pi pi-history" dense>
-      <EmptyState v-if="loadingTx" icon="pi pi-spin pi-spinner" title="Memuat riwayat perubahan…" />
+    <Panel title="Daftar Mutasi Stok" icon="pi pi-list" dense>
+      <template #actions>
+        <span class="t-mono !text-[11px] text-txt-dim">{{ range }}</span>
+      </template>
+
+      <EmptyState v-if="loadingTx" loading title="Memuat riwayat mutasi…" />
+
       <EmptyState
         v-else-if="!txs.length"
         icon="pi pi-history"
         title="Belum ada transaksi mutasi"
-        sub="Pencatatan barang masuk atau keluar akan terekam otomatis di sini lengkap dengan foto geotag."
+        sub="Riwayat barang masuk, keluar, dan opname akan muncul di sini."
       >
-        <Button label="Daftar Barang" icon="pi pi-box" size="small" @click="router.push('/items')" />
+        <Button label="Catat Mutasi" icon="pi pi-plus" size="small" @click="router.push('/movement')" />
       </EmptyState>
 
       <div v-else class="overflow-x-auto">
-        <table class="w-full text-[12.5px]">
+        <table class="w-full text-[13px] border-collapse">
           <thead>
-            <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[170px]" style="color: var(--txt-dim)">Waktu</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[120px]" style="color: var(--txt-dim)">Jenis</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Barang</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px] text-right" style="color: var(--txt-dim)">Perubahan</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px] text-right" style="color: var(--txt-dim)">Stok</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px]" style="color: var(--txt-dim)">Petugas</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[50px] text-right" style="color: var(--txt-dim)"></th>
+            <tr class="text-left border-b border-line bg-panel-2 text-[11px] uppercase tracking-[0.05em] text-txt-dim font-semibold">
+              <th class="px-3.5 py-2.5 w-[160px]">Waktu</th>
+              <th class="px-3.5 py-2.5 w-[120px]">Jenis</th>
+              <th class="px-3.5 py-2.5">Barang &amp; SKU</th>
+              <th class="px-3.5 py-2.5 text-right w-[110px]">Jumlah</th>
+              <th class="px-3.5 py-2.5 text-right w-[130px]">Perubahan Stok</th>
+              <th class="px-3.5 py-2.5">Petugas / Catatan</th>
+              <th class="px-3.5 py-2.5 text-center w-[70px]">Bukti</th>
             </tr>
           </thead>
-          <tbody class="divide-y" style="border-color: var(--line)">
-            <template v-for="t in txs" :key="t.id">
+          <tbody class="divide-y divide-line">
+            <template v-for="(t, i) in txs" :key="t.id || i">
               <tr
-                class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
-                @click="expandedTx = expandedTx === t.id ? null : t.id"
+                class="data-row cursor-pointer"
+                :class="{ 'data-row-active': expandedTx === (t.id || String(i)) }"
+                @click="expandedTx = expandedTx === (t.id || String(i)) ? null : (t.id || String(i))"
               >
-                <td class="px-4 py-3 whitespace-nowrap text-[12px]" style="color: var(--txt-dim)">
-                  {{ t.timestamp }}
+                <td class="px-3.5 py-2.5 whitespace-nowrap t-mono !text-[11.5px] text-txt-dim">{{ t.timestamp }}</td>
+                <td class="px-3.5 py-2.5 whitespace-nowrap"><StatusChip :kind="t.type" /></td>
+                <td class="px-3.5 py-2.5">
+                  <div class="font-semibold text-txt">{{ t.item_name }}</div>
+                  <div class="t-mono !text-[11px] text-txt-dim">{{ t.item_sku }}</div>
                 </td>
-                <td class="px-4 py-3">
-                  <StatusChip :kind="t.type" />
+                <td class="px-3.5 py-2.5 text-right t-num font-bold whitespace-nowrap" :class="t.type === 'OUT' || t.type === 'ADJUST-' ? 'text-sig-bad' : 'text-sig-ok'">
+                  {{ t.type === 'OUT' || t.type === 'ADJUST-' ? '−' : '+' }}{{ t.quantity }}
+                  <span class="font-normal text-txt-dim text-[11.5px]">{{ t.unit }}</span>
                 </td>
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <span class="font-semibold" style="color: var(--txt)">{{ t.item_name }}</span>
-                    <button
-                      v-if="t.photo_url"
-                      class="inline-flex items-center justify-center w-6 h-6 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:opacity-80 cursor-pointer"
-                      title="Lihat foto bukti geotag"
-                      @click.stop="lightboxUrl = t.photo_url; photoLightbox = true"
-                    >
-                      <i class="pi pi-camera text-[11px]" />
-                    </button>
-                  </div>
-                  <div class="t-mono text-[11px] mt-0.5" style="color: var(--txt-dim)">{{ t.item_sku }}</div>
+                <td class="px-3.5 py-2.5 text-right t-mono !text-[11.5px] text-txt-dim whitespace-nowrap">
+                  {{ t.previous_stock }} → <strong class="text-txt">{{ t.new_stock }}</strong>
                 </td>
-                <td class="px-4 py-3 text-right whitespace-nowrap">
-                  <span
-                    class="t-num font-bold px-2 py-0.5 rounded"
-                    :class="t.type === 'IN' || t.type === 'ADJUST+'
-                      ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
-                      : 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30'"
-                  >
-                    {{ t.type === 'IN' || t.type === 'ADJUST+' ? '+' : '−' }}{{ t.quantity }} {{ t.unit }}
-                  </span>
+                <td class="px-3.5 py-2.5 max-w-xs">
+                  <div class="text-[12.5px] font-medium text-txt truncate">{{ t.received_by || '—' }}</div>
+                  <div v-if="t.notes" class="text-[11.5px] text-txt-dim truncate">{{ t.notes }}</div>
                 </td>
-                <td class="px-4 py-3 text-right t-num whitespace-nowrap" style="color: var(--txt-dim)">
-                  <span>{{ t.previous_stock }}</span>
-                  <i class="pi pi-arrow-right text-[9px] mx-1.5 opacity-60" />
-                  <span class="font-bold" style="color: var(--txt)">{{ t.new_stock }}</span>
-                </td>
-                <td class="px-4 py-3 whitespace-nowrap text-[12px]" style="color: var(--txt-dim)">
-                  <span v-if="t.received_by" class="font-medium text-ink-300">{{ t.received_by }}</span>
-                  <span v-else class="opacity-50">—</span>
-                </td>
-                <td class="px-4 py-3 text-right">
-                  <i
-                    class="pi text-[11px]"
-                    :class="expandedTx === t.id ? 'pi-chevron-up' : 'pi-chevron-down'"
-                    style="color: var(--txt-dim)"
+                <td class="px-3.5 py-2.5 text-center" @click.stop>
+                  <Button
+                    v-if="t.photo_url"
+                    icon="pi pi-image"
+                    text
+                    rounded
+                    size="small"
+                    severity="secondary"
+                    aria-label="Lihat foto bukti mutasi"
+                    @click="openPhoto(t.photo_url)"
                   />
+                  <span v-else class="text-txt-muted">—</span>
                 </td>
               </tr>
 
-              <!-- Expanded Details -->
-              <tr v-if="expandedTx === t.id">
-                <td colspan="7" class="px-4 py-3.5" style="background: var(--panel-2)">
-                  <div class="flex flex-wrap sm:flex-nowrap gap-4 items-center">
-                    <div
-                      v-if="t.photo_url"
-                      class="relative group w-32 h-24 shrink-0 rounded-lg overflow-hidden border bg-black/40 cursor-pointer"
-                      style="border-color: var(--line)"
-                      @click="lightboxUrl = t.photo_url; photoLightbox = true"
-                    >
-                      <img :src="t.photo_url" alt="Bukti Transaksi" class="w-full h-full object-cover" />
-                      <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                        <i class="pi pi-search-plus text-sm" />
-                      </div>
+              <tr v-if="expandedTx === (t.id || String(i))" class="bg-panel-2">
+                <td colspan="7" class="px-4 py-3 text-[12px]">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="space-y-1">
+                      <div><span class="text-txt-dim">Catatan lengkap:</span> <span class="text-txt">{{ t.notes || 'Tidak ada catatan' }}</span></div>
+                      <div v-if="t.received_by"><span class="text-txt-dim">Penerima / Petugas:</span> <span class="text-txt font-medium">{{ t.received_by }}</span></div>
                     </div>
-
-                    <div class="grid sm:grid-cols-3 gap-3 text-[12.5px] flex-1">
-                      <div>
-                        <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--txt-dim)">Petugas / Penerima</div>
-                        <div class="font-semibold" style="color: var(--txt)">{{ t.received_by || '—' }}</div>
-                      </div>
-                      <div>
-                        <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--txt-dim)">Catatan Transaksi</div>
-                        <div style="color: var(--txt)">{{ t.notes || '—' }}</div>
-                      </div>
-                      <div>
-                        <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--txt-dim)">ID Transaksi</div>
-                        <div class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ t.id }}</div>
-                      </div>
-                    </div>
+                    <Button
+                      v-if="t.item_id"
+                      label="Buka Detail Barang"
+                      icon="pi pi-external-link"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      @click="router.push(`/items/${t.item_id}`)"
+                    />
                   </div>
                 </td>
               </tr>
@@ -342,35 +298,20 @@ function exportFiltered() {
 
       <template #footer>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+          <span class="t-mono !text-[11.5px] text-txt-dim">{{ range }}</span>
           <div class="flex items-center gap-2">
-            <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
-            <Button
-              icon="pi pi-angle-left"
-              size="small"
-              text
-              severity="secondary"
-              :disabled="page === 0"
-              @click="page--"
-            />
-            <span class="t-num text-[12px] px-1 font-semibold">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-            <Button
-              icon="pi pi-angle-right"
-              size="small"
-              text
-              severity="secondary"
-              :disabled="page >= lastPage"
-              @click="page++"
-            />
+            <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] w-[96px]" />
+            <Button icon="pi pi-angle-left" size="small" text severity="secondary" aria-label="Halaman sebelumnya" :disabled="page === 0" @click="page--" />
+            <span class="t-num text-[12px] px-1 text-txt">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <Button icon="pi pi-angle-right" size="small" text severity="secondary" aria-label="Halaman berikutnya" :disabled="page >= lastPage" @click="page++" />
           </div>
         </div>
       </template>
     </Panel>
 
-    <!-- Modal Lightbox Foto Geotag -->
-    <Dialog v-model:visible="photoLightbox" modal header="Foto Bukti Geotag Transaksi" :style="{ width: '680px' }" class="p-fluid">
-      <div v-if="lightboxUrl" class="p-2 bg-black/80 rounded-lg flex items-center justify-center">
-        <img :src="lightboxUrl" alt="Foto Geotag Transaksi" class="max-h-[75vh] object-contain rounded" />
+    <Dialog v-model:visible="photoLightbox" modal header="Bukti Foto Mutasi" :style="{ width: '90vw', maxWidth: '720px' }">
+      <div class="flex justify-center bg-ink-950 p-2 rounded-[8px] border border-line">
+        <img :src="lightboxUrl" alt="Foto bukti transaksi" class="max-h-[70vh] object-contain rounded" />
       </div>
     </Dialog>
   </div>

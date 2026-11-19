@@ -11,7 +11,7 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import PageHeader from '@/components/PageHeader.vue'
 import Panel from '@/components/Panel.vue'
-import StatusChip from '@/components/StatusChip.vue'
+import StatCard from '@/components/StatCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Field from '@/components/Field.vue'
 import Tag from 'primevue/tag'
@@ -124,19 +124,9 @@ function remove(u: any) {
 
     <!-- summary -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 w-full">
-      <div v-for="c in [
-        { k: 'Total Akun', v: stats.total, icon: 'pi pi-users', color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
-        { k: 'Administrator', v: stats.admin, icon: 'pi pi-shield', color: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' },
-        { k: 'Petugas Gudang', v: stats.petugas, icon: 'pi pi-user', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
-      ]" :key="c.k" class="panel p-3.5 flex items-center justify-between">
-        <div>
-          <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">{{ c.k }}</div>
-          <div class="t-num text-[22px] font-bold mt-0.5" style="color: var(--txt)">{{ c.v }}</div>
-        </div>
-        <div class="w-8 h-8 rounded-lg grid place-items-center border text-xs" :class="c.color">
-          <i :class="c.icon" />
-        </div>
-      </div>
+      <StatCard label="Total Akun" :value="stats.total" icon="pi pi-users" tone="accent" featured />
+      <StatCard label="Administrator" :value="stats.admin" icon="pi pi-shield" tone="warn" />
+      <StatCard label="Petugas Gudang" :value="stats.petugas" icon="pi pi-user" tone="ok" />
     </div>
 
     <Panel title="Daftar Akun Pengguna" icon="pi pi-users" dense>
@@ -144,34 +134,37 @@ function remove(u: any) {
         <InputText v-model="q" placeholder="Cari nama atau email…" class="!text-[12.5px] !py-1.5 w-[220px]" />
       </template>
 
-      <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat pengguna…" />
-      <EmptyState v-else-if="!filtered.length" icon="pi pi-users" title="Tidak ada pengguna"
-                    sub="Tambahkan akun baru untuk memberi akses ke sistem." />
+      <EmptyState v-if="loading" loading title="Memuat pengguna…" />
+      <EmptyState
+        v-else-if="!filtered.length"
+        icon="pi pi-users"
+        title="Tidak ada pengguna"
+        sub="Tambahkan akun baru untuk memberi akses ke sistem."
+      />
 
       <div v-else class="overflow-x-auto">
-        <table class="w-full text-[12.5px]">
+        <table class="w-full text-[12.5px] border-collapse">
           <thead>
-            <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Nama</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Email</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">Role</th>
-              <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[110px] text-right" style="color: var(--txt-dim)">Aksi</th>
+            <tr class="text-left border-b border-line bg-panel-2 text-[11px] uppercase tracking-[0.05em] text-txt-dim font-semibold">
+              <th class="px-4 py-2.5">Nama</th>
+              <th class="px-4 py-2.5">Email</th>
+              <th class="px-4 py-2.5 w-[180px]">Role</th>
+              <th class="px-4 py-2.5 w-[110px] text-right">Aksi</th>
             </tr>
           </thead>
-          <tbody class="divide-y" style="border-color: var(--line)">
-            <tr v-for="u in pagedUsers" :key="u.email" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-              <td class="px-4 py-3">
+          <tbody class="divide-y divide-line">
+            <tr v-for="u in pagedUsers" :key="u.email" class="data-row">
+              <td class="px-4 py-2.5">
                 <div class="flex items-center gap-2.5">
-                  <div class="w-7 h-7 shrink-0 grid place-items-center rounded-lg border t-num font-bold text-[11px]"
-                       style="border-color: var(--line); background: var(--panel-2); color: var(--txt)">
+                  <div class="w-7 h-7 shrink-0 grid place-items-center rounded-[7px] border border-line bg-panel-2 text-txt t-num font-bold text-[11px]">
                     {{ u.name?.[0]?.toUpperCase() || '?' }}
                   </div>
-                  <span class="font-semibold" style="color: var(--txt)">{{ u.name }}</span>
+                  <span class="font-semibold text-txt">{{ u.name }}</span>
                   <Tag v-if="u.email === auth.user?.email" severity="info" value="ANDA" class="!text-[10px]" />
                 </div>
               </td>
-              <td class="px-4 py-3" style="color: var(--txt-dim)">{{ u.email }}</td>
-              <td class="px-4 py-3">
+              <td class="px-4 py-2.5 text-txt-dim">{{ u.email }}</td>
+              <td class="px-4 py-2.5">
                 <Select
                   :modelValue="u.role"
                   :options="roleOptions"
@@ -182,11 +175,18 @@ function remove(u: any) {
                   @update:modelValue="(v: any) => changeRole(u, v)"
                 />
               </td>
-              <td class="px-4 py-3 text-right">
-                <Button icon="pi pi-trash" text rounded size="small" severity="danger"
-                        v-tooltip.top="u.email === auth.user?.email ? 'Tidak dapat menghapus akun sendiri' : 'Hapus akun'"
-                        :disabled="u.email === auth.user?.email"
-                        @click="remove(u)" />
+              <td class="px-4 py-2.5 text-right">
+                <Button
+                  icon="pi pi-trash"
+                  text
+                  rounded
+                  size="small"
+                  severity="danger"
+                  :aria-label="u.email === auth.user?.email ? 'Tidak dapat menghapus akun sendiri' : 'Hapus akun'"
+                  v-tooltip.top="u.email === auth.user?.email ? 'Tidak dapat menghapus akun sendiri' : 'Hapus akun'"
+                  :disabled="u.email === auth.user?.email"
+                  @click="remove(u)"
+                />
               </td>
             </tr>
           </tbody>
@@ -195,14 +195,12 @@ function remove(u: any) {
 
       <template v-if="filtered.length" #footer>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+          <span class="t-mono !text-[11.5px] text-txt-dim">{{ range }}</span>
           <div class="flex items-center gap-2">
             <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
-            <Button icon="pi pi-angle-left" size="small" text severity="secondary"
-                    :disabled="page === 0" @click="page--" />
-            <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-            <Button icon="pi pi-angle-right" size="small" text severity="secondary"
-                    :disabled="page >= lastPage" @click="page++" />
+            <Button icon="pi pi-angle-left" size="small" text severity="secondary" aria-label="Halaman sebelumnya" :disabled="page === 0" @click="page--" />
+            <span class="t-num text-[12px] px-1 text-txt">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+            <Button icon="pi pi-angle-right" size="small" text severity="secondary" aria-label="Halaman berikutnya" :disabled="page >= lastPage" @click="page++" />
           </div>
         </div>
       </template>

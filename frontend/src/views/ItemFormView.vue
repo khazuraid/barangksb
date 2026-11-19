@@ -343,19 +343,19 @@ async function submit() {
     <!-- Banner Pilihan Salin Unit Sejenis & Opsi Batal/Tidak Tambah Unit -->
     <div
       v-if="!loadingData && copiedFromSource"
-      class="panel p-4 mb-4 flex flex-wrap items-center justify-between gap-3 border-l-4 border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 shadow-xs"
+      class="panel p-4 mb-4 flex flex-wrap items-center justify-between gap-3 border-l-4 !border-l-acc-500 bg-[var(--acc-wash)]"
     >
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-lg bg-indigo-500 text-white grid place-items-center shrink-0">
-          <i class="pi pi-clone text-base" />
+        <div class="w-9 h-9 rounded-[8px] bg-acc-500 text-white grid place-items-center shrink-0">
+          <i class="pi pi-clone text-base" aria-hidden="true" />
         </div>
         <div class="text-[12.5px]">
-          <div class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <div class="font-bold text-txt flex items-center gap-2">
             <span>Mode: Tambah Unit Sejenis</span>
             <Tag severity="info" class="!text-[10px]" value="SALIN SPESIFIKASI" />
           </div>
-          <div class="text-slate-600 dark:text-slate-400 mt-0.5">
-            Spesifikasi disalin dari: <strong class="text-indigo-600 dark:text-indigo-400">{{ copiedFromSource.name }}</strong>
+          <div class="text-txt-dim mt-0.5">
+            Spesifikasi disalin dari: <strong class="text-acc-500">{{ copiedFromSource.name }}</strong>
             <span v-if="copiedFromSource.item_code" class="t-mono font-semibold"> (No. Kode: {{ copiedFromSource.item_code }})</span>
           </div>
         </div>
@@ -381,10 +381,37 @@ async function submit() {
     </div>
 
     <!-- Loading Skeleton -->
-    <div v-if="loadingData" class="panel p-16 grid place-items-center">
-      <div class="flex flex-col items-center gap-3">
-        <i class="pi pi-spin pi-spinner text-3xl text-indigo-500" />
-        <span class="text-[12.5px]" style="color: var(--txt-dim)">Memuat data inventaris...</span>
+    <div v-if="loadingData" class="grid lg:grid-cols-[380px_1fr] gap-5 items-start">
+      <div class="flex flex-col gap-4">
+        <div class="panel p-4 flex flex-col gap-3">
+          <div class="skeleton h-4 w-40" />
+          <div class="skeleton h-48 w-full rounded-[8px]" />
+          <div class="skeleton h-9 w-full rounded-[8px]" />
+        </div>
+        <div class="panel p-4 flex flex-col gap-2.5">
+          <div class="skeleton h-3.5 w-32" />
+          <div class="skeleton h-11 w-full rounded-[8px]" />
+          <div class="skeleton h-12 w-full rounded-[8px]" />
+        </div>
+      </div>
+      <div class="flex flex-col gap-4">
+        <div class="panel p-4 flex flex-col gap-3">
+          <div class="skeleton h-4 w-44" />
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div class="skeleton h-24 rounded-[10px]" />
+            <div class="skeleton h-24 rounded-[10px]" />
+          </div>
+        </div>
+        <div class="panel p-4 flex flex-col gap-3">
+          <div class="skeleton h-4 w-36" />
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div class="skeleton h-10 rounded-[8px] sm:col-span-2" />
+            <div class="skeleton h-10 rounded-[8px]" />
+            <div class="skeleton h-10 rounded-[8px]" />
+            <div class="skeleton h-10 rounded-[8px]" />
+            <div class="skeleton h-10 rounded-[8px]" />
+          </div>
+        </div>
       </div>
     </div>
 
@@ -412,71 +439,69 @@ async function submit() {
         <!-- Preview Label SKU & Ringkasan Cepat -->
         <div class="panel p-4 flex flex-col gap-2.5">
           <div class="flex items-center justify-between">
-            <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--txt-dim)">
+            <span class="t-label">
               Preview Identitas Barang
             </span>
             <Tag :severity="form.track_stock ? 'warn' : 'info'"
                  :value="form.track_stock ? 'KONSUMABEL' : 'ASET TETAP'" class="!text-[10px]" />
           </div>
 
-          <div class="t-mono font-bold text-[18px] text-indigo-500 dark:text-indigo-400 p-2.5 rounded-lg border flex items-center justify-between"
-               style="background: var(--panel-2); border-color: var(--line)">
+          <div class="t-mono font-bold text-[18px] text-acc-500 p-2.5 rounded-[8px] border border-line bg-panel-2 flex items-center justify-between">
             <span>{{ skuPreview }}</span>
-            <i class="pi pi-barcode text-lg opacity-70" />
+            <i class="pi pi-barcode text-lg opacity-70" aria-hidden="true" />
           </div>
 
           <!-- Live Nama Barang -->
-          <div class="p-2.5 rounded-lg border flex flex-col gap-0.5"
-               style="background: var(--panel-2); border-color: var(--line)">
-            <span class="text-[10px] uppercase font-semibold" style="color: var(--txt-dim)">Nama Barang:</span>
-            <span class="font-bold text-[13px] break-words" :class="form.name ? 'text-slate-900 dark:text-white' : 'italic text-slate-400'">
+          <div class="p-2.5 rounded-[8px] border border-line bg-panel-2 flex flex-col gap-0.5">
+            <span class="text-[10px] uppercase font-semibold text-txt-dim">Nama Barang:</span>
+            <span class="font-bold text-[13px] break-words" :class="form.name ? 'text-txt' : 'italic text-txt-muted'">
               {{ form.name || 'Belum diisi (Ketik nama di formulir)' }}
             </span>
           </div>
 
-          <p class="text-[11.5px] leading-relaxed" style="color: var(--txt-dim)">
+          <p class="text-[11.5px] leading-relaxed text-txt-dim">
             {{ form.sku ? 'SKU manual kustom yang telah ditentukan pengguna.' : 'SKU otomatis di-generate berdasarkan kode kategori, tahun berjalan, dan urutan database.' }}
           </p>
 
-          <div class="pt-2 border-t flex flex-col gap-1.5 text-[11.5px]" style="border-color: var(--line)">
+          <div class="pt-2 border-t border-line flex flex-col gap-1.5 text-[11.5px]">
             <div v-if="enableKIR && form.item_code" class="flex items-center justify-between">
-              <span style="color: var(--txt-dim)">No. Kode Barang:</span>
-              <span class="t-mono font-bold text-indigo-500">{{ form.item_code }}</span>
+              <span class="text-txt-dim">No. Kode Barang:</span>
+              <span class="t-mono font-bold text-acc-500">{{ form.item_code }}</span>
             </div>
             <div v-if="enableKIR && form.register_number" class="flex items-center justify-between">
-              <span style="color: var(--txt-dim)">No. Register:</span>
-              <span class="t-mono font-semibold" style="color: var(--txt)">{{ form.register_number }}</span>
+              <span class="text-txt-dim">No. Register:</span>
+              <span class="t-mono font-semibold text-txt">{{ form.register_number }}</span>
             </div>
             <div v-if="enableKIR" class="flex items-center justify-between">
-              <span style="color: var(--txt-dim)">Kondisi Fisik:</span>
-              <span class="font-semibold" style="color: var(--txt)">{{ form.condition_status }}</span>
+              <span class="text-txt-dim">Kondisi Fisik:</span>
+              <span class="font-semibold text-txt">{{ form.condition_status }}</span>
             </div>
             <div v-if="form.location" class="flex items-center justify-between">
-              <span style="color: var(--txt-dim)">Ruangan:</span>
-              <span class="font-semibold truncate max-w-[170px]" style="color: var(--txt)">
-                <span v-if="enableKIR && form.location_code" class="text-indigo-500 font-mono mr-1">[{{ form.location_code }}]</span>
+              <span class="text-txt-dim">Ruangan:</span>
+              <span class="font-semibold truncate max-w-[170px] text-txt">
+                <span v-if="enableKIR && form.location_code" class="text-acc-500 t-mono mr-1">[{{ form.location_code }}]</span>
                 {{ form.location }}
               </span>
             </div>
             <div v-if="form.track_stock" class="flex items-center justify-between">
-              <span style="color: var(--txt-dim)">Satuan:</span>
-              <span class="font-semibold" style="color: var(--txt)">{{ form.unit }}</span>
+              <span class="text-txt-dim">Satuan:</span>
+              <span class="font-semibold text-txt">{{ form.unit }}</span>
             </div>
             <div v-if="form.track_stock" class="flex items-center justify-between">
-              <span style="color: var(--txt-dim)">Batas Min. Stok:</span>
-              <span class="font-semibold text-amber-500">{{ form.min_stock }} {{ form.unit }}</span>
+              <span class="text-txt-dim">Batas Min. Stok:</span>
+              <span class="font-semibold text-sig-warn t-num">{{ form.min_stock }} {{ form.unit }}</span>
             </div>
             <div v-if="enablePrice && form.price_per_unit > 0" class="flex items-center justify-between">
-              <span style="color: var(--txt-dim)">Estimasi Harga:</span>
-              <span class="font-semibold text-emerald-500">Rp {{ Number(form.price_per_unit).toLocaleString('id-ID') }}</span>
+              <span class="text-txt-dim">Estimasi Harga:</span>
+              <span class="font-semibold text-sig-ok t-num">Rp {{ Number(form.price_per_unit).toLocaleString('id-ID') }}</span>
             </div>
           </div>
         </div>
 
         <!-- Panduan Geotag Card -->
-        <div class="panel p-3.5 flex items-start gap-3 text-[11.5px] leading-relaxed" style="background: var(--panel-2)">
-          <i class="pi pi-info-circle text-indigo-500 text-sm mt-0.5 shrink-0" />
-          <div style="color: var(--txt-dim)">
+        <div class="panel p-3.5 flex items-start gap-3 text-[11.5px] leading-relaxed !bg-panel-2">
+          <i class="pi pi-info-circle text-acc-500 text-sm mt-0.5 shrink-0" aria-hidden="true" />
+          <div class="text-txt-dim">
             Pastikan izin lokasi GPS browser aktif saat mengambil foto kamera agar banner geotag memuat alamat akurat, koordinat presisi, dan peta lokasi.
           </div>
         </div>
@@ -487,95 +512,93 @@ async function submit() {
         <!-- 1. Pilihan Jenis Pengelolaan Inventaris -->
         <Panel title="Jenis Pengelolaan Barang" icon="pi pi-sliders-h">
           <div class="flex flex-col gap-3">
-            <span class="text-[12px]" style="color: var(--txt-dim)">
+            <span class="text-[12px] text-txt-dim">
               Pilih model pengelolaan aset inventaris di sistem:
             </span>
 
             <div class="grid sm:grid-cols-2 gap-3">
               <!-- Opsi A: Barang Konsumabel / Stok Habis Pakai -->
-              <div
-                class="p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3"
+              <button
+                type="button"
+                class="p-4 rounded-[10px] border text-left cursor-pointer transition-colors flex items-start gap-3"
                 :class="form.track_stock
-                  ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/30 shadow-xs ring-1 ring-indigo-500'
-                  : 'hover:border-slate-300 dark:hover:border-slate-700'"
-                :style="!form.track_stock ? { background: 'var(--panel-2)', borderColor: 'var(--line)' } : {}"
+                  ? 'border-acc-500 bg-[var(--acc-wash)] ring-1 ring-acc-500'
+                  : 'border-line bg-panel-2 hover:border-[var(--acc-border)]'"
                 @click="form.track_stock = true"
               >
-                <div class="w-8 h-8 rounded-lg grid place-items-center shrink-0 border mt-0.5"
+                <div class="w-8 h-8 rounded-[8px] grid place-items-center shrink-0 border mt-0.5"
                      :class="form.track_stock
-                       ? 'bg-indigo-500 text-white border-indigo-600'
-                       : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
-                  <i class="pi pi-box text-sm" />
+                       ? 'bg-acc-500 text-white border-acc-600'
+                       : 'bg-panel text-txt-dim border-line'">
+                  <i class="pi pi-box text-sm" aria-hidden="true" />
                 </div>
                 <div class="flex flex-col">
                   <div class="flex items-center gap-2">
-                    <span class="font-bold text-[13px]" style="color: var(--txt)">Barang Stok / Konsumabel</span>
-                    <i v-if="form.track_stock" class="pi pi-check-circle text-xs text-indigo-500 font-bold" />
+                    <span class="font-bold text-[13px] text-txt">Barang Stok / Konsumabel</span>
+                    <i v-if="form.track_stock" class="pi pi-check-circle text-xs text-acc-500 font-bold" aria-hidden="true" />
                   </div>
-                  <span class="text-[11px] mt-1 leading-snug" style="color: var(--txt-dim)">
-                    Contoh: Pensil, Kertas, Spidol, APD, Tinta. Jumlah bertambah/berkurang via menu <strong>Stok Masuk / Keluar</strong> dengan foto geotag.
+                  <span class="text-[11px] mt-1 leading-snug text-txt-dim">
+                    Contoh: Pensil, Kertas, Spidol, APD, Tinta. Jumlah bertambah/berkurang via menu <strong class="text-txt">Stok Masuk / Keluar</strong> dengan foto geotag.
                   </span>
                 </div>
-              </div>
+              </button>
 
               <!-- Opsi B: Aset Tetap / Unit Mandiri -->
-              <div
-                class="p-4 rounded-xl border cursor-pointer transition-all flex items-start gap-3"
+              <button
+                type="button"
+                class="p-4 rounded-[10px] border text-left cursor-pointer transition-colors flex items-start gap-3"
                 :class="!form.track_stock
-                  ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/30 shadow-xs ring-1 ring-indigo-500'
-                  : 'hover:border-slate-300 dark:hover:border-slate-700'"
-                :style="form.track_stock ? { background: 'var(--panel-2)', borderColor: 'var(--line)' } : {}"
+                  ? 'border-acc-500 bg-[var(--acc-wash)] ring-1 ring-acc-500'
+                  : 'border-line bg-panel-2 hover:border-[var(--acc-border)]'"
                 @click="form.track_stock = false; form.unit = 'unit'"
               >
-                <div class="w-8 h-8 rounded-lg grid place-items-center shrink-0 border mt-0.5"
+                <div class="w-8 h-8 rounded-[8px] grid place-items-center shrink-0 border mt-0.5"
                      :class="!form.track_stock
-                       ? 'bg-indigo-500 text-white border-indigo-600'
-                       : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'">
-                  <i class="pi pi-desktop text-sm" />
+                       ? 'bg-acc-500 text-white border-acc-600'
+                       : 'bg-panel text-txt-dim border-line'">
+                  <i class="pi pi-desktop text-sm" aria-hidden="true" />
                 </div>
                 <div class="flex flex-col">
                   <div class="flex items-center gap-2">
-                    <span class="font-bold text-[13px]" style="color: var(--txt)">Aset Tetap / Unit Mandiri</span>
-                    <i v-if="!form.track_stock" class="pi pi-check-circle text-xs text-indigo-500 font-bold" />
+                    <span class="font-bold text-[13px] text-txt">Aset Tetap / Unit Mandiri</span>
+                    <i v-if="!form.track_stock" class="pi pi-check-circle text-xs text-acc-500 font-bold" aria-hidden="true" />
                   </div>
-                  <span class="text-[11px] mt-1 leading-snug" style="color: var(--txt-dim)">
+                  <span class="text-[11px] mt-1 leading-snug text-txt-dim">
                     Contoh: Laptop, Komputer, Kendaraan, Alat Medis. Setiap unit adalah satu aset bernomor seri tersendiri yang dipantau jadwal servis/kalibrasinya.
                   </span>
                 </div>
-              </div>
+              </button>
             </div>
 
             <!-- Notice Callout for New Stock Item -->
             <div
               v-if="form.track_stock && !isEdit"
-              class="p-3 rounded-lg border text-[11.5px] flex items-center gap-2.5"
-              style="background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.25); color: var(--txt)"
+              class="p-3 rounded-[8px] border border-[var(--acc-border)] bg-[var(--acc-wash)] text-[11.5px] flex items-center gap-2.5 text-txt"
             >
-              <i class="pi pi-info-circle text-sm text-indigo-500 shrink-0" />
-              <span style="color: var(--txt-dim)">
-                Barang stok akan didaftarkan dengan stok awal 0. Penambahan stok dapat dicatat langsung setelah disimpan pada halaman detail melalui tombol <strong style="color: var(--txt)">+ Tambah Stok Masuk</strong> berbukti foto geotag.
+              <i class="pi pi-info-circle text-sm text-acc-500 shrink-0" aria-hidden="true" />
+              <span class="text-txt-dim">
+                Barang stok akan didaftarkan dengan stok awal 0. Penambahan stok dapat dicatat langsung setelah disimpan pada halaman detail melalui tombol <strong class="text-txt">+ Tambah Stok Masuk</strong> berbukti foto geotag.
               </span>
             </div>
 
             <!-- Opsi Unit Fisik Aset Tetap / BMD (Selaras dengan Tab Daftar Unit Fisik) -->
             <div
               v-if="!form.track_stock && !isEdit"
-              class="p-3.5 rounded-xl border flex flex-col gap-3"
-              style="background: rgba(99, 102, 241, 0.06); border-color: rgba(99, 102, 241, 0.25)"
+              class="p-3.5 rounded-[10px] border border-[var(--acc-border)] bg-[var(--acc-wash)] flex flex-col gap-3"
             >
               <div class="flex items-start gap-2.5 text-[12px]">
-                <i class="pi pi-clone text-indigo-500 text-sm mt-0.5 shrink-0" />
+                <i class="pi pi-clone text-acc-500 text-sm mt-0.5 shrink-0" aria-hidden="true" />
                 <div class="flex flex-col gap-0.5">
-                  <span class="font-bold" style="color: var(--txt)">Pencatatan Multi-Unit Fisik (Aset Tetap / BMD)</span>
-                  <span style="color: var(--txt-dim)" class="text-[11.5px] leading-relaxed">
-                    Untuk barang sejenis dalam satu ruangan (contoh: <strong>5 unit Meja / Kursi</strong> dengan No. Kode Barang sama), tentukan jumlah unit di bawah. Sistem akan mendaftarkan unit-unit tersebut, dan setiap unit dapat dilengkapi nomor seri, barcode, serta foto fisik masing-masing di tab <strong>Daftar Unit Fisik</strong> setelah disimpan.
+                  <span class="font-bold text-txt">Pencatatan Multi-Unit Fisik (Aset Tetap / BMD)</span>
+                  <span class="text-[11.5px] leading-relaxed text-txt-dim">
+                    Untuk barang sejenis dalam satu ruangan (contoh: <strong class="text-txt">5 unit Meja / Kursi</strong> dengan No. Kode Barang sama), tentukan jumlah unit di bawah. Sistem akan mendaftarkan unit-unit tersebut, dan setiap unit dapat dilengkapi nomor seri, barcode, serta foto fisik masing-masing di tab <strong class="text-txt">Daftar Unit Fisik</strong> setelah disimpan.
                   </span>
                 </div>
               </div>
 
-              <div class="grid sm:grid-cols-2 gap-3 pt-2.5 border-t" style="border-color: rgba(99, 102, 241, 0.15)">
+              <div class="grid sm:grid-cols-2 gap-3 pt-2.5 border-t border-[var(--acc-border)]">
                 <div class="flex flex-col gap-1">
-                  <label class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
+                  <label class="text-[11.5px] font-semibold text-txt-dim">
                     Jumlah Unit Fisik Awal
                   </label>
                   <InputNumber
@@ -591,13 +614,13 @@ async function submit() {
                     class="w-full !text-[12.5px]"
                     fluid
                   />
-                  <span class="text-[10.5px]" style="color: var(--txt-dim)">
+                  <span class="text-[10.5px] text-txt-dim">
                     Unit 1 s/d {{ initialUnits }} otomatis dibuat berurutan.
                   </span>
                 </div>
 
                 <div class="flex flex-col gap-1">
-                  <label class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
+                  <label class="text-[11.5px] font-semibold text-txt-dim">
                     No. Register Awal (Opsional)
                   </label>
                   <InputText
@@ -607,7 +630,7 @@ async function submit() {
                     fluid
                     @input="enableKIR = true"
                   />
-                  <span class="text-[10.5px]" style="color: var(--txt-dim)">
+                  <span class="text-[10.5px] text-txt-dim">
                     Urutan register berikutnya otomatis diteruskan (0001, 0002, dst.).
                   </span>
                 </div>
@@ -665,14 +688,14 @@ async function submit() {
             <!-- Estimasi Harga Satuan (Rp) - Opsi On/Off -->
             <div class="flex flex-col gap-1.5 min-w-0">
               <div class="flex items-center justify-between">
-                <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">
+                <span class="text-[11.5px] font-semibold text-txt-dim">
                   Estimasi Harga Satuan (Rp)
                 </span>
                 <label class="flex items-center gap-1.5 cursor-pointer select-none" @click.stop>
-                  <span class="text-[11px] font-semibold" :style="{ color: enablePrice ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
+                  <span class="text-[11px] font-semibold" :class="enablePrice ? 'text-acc-500' : 'text-txt-dim'">
                     {{ enablePrice ? 'Aktif' : 'Nonaktif' }}
                   </span>
-                  <ToggleSwitch v-model="enablePrice" />
+                  <ToggleSwitch v-model="enablePrice" aria-label="Aktifkan estimasi harga satuan" />
                 </label>
               </div>
 
@@ -686,16 +709,15 @@ async function submit() {
                   class="w-full !text-[12.5px]"
                   fluid
                 />
-                <span class="text-[11px]" style="color: var(--txt-dim)">Harga beli atau nilai perolehan per unit</span>
+                <span class="text-[11px] text-txt-dim">Harga beli atau nilai perolehan per unit</span>
               </div>
               <div
                 v-else
-                class="p-2.5 rounded-lg border text-[11.5px] flex items-center justify-between gap-2 cursor-pointer hover:border-indigo-400 transition-colors"
-                style="background: var(--panel-2); border-color: var(--line)"
+                class="p-2.5 rounded-[8px] border border-line bg-panel-2 text-[11.5px] flex items-center justify-between gap-2 cursor-pointer hover:border-[var(--acc-border)] transition-colors"
                 @click="enablePrice = true"
               >
-                <span style="color: var(--txt-dim)">Pencatatan estimasi harga nonaktif (Rp 0)</span>
-                <button type="button" class="text-indigo-500 font-semibold text-[11px] hover:underline" @click.stop="enablePrice = true">
+                <span class="text-txt-dim">Pencatatan estimasi harga nonaktif (Rp 0)</span>
+                <button type="button" class="text-acc-500 font-semibold text-[11px] hover:underline cursor-pointer" @click.stop="enablePrice = true">
                   Nyalakan
                 </button>
               </div>
@@ -711,10 +733,10 @@ async function submit() {
         <Panel title="Buku Inventaris (KIR / KIB)" icon="pi pi-book">
           <template #actions>
             <label class="flex items-center gap-2 cursor-pointer select-none" @click.stop>
-              <span class="text-[11.5px] font-semibold" :style="{ color: enableKIR ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
+              <span class="text-[11.5px] font-semibold" :class="enableKIR ? 'text-acc-500' : 'text-txt-dim'">
                 {{ enableKIR ? 'Aktif' : 'Nonaktif' }}
               </span>
-              <ToggleSwitch v-model="enableKIR" />
+              <ToggleSwitch v-model="enableKIR" aria-label="Aktifkan buku inventaris KIR/KIB" />
             </label>
           </template>
 
@@ -759,11 +781,10 @@ async function submit() {
             </Field>
           </div>
 
-          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer hover:border-indigo-400 transition-colors"
-               style="background: var(--panel-2); border-color: var(--line)"
+          <div v-else class="p-3.5 rounded-[10px] border border-line bg-panel-2 flex items-center justify-between gap-3 cursor-pointer hover:border-[var(--acc-border)] transition-colors"
                @click="enableKIR = true">
-            <div class="flex items-center gap-2.5 text-[12px]" style="color: var(--txt-dim)">
-              <i class="pi pi-info-circle text-indigo-500 text-sm shrink-0" />
+            <div class="flex items-center gap-2.5 text-[12px] text-txt-dim">
+              <i class="pi pi-info-circle text-acc-500 text-sm shrink-0" aria-hidden="true" />
               <span>Opsi format inventaris KIR/KIB (Kode Barang, Register, Kode Lokasi, Merk, Seri, Ukuran, Bahan, Tahun, Kondisi) sedang nonaktif.</span>
             </div>
             <Button label="Nyalakan (ON)" icon="pi pi-power-off" size="small" severity="primary" @click.stop="enableKIR = true" />
@@ -774,10 +795,10 @@ async function submit() {
         <Panel title="Detail Pengadaan &amp; Keterangan" icon="pi pi-clipboard">
           <template #actions>
             <label class="flex items-center gap-2 cursor-pointer select-none" @click.stop>
-              <span class="text-[11.5px] font-semibold" :style="{ color: enableProcurement ? 'var(--primary-color, #6366f1)' : 'var(--txt-dim)' }">
+              <span class="text-[11.5px] font-semibold" :class="enableProcurement ? 'text-acc-500' : 'text-txt-dim'">
                 {{ enableProcurement ? 'Aktif' : 'Nonaktif' }}
               </span>
-              <ToggleSwitch v-model="enableProcurement" />
+              <ToggleSwitch v-model="enableProcurement" aria-label="Aktifkan detail pengadaan dan keterangan" />
             </label>
           </template>
 
@@ -806,11 +827,10 @@ async function submit() {
             </Field>
           </div>
 
-          <div v-else class="p-3.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer hover:border-indigo-400 transition-colors"
-               style="background: var(--panel-2); border-color: var(--line)"
+          <div v-else class="p-3.5 rounded-[10px] border border-line bg-panel-2 flex items-center justify-between gap-3 cursor-pointer hover:border-[var(--acc-border)] transition-colors"
                @click="enableProcurement = true">
-            <div class="flex items-center gap-2.5 text-[12px]" style="color: var(--txt-dim)">
-              <i class="pi pi-info-circle text-indigo-500 text-sm shrink-0" />
+            <div class="flex items-center gap-2.5 text-[12px] text-txt-dim">
+              <i class="pi pi-info-circle text-acc-500 text-sm shrink-0" aria-hidden="true" />
               <span>Opsi detail pengadaan (Sumber Dana, Rekanan Vendor, AKL/AKD) &amp; catatan keterangan tambahan sedang nonaktif.</span>
             </div>
             <Button label="Nyalakan (ON)" icon="pi pi-power-off" size="small" severity="primary" @click.stop="enableProcurement = true" />
@@ -818,7 +838,7 @@ async function submit() {
         </Panel>
 
         <!-- Bottom Unified Action Footer -->
-        <div class="panel p-4 flex items-center justify-between gap-3 shadow-xs">
+        <div class="panel p-4 flex items-center justify-between gap-3">
           <Button
             label="Batal &amp; Kembali"
             icon="pi pi-arrow-left"

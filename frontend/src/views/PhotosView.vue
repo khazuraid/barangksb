@@ -228,14 +228,15 @@ function cleanAllOrphans() {
         label="Total Berkas Foto"
         :value="stats.total_files + ' foto'"
         icon="pi pi-images"
-        tone="neutral"
+        tone="accent"
+        featured
         :hint="'Kapasitas: ' + formatBytes(stats.total_size)"
       />
       <StatCard
         label="Foto Terhubung Aktif"
         :value="stats.used_files + ' foto'"
         icon="pi pi-check-circle"
-        tone="accent"
+        tone="ok"
         :hint="'Terpakai: ' + formatBytes(stats.used_size) + ' di master & riwayat'"
       />
       <StatCard
@@ -251,7 +252,7 @@ function cleanAllOrphans() {
     <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
       <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
         <div class="relative flex-1 min-w-[190px] max-w-sm">
-          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-txt-dim text-xs" aria-hidden="true" />
           <InputText
             v-model="q"
             placeholder="Cari nama file, nama barang, atau SKU…"
@@ -277,6 +278,7 @@ function cleanAllOrphans() {
           size="small"
           severity="secondary"
           outlined
+          aria-label="Cari foto"
           @click="fetchPhotos(true)"
         />
 
@@ -308,7 +310,7 @@ function cleanAllOrphans() {
     </div>
 
     <!-- Empty State -->
-    <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memindai berkas foto…" />
+    <EmptyState v-if="loading" loading title="Memindai berkas foto…" />
     <EmptyState
       v-else-if="!photos.length"
       icon="pi pi-images"
@@ -322,12 +324,11 @@ function cleanAllOrphans() {
         <div
           v-for="p in photos"
           :key="p.filename"
-          class="panel overflow-hidden rounded-xl border flex flex-col justify-between transition-all hover:shadow-md"
-          :class="p.is_orphan ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/20 dark:bg-rose-950/10' : ''"
-          style="border-color: var(--line)"
+          class="panel overflow-hidden flex flex-col justify-between transition-colors"
+          :class="p.is_orphan ? '!border-[var(--sig-bad-line)] !bg-[var(--sig-bad-bg)]' : 'hover:border-[var(--acc-border)]'"
         >
           <!-- Thumbnail Container -->
-          <div class="relative bg-slate-900 aspect-video overflow-hidden cursor-pointer group" @click="openPreview(p)">
+          <div class="relative bg-ink-950 aspect-video overflow-hidden cursor-pointer group" @click="openPreview(p)">
             <img
               :src="p.url"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -335,25 +336,25 @@ function cleanAllOrphans() {
               :alt="p.filename"
             />
             <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <Button icon="pi pi-eye" rounded size="small" severity="secondary" text class="!bg-white/80 !text-slate-900" title="Perbesar" />
+              <Button icon="pi pi-eye" rounded size="small" severity="secondary" text class="!bg-white/90 !text-slate-900" aria-label="Perbesar foto" />
             </div>
             <!-- Status Badge in Thumbnail -->
             <div class="absolute top-2 left-2">
               <span
                 v-if="p.is_orphan"
-                class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white shadow-sm flex items-center gap-1"
+                class="px-2 py-0.5 rounded-[5px] text-[10px] font-bold bg-sig-bad text-white shadow-sm flex items-center gap-1"
               >
-                <i class="pi pi-exclamation-triangle text-[9px]" /> Yatim (Unused)
+                <i class="pi pi-exclamation-triangle text-[9px]" aria-hidden="true" /> Yatim (Unused)
               </span>
               <span
                 v-else
-                class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white shadow-sm flex items-center gap-1"
+                class="px-2 py-0.5 rounded-[5px] text-[10px] font-bold bg-sig-ok text-white shadow-sm flex items-center gap-1"
               >
-                <i class="pi pi-check text-[9px]" /> Terpakai
+                <i class="pi pi-check text-[9px]" aria-hidden="true" /> Terpakai
               </span>
             </div>
             <!-- Size Tag -->
-            <div class="absolute bottom-2 right-2 bg-black/70 backdrop-blur-xs text-white text-[10.5px] px-1.5 py-0.5 rounded t-mono">
+            <div class="absolute bottom-2 right-2 bg-black/75 backdrop-blur-xs text-white text-[10.5px] px-1.5 py-0.5 rounded-[5px] t-mono">
               {{ formatBytes(p.size) }}
             </div>
           </div>
@@ -362,47 +363,46 @@ function cleanAllOrphans() {
           <div class="p-3 flex-1 flex flex-col justify-between gap-2.5">
             <div>
               <div class="flex items-start justify-between gap-1.5">
-                <span class="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[170px]" :title="p.filename">
+                <span class="t-mono !text-[11px] text-txt-dim truncate max-w-[170px]" :title="p.filename">
                   {{ p.filename }}
                 </span>
-                <span class="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
+                <span class="text-[10px] text-txt-muted shrink-0">
                   {{ formatDate(p.mod_time) }}
                 </span>
               </div>
 
               <!-- References List -->
-              <div class="mt-2 pt-2 border-t text-[11px]" style="border-color: var(--line)">
-                <div v-if="p.is_orphan" class="text-rose-600 dark:text-rose-400 flex items-start gap-1 leading-snug">
-                  <i class="pi pi-info-circle text-[11px] mt-0.5 shrink-0" />
+              <div class="mt-2 pt-2 border-t border-line text-[11px]">
+                <div v-if="p.is_orphan" class="text-sig-bad flex items-start gap-1 leading-snug">
+                  <i class="pi pi-info-circle text-[11px] mt-0.5 shrink-0" aria-hidden="true" />
                   <span>Tidak terhubung ke barang atau transaksi. Aman untuk dihapus.</span>
                 </div>
                 <div v-else class="flex flex-col gap-1">
                   <div
                     v-for="(ref, idx) in p.references"
                     :key="idx"
-                    class="p-1.5 rounded border text-[11px] flex flex-col gap-0.5"
-                    style="background: var(--panel-2); border-color: var(--line)"
+                    class="p-1.5 rounded-[6px] border border-line bg-panel-2 text-[11px] flex flex-col gap-0.5"
                   >
-                    <div class="flex items-center gap-1 font-semibold truncate" style="color: var(--txt)">
-                      <i :class="ref.type === 'item' ? 'pi pi-box' : ref.type === 'maintenance' ? 'pi pi-wrench' : 'pi pi-history'" class="text-[10px] text-indigo-500" />
+                    <div class="flex items-center gap-1 font-semibold text-txt truncate">
+                      <i :class="ref.type === 'item' ? 'pi pi-box' : ref.type === 'maintenance' ? 'pi pi-wrench' : 'pi pi-history'" class="text-[10px] text-acc-500" aria-hidden="true" />
                       <span class="truncate">{{ ref.title }}</span>
                     </div>
-                    <span class="text-[10px]" style="color: var(--txt-dim)">{{ ref.sub }}</span>
+                    <span class="text-[10px] text-txt-dim">{{ ref.sub }}</span>
                   </div>
                 </div>
               </div>
             </div>
 
             <!-- Action buttons -->
-            <div class="pt-2 border-t flex items-center justify-between gap-1" style="border-color: var(--line)">
+            <div class="pt-2 border-t border-line flex items-center justify-between gap-1">
               <div class="flex items-center gap-1">
                 <a
                   :href="p.url + '?download=true'"
                   download
-                  class="p-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] flex items-center gap-1 transition-colors"
+                  class="p-1.5 text-txt-dim hover:text-txt rounded-[6px] hover:bg-panel-2 text-[11px] flex items-center gap-1 transition-colors"
                   title="Unduh Berkas"
                 >
-                  <i class="pi pi-download text-xs" />
+                  <i class="pi pi-download text-xs" aria-hidden="true" />
                   <span>Unduh</span>
                 </a>
               </div>
@@ -413,7 +413,7 @@ function cleanAllOrphans() {
                 severity="danger"
                 :label="p.is_orphan ? 'Hapus' : ''"
                 class="!text-[11px] !py-1"
-                :title="p.is_orphan ? 'Hapus foto tidak terpakai' : 'Hapus foto dari storage'"
+                :aria-label="p.is_orphan ? 'Hapus foto tidak terpakai' : 'Hapus foto dari storage'"
                 @click="deleteSingle(p)"
               />
             </div>
@@ -422,11 +422,8 @@ function cleanAllOrphans() {
       </div>
 
       <!-- Pagination Footer -->
-      <div
-        class="panel p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-[12px]"
-        style="background: var(--paper-1); border-color: var(--line)"
-      >
-        <span style="color: var(--txt-dim)">{{ range }}</span>
+      <div class="panel p-3 flex flex-wrap items-center justify-between gap-3 text-[12px]">
+        <span class="t-mono !text-[11.5px] text-txt-dim">{{ range }}</span>
         <div class="flex items-center gap-2">
           <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-0.5 w-[95px]" />
           <Button
@@ -434,15 +431,17 @@ function cleanAllOrphans() {
             size="small"
             text
             severity="secondary"
+            aria-label="Halaman sebelumnya"
             :disabled="page === 0"
             @click="page--"
           />
-          <span class="t-num font-semibold px-1" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+          <span class="t-num font-semibold px-1 text-txt">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
           <Button
             icon="pi pi-angle-right"
             size="small"
             text
             severity="secondary"
+            aria-label="Halaman berikutnya"
             :disabled="page >= lastPage"
             @click="page++"
           />
@@ -458,13 +457,13 @@ function cleanAllOrphans() {
       :style="{ width: '92vw', maxWidth: '780px' }"
     >
       <div v-if="previewPhoto" class="flex flex-col gap-3">
-        <div class="rounded-xl overflow-hidden bg-black flex items-center justify-center max-h-[65vh]">
+        <div class="rounded-[10px] overflow-hidden bg-ink-950 border border-line flex items-center justify-center max-h-[65vh]">
           <img :src="previewPhoto.url" class="max-w-full max-h-[65vh] object-contain" :alt="previewPhoto.filename" />
         </div>
-        <div class="p-3 rounded-lg border text-[12px] flex flex-wrap items-center justify-between gap-2" style="background: var(--panel-2); border-color: var(--line)">
+        <div class="p-3 rounded-[8px] border border-line bg-panel-2 text-[12px] flex flex-wrap items-center justify-between gap-2">
           <div class="flex flex-col gap-0.5">
-            <span class="font-bold" style="color: var(--txt)">Status: {{ previewPhoto.is_orphan ? 'Foto Yatim (Tidak Terpakai)' : 'Foto Terpakai' }}</span>
-            <span style="color: var(--txt-dim)">Ukuran: {{ formatBytes(previewPhoto.size) }} · Diunggah: {{ formatDate(previewPhoto.mod_time) }}</span>
+            <span class="font-semibold text-txt">Status: {{ previewPhoto.is_orphan ? 'Foto Yatim (Tidak Terpakai)' : 'Foto Terpakai' }}</span>
+            <span class="text-txt-dim">Ukuran: {{ formatBytes(previewPhoto.size) }} · Diunggah: {{ formatDate(previewPhoto.mod_time) }}</span>
           </div>
           <div class="flex items-center gap-2">
             <a :href="previewPhoto.url + '?download=true'" download>

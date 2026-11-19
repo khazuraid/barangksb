@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import api from '@/api'
+import api, { safeHref } from '@/api'
+import { useThemeStore } from '@/stores/theme'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import StatusChip from '@/components/StatusChip.vue'
-import Tag from 'primevue/tag'
+import AppLogo from '@/components/AppLogo.vue'
 
 const route = useRoute()
 const router = useRouter()
+const theme = useThemeStore()
 const item = ref<any>(null)
 const error = ref('')
 const loading = ref(true)
@@ -18,28 +21,29 @@ const activeTab = ref<'detail' | 'maintenance'>('detail')
 const isLoggedIn = ref(false)
 
 onMounted(async () => {
-  isLoggedIn.value = !!localStorage.getItem('token')
+  theme.apply()
+  try {
+    isLoggedIn.value = !!localStorage.getItem('token')
+  } catch {
+    isLoggedIn.value = false
+  }
   try {
     item.value = (await api.get(`/scan/${route.params.id}`)).data
   } catch {
     error.value = 'Barang tidak ditemukan atau kode QR tidak valid.'
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 })
 
-const hasCoords = computed(() => {
-  return item.value && item.value.geo_lat != null && item.value.geo_lng != null
-})
+const hasCoords = computed(() => item.value && item.value.geo_lat != null && item.value.geo_lng != null)
 
 const osmEmbedUrl = computed(() => {
   if (!hasCoords.value) return ''
   const lat = item.value.geo_lat
   const lng = item.value.geo_lng
   const delta = 0.0035
-  const minLng = lng - delta
-  const minLat = lat - delta
-  const maxLng = lng + delta
-  const maxLat = lat + delta
-  const bbox = `${minLng}%2C${minLat}%2C${maxLng}%2C${maxLat}`
+  const bbox = `${lng - delta}%2C${lat - delta}%2C${lng + delta}%2C${lat + delta}`
   return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
 })
 
@@ -66,6 +70,7 @@ async function downloadImage(url: string, filename = 'foto_geotag.jpg') {
     a.href = url
     a.download = filename
     a.target = '_blank'
+    a.rel = 'noopener noreferrer'
     a.click()
   }
 }
@@ -84,20 +89,14 @@ function rows() {
     ['Kategori', it.category],
     ['Ruangan / Lokasi', it.location],
   ]
-  if (it.location_code) {
-    r.push(['Kode Lokasi', it.location_code])
-  }
+  if (it.location_code) r.push(['Kode Lokasi', it.location_code])
   if (it.track_stock !== false) {
     r.push(['Stok Tersedia', `${it.current_stock} ${it.unit}`])
     r.push(['Batas Minimum', `${it.min_stock} ${it.unit}`])
   } else {
     r.push(['Model Pengelolaan', 'Aset Tetap / Unit Mandiri (BMD)'])
-    if (it.item_code) {
-      r.push(['No. Kode Barang', it.item_code])
-    }
-    if (it.register_number) {
-      r.push(['No. Register', it.register_number])
-    }
+    if (it.item_code) r.push(['No. Kode Barang', it.item_code])
+    if (it.register_number) r.push(['No. Register', it.register_number])
   }
   r.push(
     ['Keadaan Barang', it.condition_status],
@@ -110,336 +109,281 @@ function rows() {
     ['Sumber Dana', it.funding_source],
     ['Distributor / Vendor', it.distributor],
     ['Izin Edar (AKL/AKD)', it.akl_akd],
-    ['Estimasi Nilai Satuan', it.price_per_unit ? formatRupiah(it.price_per_unit) : null],
-    ['Keterangan', it.description]
+    ['Estimasi Nilai Satuan', it.price_per_unit ? formatRupiah(it.price_per_unit) : ''],
+    ['Keterangan', it.notes]
   )
-  return r.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '' && String(v) !== '—')
+  return r.filter(([, v]) => v !== '' && v !== null && v !== undefined)
 }
 </script>
 
 <template>
-  <div class="min-h-screen shell grid place-items-center p-5">
-    <div class="w-full max-w-[460px]">
-      <!-- header -->
-      <div class="flex items-center gap-3 mb-5">
-        <div class="w-9 h-9 grid place-items-center rounded-md bg-acc-500 text-ink-950 font-extrabold text-[13px]">IK</div>
-        <div class="leading-tight">
-          <div class="text-[12.5px] font-bold tracking-wide">INVENTARIS KANTOR</div>
-          <div class="t-label !text-[9.5px]">Hasil Pemindaian QR &amp; Riwayat Aset</div>
+  <div class="min-h-dvh shell grid place-items-center p-4 sm:p-6">
+    <div class="w-full max-w-[480px]">
+      <!-- Header -->
+      <header class="flex items-center justify-between mb-4">
+        <AppLogo size="md" />
+        <div class="flex items-center gap-1.5">
+          <Button
+            :icon="theme.isDark ? 'pi pi-sun' : 'pi pi-moon'"
+            text
+            rounded
+            size="small"
+            severity="secondary"
+            :aria-label="theme.isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'"
+            @click="theme.toggle()"
+          />
+          <span class="t-mono !text-[10px] px-2 py-1 rounded-[6px] border border-line bg-panel text-txt-dim">
+            QR Scan
+          </span>
         </div>
+      </header>
+
+      <!-- Loading Skeleton -->
+      <div v-if="loading" class="panel p-5 space-y-4">
+        <div class="flex gap-3">
+          <div class="skeleton w-14 h-14 rounded-[8px] shrink-0" />
+          <div class="flex-1 space-y-2">
+            <div class="skeleton h-3.5 w-24" />
+            <div class="skeleton h-5 w-48" />
+            <div class="skeleton h-3 w-32" />
+          </div>
+        </div>
+        <div v-for="n in 5" :key="n" class="skeleton h-8 w-full" />
       </div>
 
-      <div v-if="loading" class="panel shell-panel-2 p-10 grid place-items-center">
-        <i class="pi pi-spin pi-spinner text-xl text-acc-500" />
-      </div>
-
-      <div v-else-if="error" class="panel shell-panel-2 p-8 text-center rounded-xl border flex flex-col items-center gap-3 shadow-xl"
-           style="background: var(--paper-1); border-color: var(--line)">
-        <div class="w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 text-2xl">
-          <i class="pi pi-qrcode" />
+      <!-- Error State -->
+      <div v-else-if="error" class="panel p-7 text-center flex flex-col items-center gap-3">
+        <div class="w-12 h-12 rounded-full bg-[var(--sig-bad-bg)] border border-[var(--sig-bad-line)] flex items-center justify-center text-sig-bad text-xl">
+          <i class="pi pi-qrcode" aria-hidden="true" />
         </div>
-        <div class="text-[16px] font-bold text-rose-400">Kode QR Tidak Terdaftar</div>
-        <p class="text-[12.5px] text-ink-300 leading-relaxed max-w-xs">
+        <div class="text-[16px] font-bold text-sig-bad">Kode QR Tidak Terdaftar</div>
+        <p class="text-[12.5px] text-txt-dim leading-relaxed max-w-xs">
           Barang tidak ditemukan di sistem inventaris. Kemungkinan kode QR salah, barang telah dihapus, atau belum diinput ke master data.
         </p>
-        <div class="px-3 py-1.5 rounded text-[11px] t-mono text-ink-400 bg-paper-2 border border-line">
+        <div class="px-3 py-1.5 rounded-[6px] t-mono !text-[11px] text-txt-dim bg-panel-2 border border-line">
           ID: {{ route.params.id }}
         </div>
-        <div class="flex gap-2 w-full mt-2 pt-3 border-t" style="border-color: var(--line)">
+        <div class="flex gap-2 w-full mt-2 pt-4 border-t border-line">
           <Button label="Dashboard" icon="pi pi-th-large" size="small" class="flex-1" @click="router.push('/')" />
           <Button label="Daftar Barang" icon="pi pi-box" size="small" severity="secondary" outlined class="flex-1" @click="router.push('/items')" />
         </div>
       </div>
 
-      <template v-else>
-        <div class="panel shell-panel-2 overflow-hidden shadow-xl">
-          <!-- Photo with Geotag if available -->
-          <div v-if="item.photo_url" class="relative bg-black/40 border-b overflow-hidden cursor-pointer group"
-               style="border-color: var(--line)"
-               @click="selectedPhoto = item.photo_url; photoModal = true">
-            <img :src="item.photo_url" alt="Foto Barang Berstempel Geotag" class="w-full max-h-64 object-contain group-hover:scale-[1.01] transition-transform" />
-            <div class="absolute bottom-2 left-2 bg-black/80 px-2.5 py-1 rounded text-[10.5px] text-white flex items-center gap-1.5">
-              <i class="pi pi-map-marker text-sig-ok text-[10px]" /> Cap GPS Map Camera
+      <!-- Asset Card -->
+      <div v-else-if="item" class="panel overflow-hidden">
+        <!-- Hero Band -->
+        <div class="p-4 border-b border-line bg-panel-2">
+          <div class="flex items-start gap-3.5">
+            <button
+              v-if="item.photo_url"
+              type="button"
+              class="w-16 h-16 rounded-[9px] border border-line overflow-hidden shrink-0 bg-panel cursor-pointer"
+              aria-label="Perbesar foto barang"
+              @click="selectedPhoto = item.photo_url; photoModal = true"
+            >
+              <img :src="item.photo_url" :alt="item.name" class="w-full h-full object-cover" />
+            </button>
+            <div v-else class="w-16 h-16 rounded-[9px] border border-line bg-panel grid place-items-center shrink-0">
+              <i class="pi pi-box text-acc-500 text-xl" aria-hidden="true" />
             </div>
-            <div class="absolute top-2 right-2 bg-black/75 px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <i class="pi pi-search-plus text-[10px]" /> Perbesar
-            </div>
-          </div>
 
-          <!-- Interactive Map Strip if coordinates exist -->
-          <div v-if="hasCoords" class="p-3 border-b text-[11.5px] flex flex-col gap-2"
-               style="border-color: var(--line); background: var(--paper-1)">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-1.5 t-mono">
-                <i class="pi pi-map-marker text-sig-ok" />
-                <span class="font-semibold text-sig-ok">Lokasi GPS:</span>
-                <span>{{ item.geo_lat.toFixed(5) }}, {{ item.geo_lng.toFixed(5) }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 flex-wrap mb-1">
+                <span class="t-mono !text-[10.5px] font-semibold px-1.5 py-0.5 rounded border border-line bg-panel text-txt-dim">
+                  {{ item.sku }}
+                </span>
+                <StatusChip v-if="item.condition_status" :kind="item.condition_status" />
               </div>
-              <div class="flex items-center gap-1">
-                <Button
-                  :label="showMap ? 'Tutup Peta' : 'Peta'"
-                  :icon="showMap ? 'pi pi-times' : 'pi pi-map'"
-                  size="small"
-                  text
-                  :severity="showMap ? 'warn' : 'secondary'"
-                  class="!text-[11px] !py-0.5"
-                  @click="showMap = !showMap"
-                />
-                <a :href="googleMapsUrl" target="_blank" rel="noopener noreferrer" class="inline-flex">
-                  <Button icon="pi pi-external-link" size="small" text v-tooltip.top="'Buka di Google Maps'" class="!p-1" />
-                </a>
+              <h1 class="text-[17px] font-bold tracking-[-0.02em] text-txt leading-snug">
+                {{ item.name }}
+              </h1>
+              <div class="text-[12px] text-txt-dim mt-1 flex items-center gap-1.5">
+                <i class="pi pi-map-marker text-[10.5px] text-acc-500" aria-hidden="true" />
+                <span>{{ item.location || 'Lokasi belum ditentukan' }}</span>
               </div>
             </div>
-
-            <!-- OpenStreetMap Embed Frame -->
-            <div v-if="showMap" class="w-full h-44 rounded border overflow-hidden mt-1" style="border-color: var(--line)">
-              <iframe
-                :src="osmEmbedUrl"
-                class="w-full h-full border-0"
-                loading="lazy"
-                title="Peta Lokasi OpenStreetMap"
-              />
-            </div>
           </div>
 
-          <!-- identity strip -->
-          <div class="relative p-5 border-b" style="border-color: var(--line)">
-            <span class="absolute left-0 top-0 bottom-0 w-[3px] bg-acc-500" />
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <div class="t-label mb-1">Barang Teridentifikasi</div>
-                <h1 class="text-[20px] font-bold leading-tight tracking-tight">{{ item.name }}</h1>
-                <div class="t-mono mt-1.5 text-ink-400">{{ item.sku }}</div>
-              </div>
-              <img :src="`/api/barcode/${route.params.id}.png?fmt=qr&size=120`"
-                   class="w-[84px] h-[84px] shrink-0 rounded-md border bg-white p-1"
-                   style="border-color: var(--line)" />
-            </div>
-            <div class="flex flex-wrap gap-1.5 mt-3.5">
-              <Tag
-                :severity="item.track_stock !== false ? 'warn' : 'info'"
-                :value="item.track_stock !== false ? 'KONSUMABEL' : 'ASET TETAP'"
-                class="!text-[10px]"
-              />
-              <Tag v-if="item.item_code" severity="info" class="t-mono !text-[10px]" :value="'KODE: ' + item.item_code" />
-              <Tag v-if="item.register_number" severity="secondary" class="t-mono !text-[10px]" :value="'REG: ' + item.register_number" />
-              <StatusChip :kind="item.condition_status" />
-              <Tag v-if="item.is_available" severity="success" value="TERSEDIA" icon="pi pi-check" />
-              <Tag v-else severity="danger" value="TIDAK TERSEDIA" />
-            </div>
-          </div>
-
-          <!-- Unit Fisik Terpindai Callout (jika QR adalah unit spesifik) -->
-          <div v-if="item.scanned_unit" class="p-3 bg-indigo-500/10 border-b border-indigo-500/20 text-[11.5px] flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <i class="pi pi-check-circle text-indigo-400" />
-              <span>Unit Terpindai: <strong>Unit {{ item.scanned_unit.unit_number }}</strong> (Reg: {{ item.scanned_unit.register_number || '—' }})</span>
-            </div>
-            <span class="t-mono text-[10.5px] text-indigo-400 font-semibold">{{ item.scanned_unit.barcode }}</span>
-          </div>
-
-          <!-- stock / asset hero -->
-          <!-- A: Barang Konsumabel -->
-          <div v-if="item.track_stock !== false" class="grid grid-cols-2 gap-px" style="background: var(--line-soft)">
-            <div class="p-4" style="background: var(--panel-2)">
-              <div class="t-label">Stok Saat Ini</div>
-              <div class="t-num text-[28px] font-extrabold mt-1 leading-none"
-                   :class="item.current_stock <= item.min_stock ? 'text-sig-bad' : 'text-acc-500'">
+          <!-- Stock / Asset Strip -->
+          <div class="mt-3.5 pt-3 border-t border-line flex items-center justify-between gap-2">
+            <div v-if="item.track_stock !== false" class="flex items-baseline gap-1.5">
+              <span class="text-[11px] uppercase tracking-[0.05em] text-txt-dim font-semibold">Stok Saat Ini</span>
+              <span class="t-num text-[20px] font-bold" :class="item.current_stock <= item.min_stock ? 'text-sig-bad' : 'text-sig-ok'">
                 {{ item.current_stock }}
-              </div>
-              <div class="text-[11px] text-ink-400 mt-1">{{ item.unit }}</div>
-            </div>
-            <div class="p-4" style="background: var(--panel-2)">
-              <div class="t-label">Batas Minimum</div>
-              <div class="t-num text-[28px] font-extrabold mt-1 leading-none text-ink-300">{{ item.min_stock }}</div>
-              <div class="text-[11px] text-ink-400 mt-1">{{ item.min_stock > item.current_stock ? 'Stok menipis' : 'Stok aman' }}</div>
-            </div>
-          </div>
-
-          <!-- B: Aset Tetap / BMD -->
-          <div v-else class="grid grid-cols-2 gap-px" style="background: var(--line-soft)">
-            <div class="p-4" style="background: var(--panel-2)">
-              <div class="t-label">Kondisi Fisik</div>
-              <div class="text-[16px] font-extrabold mt-1 leading-snug"
-                   :class="item.condition_status === 'Baik (B)' || item.condition_status === 'Berfungsi' ? 'text-sig-ok' : 'text-sig-bad'">
-                {{ item.condition_status }}
-              </div>
-              <div class="text-[11px] text-ink-400 mt-1">Status kelaikan unit</div>
-            </div>
-            <div class="p-4" style="background: var(--panel-2)">
-              <div class="t-label">Total Unit Fisik</div>
-              <div class="t-num text-[28px] font-extrabold mt-1 leading-none text-acc-500">
-                {{ item.units?.length || item.current_stock || 1 }}
-              </div>
-              <div class="text-[11px] text-ink-400 mt-1">Aset terdaftar di sistem</div>
-            </div>
-          </div>
-
-          <!-- Tabs Switcher: Detail vs Riwayat Servis -->
-          <div class="flex border-b text-[12px] font-bold" style="border-color: var(--line); background: var(--paper-2)">
-            <button
-              class="flex-1 py-2.5 px-3 flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-b-2"
-              :class="activeTab === 'detail' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
-              @click="activeTab = 'detail'"
-            >
-              <i class="pi pi-info-circle text-[11px]" /> Detail Spesifikasi
-            </button>
-            <button
-              class="flex-1 py-2.5 px-3 flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-b-2"
-              :class="activeTab === 'maintenance' ? 'border-acc-500 text-acc-500 bg-paper-1' : 'border-transparent text-ink-400 hover:text-ink-200'"
-              @click="activeTab = 'maintenance'"
-            >
-              <i class="pi pi-wrench text-[11px]" />
-              <span>Riwayat Servis</span>
-              <span v-if="maintenances.length" class="text-[10px] px-1.5 py-0.2 rounded-full bg-acc-500 text-ink-950">
-                {{ maintenances.length }}
               </span>
-            </button>
-          </div>
+              <span class="text-[12px] text-txt-dim">{{ item.unit }}</span>
+            </div>
+            <div v-else class="flex items-center gap-2">
+              <span class="text-[11px] font-semibold text-sig-info bg-[var(--sig-info-bg)] border border-[var(--sig-info-line)] px-2 py-0.5 rounded-[5px]">
+                Aset Tetap (BMD)
+              </span>
+              <span v-if="item.item_code" class="t-mono !text-[11px] text-txt-dim">{{ item.item_code }}</span>
+            </div>
 
-          <!-- Tab 1: Detail Rows -->
-          <dl v-if="activeTab === 'detail'" class="divide-y" style="border-color: var(--line-soft)">
-            <div v-for="([k, v]) in rows()" :key="String(k)"
-                 class="flex items-start justify-between gap-4 px-5 py-2.5">
-              <dt class="t-label shrink-0 pt-0.5">{{ k }}</dt>
-              <dd class="text-[12.5px] font-medium text-right break-words">{{ v }}</dd>
+            <Button
+              label="Laporkan Masalah"
+              icon="pi pi-megaphone"
+              size="small"
+              severity="warn"
+              outlined
+              @click="router.push(`/lapor/${item.id}`)"
+            />
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="grid grid-cols-2 border-b border-line bg-panel">
+          <button
+            type="button"
+            class="py-2.5 text-[12.5px] font-semibold border-b-2 transition-colors cursor-pointer"
+            :class="activeTab === 'detail' ? 'border-acc-500 text-acc-500' : 'border-transparent text-txt-dim hover:text-txt'"
+            @click="activeTab = 'detail'"
+          >
+            Spesifikasi Aset
+          </button>
+          <button
+            type="button"
+            class="py-2.5 text-[12.5px] font-semibold border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            :class="activeTab === 'maintenance' ? 'border-acc-500 text-acc-500' : 'border-transparent text-txt-dim hover:text-txt'"
+            @click="activeTab = 'maintenance'"
+          >
+            <span>Riwayat Servis</span>
+            <span class="t-mono !text-[10.5px] px-1.5 py-0.5 rounded bg-panel-2 border border-line text-txt-dim">
+              {{ maintenances.length }}
+            </span>
+          </button>
+        </div>
+
+        <!-- Tab 1: Specification -->
+        <div v-if="activeTab === 'detail'" class="p-4 space-y-4">
+          <dl class="divide-y divide-line text-[12.5px]">
+            <div v-for="[k, v] in rows()" :key="k" class="py-2 flex items-start justify-between gap-4">
+              <dt class="text-txt-dim shrink-0">{{ k }}</dt>
+              <dd class="font-medium text-txt text-right break-words">{{ v }}</dd>
             </div>
           </dl>
 
-          <!-- Tab 2: Riwayat Servis & Kalibrasi (View Publik) -->
-          <div v-else class="p-4 flex flex-col gap-3">
-            <div v-if="!maintenances.length" class="text-center py-8 text-ink-400 text-[12px] flex flex-col items-center gap-2">
-              <i class="pi pi-wrench text-2xl text-ink-500" />
-              <span>Belum ada catatan servis atau kalibrasi untuk barang ini.</span>
-            </div>
-
-            <div v-else class="flex flex-col gap-2.5">
-              <div
-                v-for="(m, idx) in maintenances"
-                :key="idx"
-                class="rounded-lg p-3 border text-[12px] flex flex-col gap-1.5"
-                style="background: var(--paper-1); border-color: var(--line)"
-              >
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-1.5">
-                    <span
-                      class="px-2 py-0.5 rounded text-[10.5px] font-bold"
-                      :class="m.service_type === 'Kalibrasi' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' : 'bg-acc-500/20 text-acc-400 border border-acc-500/40'"
-                    >
-                      {{ m.service_type }}
-                    </span>
-                    <span class="font-semibold">{{ m.service_date }}</span>
-                  </div>
-                  <span v-if="m.vendor_or_technician" class="text-[11px] text-ink-400">
-                    {{ m.vendor_or_technician }}
-                  </span>
-                </div>
-
-                <p v-if="m.description" class="text-[11.5px] text-ink-300 leading-snug">
-                  {{ m.description }}
-                </p>
-
-                <div v-if="m.next_service_date" class="flex items-center gap-1.5 text-[11px] font-semibold text-sig-ok pt-0.5">
-                  <i class="pi pi-calendar text-[10px]" />
-                  <span>Jatuh Tempo Berikutnya: {{ m.next_service_date }}</span>
-                </div>
-
-                <div v-if="m.photo_url" class="mt-1">
-                  <button
-                    class="text-[10.5px] text-acc-500 hover:underline flex items-center gap-1 cursor-pointer"
-                    @click="selectedPhoto = m.photo_url; photoModal = true"
-                  >
-                    <i class="pi pi-image text-[10px]" /> Lihat Foto Bukti Nota
-                  </button>
-                </div>
+          <!-- Geotag Location Block -->
+          <div v-if="hasCoords" class="p-3 rounded-[8px] border border-line bg-panel-2 space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5 text-[12px] font-semibold text-txt">
+                <i class="pi pi-compass text-acc-500 text-[12px]" aria-hidden="true" />
+                <span>Koordinat GPS Tercatat</span>
               </div>
+              <span class="t-mono !text-[10.5px] text-txt-dim">
+                {{ Number(item.geo_lat).toFixed(5) }}, {{ Number(item.geo_lng).toFixed(5) }}
+              </span>
             </div>
-          </div>
-        </div>
 
-        <!-- Tombol Lapor Kerusakan / Kendala Publik -->
-        <div class="mt-3 flex flex-col gap-1.5">
-          <Button
-            label="⚠️ Laporkan Kerusakan / Kendala Barang Ini"
-            icon="pi pi-megaphone"
-            class="w-full !py-2.5 !text-xs !font-bold !bg-rose-600 hover:!bg-rose-500 !text-white !border-0 !rounded-xl shadow-lg shadow-rose-600/30 cursor-pointer"
-            @click="router.push(`/lapor?id=${item.id}&sku=${item.sku}`)"
-          />
-          <div class="text-center">
-            <button
-              type="button"
-              class="text-[11px] text-ink-400 hover:text-acc-500 underline cursor-pointer"
-              @click="router.push('/lapor')"
-            >
-              Layanan Aspirasi &amp; Lacak Status Aduan Publik
-            </button>
-          </div>
-        </div>
-
-        <div class="flex gap-2 mt-3">
-          <Button
-            v-if="isLoggedIn && item.id"
-            label="Buka Rincian Lengkap"
-            icon="pi pi-external-link"
-            size="small"
-            class="flex-1"
-            severity="primary"
-            @click="router.push('/items/' + item.id)"
-          />
-          <Button
-            v-else
-            label="Buka Panel"
-            icon="pi pi-sign-in"
-            size="small"
-            class="flex-1"
-            @click="router.push('/')"
-          />
-          <Button label="Daftar Barang" icon="pi pi-box" size="small" severity="secondary" outlined
-                  class="flex-1" @click="router.push('/items')" />
-        </div>
-
-        <p class="text-[11px] mt-4 text-ink-600 leading-relaxed text-center">
-          Pembaruan data dan pencatatan servis resmi memerlukan login petugas di sistem.
-        </p>
-      </template>
-
-      <!-- Lightbox Modal Foto Geotag & Nota -->
-      <div
-        v-if="photoModal && selectedPhoto"
-        class="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 backdrop-blur-xs"
-        @click.self="photoModal = false"
-      >
-        <div class="relative max-w-xl w-full bg-[var(--paper-1)] rounded-lg overflow-hidden border shadow-2xl flex flex-col"
-             style="border-color: var(--line)">
-          <div class="flex items-center justify-between px-3 py-2 border-b" style="border-color: var(--line)">
-            <span class="text-[12px] font-bold flex items-center gap-1.5">
-              <i class="pi pi-image text-acc-500" /> Foto Berstempel Geotag
-            </span>
-            <Button icon="pi pi-times" text rounded size="small" severity="secondary" @click="photoModal = false" />
-          </div>
-          <div class="bg-black p-2 flex items-center justify-center max-h-[70vh] overflow-hidden">
-            <img :src="selectedPhoto" alt="Foto Geotag Asli" class="max-h-[65vh] object-contain rounded" />
-          </div>
-          <div class="flex items-center justify-between px-3 py-2 border-t text-[11px]" style="border-color: var(--line)">
-            <span v-if="hasCoords" class="t-mono text-sig-ok">
-              GPS: {{ item.geo_lat.toFixed(5) }}, {{ item.geo_lng.toFixed(5) }}
-            </span>
-            <div class="flex gap-1.5 ml-auto">
-              <a v-if="hasCoords" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer">
-                <Button label="Google Maps" icon="pi pi-map-marker" size="small" text />
-              </a>
+            <div class="flex flex-wrap gap-2">
               <Button
-                label="Unduh (JPG)"
-                icon="pi pi-download"
+                :label="showMap ? 'Sembunyikan Peta' : 'Lihat Peta Lokasi'"
+                icon="pi pi-map"
                 size="small"
-                text
-                severity="success"
-                @click="downloadImage(selectedPhoto, (item?.sku || 'foto') + '_geotag.jpg')"
+                severity="secondary"
+                outlined
+                class="flex-1"
+                @click="showMap = !showMap"
               />
+              <a
+                :href="googleMapsUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[7px] border border-line bg-panel hover:border-[var(--acc-border)] text-[12px] font-semibold text-txt transition-colors"
+              >
+                <i class="pi pi-external-link text-[11px]" aria-hidden="true" />
+                <span>Google Maps</span>
+              </a>
+            </div>
+
+            <iframe
+              v-if="showMap"
+              :src="osmEmbedUrl"
+              title="Peta lokasi aset"
+              class="w-full h-48 rounded-[7px] border border-line"
+              loading="lazy"
+            />
+          </div>
+
+          <div class="flex items-center justify-between gap-2 pt-2 border-t border-line">
+            <Button
+              v-if="isLoggedIn"
+              label="Buka di Panel Admin"
+              icon="pi pi-arrow-right"
+              iconPos="right"
+              size="small"
+              class="flex-1"
+              @click="router.push(`/items/${item.id}`)"
+            />
+            <Button
+              v-else
+              label="Masuk Petugas"
+              icon="pi pi-sign-in"
+              size="small"
+              severity="secondary"
+              outlined
+              class="flex-1"
+              @click="router.push(`/login?redirect=/items/${item.id}`)"
+            />
+          </div>
+        </div>
+
+        <!-- Tab 2: Maintenance History -->
+        <div v-else class="p-4">
+          <div v-if="!maintenances.length" class="py-10 text-center">
+            <i class="pi pi-wrench text-2xl text-txt-muted mb-2 block" aria-hidden="true" />
+            <div class="text-[13px] font-semibold text-txt">Belum ada catatan pemeliharaan</div>
+            <div class="text-[12px] text-txt-dim mt-1">Riwayat servis dan kalibrasi alat ini akan tampil di sini.</div>
+          </div>
+
+          <div v-else class="space-y-2.5">
+            <div
+              v-for="m in maintenances"
+              :key="m.id"
+              class="p-3 rounded-[8px] border border-line bg-panel-2 space-y-1.5 text-[12px]"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-semibold text-acc-500">{{ m.service_type }}</span>
+                <span class="t-mono !text-[11px] text-txt-dim">{{ m.service_date }}</span>
+              </div>
+              <div v-if="m.vendor_or_technician" class="text-txt-dim text-[11.5px]">
+                Pelaksana: <strong class="text-txt">{{ m.vendor_or_technician }}</strong>
+              </div>
+              <p v-if="m.description" class="text-txt leading-relaxed">{{ m.description }}</p>
+              <div class="flex items-center justify-between pt-1.5 border-t border-line-soft text-[11px]">
+                <span v-if="m.next_service_date" class="text-sig-ok font-semibold">
+                  Berikutnya: {{ m.next_service_date }}
+                </span>
+                <span v-else />
+                <a
+                  v-if="safeHref(m.photo_url)"
+                  :href="safeHref(m.photo_url)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-acc-500 hover:underline font-medium"
+                >
+                  Lihat Bukti
+                </a>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- Photo Lightbox -->
+      <Dialog v-model:visible="photoModal" modal header="Foto Aset" :style="{ width: '92vw', maxWidth: '640px' }">
+        <div class="flex flex-col items-center gap-3">
+          <img :src="selectedPhoto" alt="Foto aset diperbesar" class="max-h-[70vh] w-auto rounded-[8px] border border-line object-contain" />
+          <Button
+            label="Unduh Foto"
+            icon="pi pi-download"
+            size="small"
+            severity="secondary"
+            outlined
+            @click="downloadImage(selectedPhoto, `${item?.sku || 'aset'}.jpg`)"
+          />
+        </div>
+      </Dialog>
     </div>
   </div>
 </template>

@@ -7,7 +7,6 @@ import Panel from '@/components/Panel.vue'
 import StatCard from '@/components/StatCard.vue'
 import StatusChip from '@/components/StatusChip.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -77,7 +76,7 @@ async function fetchSecurity(showToast = false) {
       securityStats.value = res.data.stats
     }
     if (showToast) {
-      toast.add({ severity: 'info', summary: 'Data Keamanan Diperbarui', life: 2000 })
+      toast.add({ severity: 'info', summary: 'Data keamanan diperbarui', life: 2000 })
     }
   } catch (err: any) {
     if (showToast) {
@@ -91,7 +90,7 @@ async function fetchSecurity(showToast = false) {
 async function unblockIP(ip: string) {
   try {
     await api.post('/audit/security/unblock', { ip })
-    toast.add({ severity: 'success', summary: 'IP Berhasil Dibuka', detail: `Blokir untuk IP ${ip} telah dicabut`, life: 3000 })
+    toast.add({ severity: 'success', summary: 'IP dibuka', detail: `Blokir untuk IP ${ip} telah dicabut`, life: 3000 })
     fetchSecurity()
   } catch (err: any) {
     toast.add({ severity: 'error', summary: 'Gagal membuka blokir IP', detail: err.response?.data?.error || err.message, life: 3000 })
@@ -158,11 +157,11 @@ function prettyJSON(raw: any) {
 </script>
 
 <template>
-  <div class="pb-16 w-full">
+  <div>
     <PageHeader
       crumb="Administrasi"
       title="Audit Log &amp; Keamanan"
-      sub="Pemantauan integritas data basis data dan sistem pertahanan anti-serangan (burst attack &amp; brute-force)"
+      sub="Pemantauan integritas data basis data dan sistem pertahanan anti-serangan (burst attack &amp; brute-force)."
     >
       <template #actions>
         <Button
@@ -198,48 +197,52 @@ function prettyJSON(raw: any) {
       </template>
     </PageHeader>
 
-    <!-- Tab Switcher Navigation -->
-    <div class="flex items-center gap-2 p-1 rounded-xl mb-4 w-fit border" style="background: var(--panel-2); border-color: var(--line)">
+    <!-- Tab Switcher -->
+    <div class="inline-flex items-center gap-1.5 p-1 rounded-[9px] mb-5 border border-line bg-panel-2">
       <button
-        @click="activeTab = 'db'"
-        class="px-4 py-2 rounded-lg text-[13px] flex items-center gap-2 transition-all cursor-pointer"
+        type="button"
+        class="px-3.5 py-1.5 rounded-[7px] text-[12.5px] flex items-center gap-2 transition-colors cursor-pointer"
         :class="activeTab === 'db'
-          ? 'font-bold shadow-xs border text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800'
-          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border-transparent'"
+          ? 'font-semibold border border-[var(--acc-border)] bg-panel text-acc-500 shadow-[var(--shadow-sm)]'
+          : 'text-txt-dim hover:text-txt border border-transparent'"
+        @click="activeTab = 'db'"
       >
-        <i class="pi pi-database text-xs" />
+        <i class="pi pi-database text-[11.5px]" aria-hidden="true" />
         <span>Log Mutasi Database</span>
-        <Tag :value="total" severity="secondary" class="!text-[10.5px] !py-0.5" />
+        <span class="t-mono !text-[10.5px] px-1.5 py-0.5 rounded bg-panel-2 border border-line text-txt-dim">{{ total }}</span>
       </button>
 
       <button
-        @click="activeTab = 'burst'"
-        class="px-4 py-2 rounded-lg text-[13px] flex items-center gap-2 transition-all cursor-pointer relative"
+        type="button"
+        class="px-3.5 py-1.5 rounded-[7px] text-[12.5px] flex items-center gap-2 transition-colors cursor-pointer"
         :class="activeTab === 'burst'
-          ? 'font-bold shadow-xs border text-rose-600 dark:text-rose-400 bg-white dark:bg-slate-900 border-rose-200 dark:border-rose-800'
-          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border-transparent'"
+          ? 'font-semibold border border-[var(--sig-bad-line)] bg-panel text-sig-bad shadow-[var(--shadow-sm)]'
+          : 'text-txt-dim hover:text-txt border border-transparent'"
+        @click="activeTab = 'burst'"
       >
-        <i class="pi pi-shield text-xs" />
+        <i class="pi pi-shield text-[11.5px]" aria-hidden="true" />
         <span>Deteksi Burst Attack &amp; Keamanan</span>
         <span
           v-if="blockedIPs.length > 0"
-          class="px-1.5 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-500 text-white animate-pulse"
+          class="t-mono !text-[10.5px] px-1.5 py-0.5 rounded bg-[var(--sig-bad-bg)] border border-[var(--sig-bad-line)] text-sig-bad font-bold"
         >
-          {{ blockedIPs.length }} Diblokir
+          {{ blockedIPs.length }} diblokir
         </span>
-        <Tag v-else :value="securityEvents.length" severity="secondary" class="!text-[10.5px] !py-0.5" />
+        <span v-else class="t-mono !text-[10.5px] px-1.5 py-0.5 rounded bg-panel-2 border border-line text-txt-dim">
+          {{ securityEvents.length }}
+        </span>
       </button>
     </div>
 
     <!-- TAB 1: DATABASE AUDIT LOG -->
     <div v-if="activeTab === 'db'">
-      <!-- Audit KPI Summary Strip -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
         <StatCard
           label="Total Log Aktivitas"
           :value="counts.total"
           icon="pi pi-shield"
           tone="accent"
+          featured
           hint="Jejak mutasi database"
         />
         <StatCard
@@ -254,121 +257,92 @@ function prettyJSON(raw: any) {
           :value="counts.upd"
           icon="pi pi-sync"
           tone="info"
-          hint="Modifikasi rekaman"
+          hint="Perubahan entri eksisting"
         />
         <StatCard
           label="Delete (Hapus)"
           :value="counts.del"
           icon="pi pi-trash"
           tone="bad"
-          hint="Data dihapus dari sistem"
+          hint="Penghapusan data sistem"
         />
       </div>
 
-      <!-- Clean Unified Toolbar -->
-      <div class="panel p-3 mb-4 flex flex-wrap items-center justify-between gap-2.5">
-        <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-          <div class="relative flex-1 min-w-[220px] max-w-md">
-            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-xs" />
-            <InputText
-              v-model="q"
-              placeholder="Cari tabel, row ID, atau aksi…"
-              class="w-full !pl-8 !text-[12px] !py-1.5"
-            />
-          </div>
-
-          <Select
-            v-model="opFilter"
-            :options="opOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Semua Aksi"
-            class="!text-[12px] !py-0.5 w-[180px]"
-          />
-
-          <Button
-            v-if="q || opFilter"
-            label="Reset"
-            icon="pi pi-times"
-            text
-            size="small"
-            severity="secondary"
-            @click="q = ''; opFilter = ''"
+      <!-- Filter Toolbar -->
+      <div class="panel p-3 mb-4 flex flex-wrap items-center gap-2.5">
+        <div class="relative flex-1 min-w-[220px]">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-txt-dim text-[12px]" aria-hidden="true" />
+          <InputText
+            v-model="q"
+            placeholder="Filter nama tabel, ID baris, atau aksi pada halaman ini…"
+            class="w-full !pl-8 !text-[12.5px]"
           />
         </div>
-
-        <div class="flex items-center gap-2">
-          <Tag :value="filtered.length + ' ditampilkan'" severity="secondary" class="!text-[11px]" />
-        </div>
+        <Select
+          v-model="opFilter"
+          :options="opOptions"
+          optionLabel="label"
+          optionValue="value"
+          class="w-full sm:w-48 !text-[12.5px]"
+        />
       </div>
 
-      <!-- Audit Table Panel with Pagination -->
-      <Panel title="Jejak Mutasi Database" icon="pi pi-database" dense>
+      <Panel title="Jejak Perubahan Basis Data" icon="pi pi-database" dense>
         <template #actions>
-          <Tag :value="total + ' total log'" severity="secondary" class="!text-[11px]" />
+          <span class="t-mono !text-[11px] text-txt-dim">{{ range }}</span>
         </template>
 
-        <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat audit log…" />
+        <EmptyState v-if="loading" loading title="Memuat log audit…" />
+
         <EmptyState
           v-else-if="!filtered.length"
-          icon="pi pi-shield"
+          icon="pi pi-database"
           title="Tidak ada catatan audit"
-          sub="Jejak audit terekam otomatis saat ada modifikasi data barang atau pengguna."
+          sub="Belum ada perubahan data yang sesuai dengan filter."
         />
 
         <div v-else class="overflow-x-auto">
-          <table class="w-full text-[12.5px]">
+          <table class="w-full text-[12.5px] border-collapse">
             <thead>
-              <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">Waktu</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[170px]" style="color: var(--txt-dim)">Tabel Target</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[120px]" style="color: var(--txt-dim)">Aksi</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Row ID / Kunci</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[80px] text-right" style="color: var(--txt-dim)">Detail</th>
+              <tr class="text-left border-b border-line bg-panel-2 text-[11px] uppercase tracking-[0.05em] text-txt-dim font-semibold">
+                <th class="px-3.5 py-2.5 w-[170px]">Waktu</th>
+                <th class="px-3.5 py-2.5 w-[120px]">Operasi</th>
+                <th class="px-3.5 py-2.5 w-[150px]">Tabel</th>
+                <th class="px-3.5 py-2.5">Row ID</th>
+                <th class="px-3.5 py-2.5 w-[90px] text-right">Detail</th>
               </tr>
             </thead>
-            <tbody class="divide-y" style="border-color: var(--line)">
-              <template v-for="(l, i) in filtered" :key="i">
+            <tbody class="divide-y divide-line">
+              <template v-for="(l, idx) in filtered" :key="l.id || idx">
                 <tr
-                  class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
-                  @click="expanded = expanded === l.row_id + i ? null : l.row_id + i"
+                  class="data-row cursor-pointer"
+                  :class="{ 'data-row-active': expanded === (l.id || String(idx)) }"
+                  @click="expanded = expanded === (l.id || String(idx)) ? null : (l.id || String(idx))"
                 >
-                  <td class="px-4 py-3 whitespace-nowrap text-[12px]" style="color: var(--txt-dim)">{{ l.at }}</td>
-                  <td class="px-4 py-3">
-                    <span class="t-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 px-2 py-0.5 rounded">
-                      {{ l.table_name }}
-                    </span>
+                  <td class="px-3.5 py-2.5 t-mono !text-[11.5px] text-txt-dim whitespace-nowrap">
+                    {{ l.changed_at || l.created_at }}
                   </td>
-                  <td class="px-4 py-3"><StatusChip :kind="l.op" /></td>
-                  <td class="px-4 py-3">
-                    <span class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ l.row_id || '—' }}</span>
-                  </td>
-                  <td class="px-4 py-3 text-right">
+                  <td class="px-3.5 py-2.5"><StatusChip :kind="l.op" /></td>
+                  <td class="px-3.5 py-2.5 t-mono font-semibold text-txt">{{ l.table_name }}</td>
+                  <td class="px-3.5 py-2.5 t-mono !text-[11.5px] text-txt-dim truncate max-w-[260px]">{{ l.row_id || '—' }}</td>
+                  <td class="px-3.5 py-2.5 text-right">
                     <i
-                      class="pi text-[11px]"
-                      :class="expanded === l.row_id + i ? 'pi-chevron-up' : 'pi-chevron-down'"
-                      style="color: var(--txt-dim)"
+                      class="pi text-[11px] text-txt-dim"
+                      :class="expanded === (l.id || String(idx)) ? 'pi-chevron-up' : 'pi-chevron-down'"
+                      aria-hidden="true"
                     />
                   </td>
                 </tr>
-
-                <!-- JSON Diff Expanded Row -->
-                <tr v-if="expanded === l.row_id + i">
-                  <td colspan="5" class="px-4 py-3.5" style="background: var(--panel-2)">
-                    <div class="grid md:grid-cols-2 gap-3 pt-1">
-                      <div class="flex flex-col gap-1.5">
-                        <div class="text-[11px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <i class="pi pi-minus-circle text-[10px]" />
-                          Data Sebelumnya (Old Data)
-                        </div>
-                        <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: #172033; border-color: #27354a; color: #f8fafc">{{ prettyJSON(l.old_data) }}</pre>
+                <tr v-if="expanded === (l.id || String(idx))" class="bg-panel-2">
+                  <td colspan="5" class="p-4">
+                    <div class="grid md:grid-cols-2 gap-3">
+                      <div>
+                        <div class="t-mono !text-[10.5px] uppercase tracking-[0.06em] text-txt-dim mb-1.5">Nilai Sebelum (old_data)</div>
+                        <pre class="p-3 rounded-[7px] border border-line bg-panel t-mono !text-[11px] text-txt overflow-x-auto max-h-60">{{ prettyJSON(l.old_data) }}</pre>
                       </div>
-                      <div class="flex flex-col gap-1.5">
-                        <div class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <i class="pi pi-plus-circle text-[10px]" />
-                          Data Baru (New Data)
-                        </div>
-                        <pre class="panel !rounded-lg p-3 t-mono text-[11px] overflow-x-auto max-h-[220px]" style="background: #172033; border-color: #27354a; color: #f8fafc">{{ prettyJSON(l.new_data) }}</pre>
+                      <div>
+                        <div class="t-mono !text-[10.5px] uppercase tracking-[0.06em] text-txt-dim mb-1.5">Nilai Sesudah (new_data)</div>
+                        <pre class="p-3 rounded-[7px] border border-line bg-panel t-mono !text-[11px] text-txt overflow-x-auto max-h-60">{{ prettyJSON(l.new_data) }}</pre>
                       </div>
                     </div>
                   </td>
@@ -380,145 +354,87 @@ function prettyJSON(raw: any) {
 
         <template #footer>
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+            <span class="t-mono !text-[11.5px] text-txt-dim">{{ range }}</span>
             <div class="flex items-center gap-2">
-              <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
-              <Button
-                icon="pi pi-angle-left"
-                size="small"
-                text
-                severity="secondary"
-                :disabled="page === 0"
-                @click="page--"
-              />
-              <span class="t-num text-[12px] px-1 font-semibold" style="color: var(--txt)">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-              <Button
-                icon="pi pi-angle-right"
-                size="small"
-                text
-                severity="secondary"
-                :disabled="page >= lastPage"
-                @click="page++"
-              />
+              <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] w-[96px]" />
+              <Button icon="pi pi-angle-left" size="small" text severity="secondary" aria-label="Halaman sebelumnya" :disabled="page === 0" @click="page--" />
+              <span class="t-num text-[12px] px-1 text-txt">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+              <Button icon="pi pi-angle-right" size="small" text severity="secondary" aria-label="Halaman berikutnya" :disabled="page >= lastPage" @click="page++" />
             </div>
           </div>
         </template>
       </Panel>
     </div>
 
-    <!-- TAB 2: BURST ATTACK & SECURITY DEFENSE -->
-    <div v-else class="space-y-4">
-      <!-- Security Status Banner -->
-      <div class="panel p-4 flex flex-wrap items-center justify-between gap-4 border-l-4 !border-l-emerald-500" style="background: var(--panel-2)">
-        <div class="flex items-center gap-3.5">
-          <div class="w-10 h-10 rounded-xl grid place-items-center bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-base">
-            <i class="pi pi-shield" />
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="text-[14px] font-bold" style="color: var(--txt)">Perlindungan Burst Attack &amp; Anti Brute-Force</span>
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                ● AKTIF
-              </span>
-            </div>
-            <p class="text-[12px] mt-0.5 leading-relaxed" style="color: var(--txt-dim)">
-              Membatasi flood request berlebih (ambang: <strong>{{ securityStats.burst_limit }}</strong>) dan menahan serangan brute-force login (ambang: <strong>{{ securityStats.login_limit }}</strong>).
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <Button
-            label="Segarkan Status"
-            icon="pi pi-refresh"
-            size="small"
-            severity="secondary"
-            outlined
-            :loading="securityLoading"
-            @click="fetchSecurity(true)"
-          />
-        </div>
-      </div>
-
-      <!-- KPI Summary Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <!-- TAB 2: SECURITY & BURST PROTECTION -->
+    <div v-else class="space-y-5">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <StatCard
-          label="Total Insiden Terdeteksi"
-          :value="securityStats.total_incidents"
-          icon="pi pi-exclamation-triangle"
-          :tone="securityStats.total_incidents > 0 ? 'bad' : 'accent'"
-          hint="Serangan burst & brute force"
+          label="Status Proteksi"
+          :value="securityStats.protection_status"
+          icon="pi pi-shield"
+          tone="ok"
+          featured
+          :hint="`Burst ${securityStats.burst_limit} · Login ${securityStats.login_limit}`"
         />
         <StatCard
-          label="IP Sedang Dibatasi"
+          label="IP Sedang Diblokir"
           :value="securityStats.blocked_ips_count"
           icon="pi pi-ban"
-          :tone="securityStats.blocked_ips_count > 0 ? 'bad' : 'ok'"
-          hint="IP yang ditahan sementara"
+          :tone="securityStats.blocked_ips_count > 0 ? 'bad' : 'neutral'"
+          hint="Karantina aktif otomatis"
         />
         <StatCard
-          label="Serangan Brute Force"
-          :value="securityStats.brute_force_count"
-          icon="pi pi-key"
-          tone="info"
-          hint="Percobaan login berulang"
-        />
-        <StatCard
-          label="Lonjakan Burst Request"
+          label="Deteksi Burst Attack"
           :value="securityStats.burst_attack_count"
           icon="pi pi-bolt"
-          tone="accent"
-          hint="Flood request abnormal"
+          tone="warn"
+          hint="Lonjakan request abnormal"
+        />
+        <StatCard
+          label="Brute-Force Login"
+          :value="securityStats.brute_force_count"
+          icon="pi pi-key"
+          tone="bad"
+          hint="Percobaan sandi berulang"
         />
       </div>
 
-      <!-- Section: Currently Blocked / Throttled IPs -->
-      <Panel title="Daftar IP Sedang Ditahan / Diblokir Sementara" icon="pi pi-ban" dense>
+      <!-- Blocked IPs -->
+      <Panel title="IP Dalam Karantina Blokir Aktif" icon="pi pi-ban" dense>
         <template #actions>
-          <Tag :value="blockedIPs.length + ' IP'" :severity="blockedIPs.length ? 'danger' : 'secondary'" class="!text-[11px]" />
+          <span class="t-mono !text-[11px] text-txt-dim">{{ blockedIPs.length }} IP</span>
         </template>
 
         <EmptyState
           v-if="!blockedIPs.length"
           icon="pi pi-check-circle"
+          tone="ok"
           title="Tidak ada IP yang sedang diblokir"
-          sub="Seluruh lalu lintas jaringan berada dalam ambang batas normal. Sistem terus memantau setiap request secara otomatis."
+          sub="Semua lalu lintas permintaan saat ini berada dalam batas wajar."
         />
 
         <div v-else class="overflow-x-auto">
-          <table class="w-full text-[12.5px]">
+          <table class="w-full text-[12.5px] border-collapse">
             <thead>
-              <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">IP Address</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">Tipe Pelanggaran</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px]" style="color: var(--txt-dim)">Jumlah Hit</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px]" style="color: var(--txt-dim)">Terakhir Dilihat</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[140px]" style="color: var(--txt-dim)">Sisa Waktu Blokir</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider text-right" style="color: var(--txt-dim)">Tindakan Admin</th>
+              <tr class="text-left border-b border-line bg-panel-2 text-[11px] uppercase tracking-[0.05em] text-txt-dim font-semibold">
+                <th class="px-3.5 py-2.5">Alamat IP</th>
+                <th class="px-3.5 py-2.5">Alasan</th>
+                <th class="px-3.5 py-2.5">Percobaan</th>
+                <th class="px-3.5 py-2.5">Terakhir Terlihat</th>
+                <th class="px-3.5 py-2.5">Sisa Blokir</th>
+                <th class="px-3.5 py-2.5 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody class="divide-y" style="border-color: var(--line)">
-              <tr v-for="b in blockedIPs" :key="b.ip" class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                <td class="px-4 py-3 font-mono font-bold text-rose-600 dark:text-rose-400">{{ b.ip }}</td>
-                <td class="px-4 py-3">
-                  <Tag :value="b.type" severity="danger" class="!text-[10.5px]" />
-                </td>
-                <td class="px-4 py-3 font-mono">{{ b.attempts }} request</td>
-                <td class="px-4 py-3 text-[12px]" style="color: var(--txt-dim)">{{ b.last_seen }}</td>
-                <td class="px-4 py-3">
-                  <span class="font-mono text-[11.5px] font-bold text-amber-500">
-                    {{ b.expires_in_sec }} detik
-                  </span>
-                </td>
-                <td class="px-4 py-3 text-right">
-                  <Button
-                    label="Buka Blokir"
-                    icon="pi pi-lock-open"
-                    size="small"
-                    severity="success"
-                    outlined
-                    @click="unblockIP(b.ip)"
-                  />
+            <tbody class="divide-y divide-line">
+              <tr v-for="b in blockedIPs" :key="b.ip" class="data-row">
+                <td class="px-3.5 py-2.5 t-mono font-bold text-sig-bad">{{ b.ip }}</td>
+                <td class="px-3.5 py-2.5"><StatusChip :kind="b.reason || 'BLOCKED'" /></td>
+                <td class="px-3.5 py-2.5 t-mono text-txt">{{ b.attempts }} request</td>
+                <td class="px-3.5 py-2.5 t-mono !text-[11.5px] text-txt-dim">{{ b.last_seen }}</td>
+                <td class="px-3.5 py-2.5 t-mono font-semibold text-sig-warn">{{ b.expires_in_sec }} detik</td>
+                <td class="px-3.5 py-2.5 text-right">
+                  <Button label="Buka Blokir" icon="pi pi-lock-open" size="small" severity="success" outlined @click="unblockIP(b.ip)" />
                 </td>
               </tr>
             </tbody>
@@ -526,54 +442,48 @@ function prettyJSON(raw: any) {
         </div>
       </Panel>
 
-      <!-- Section: Security Events Incident History -->
+      <!-- Security Events History -->
       <Panel title="Riwayat Insiden Serangan Terdeteksi" icon="pi pi-history" dense>
         <template #actions>
-          <Tag :value="securityEvents.length + ' insiden'" severity="secondary" class="!text-[11px]" />
+          <span class="t-mono !text-[11px] text-txt-dim">{{ securityEvents.length }} insiden</span>
         </template>
 
         <EmptyState
           v-if="!securityEvents.length"
           icon="pi pi-shield"
           title="Belum ada insiden serangan yang terekam"
-          sub="Setiap deteksi burst request abnormal atau percobaan brute-force login akan dicatat secara otomatis di tabel ini."
+          sub="Setiap deteksi burst request abnormal atau percobaan brute-force login dicatat otomatis di tabel ini."
         />
 
         <div v-else class="overflow-x-auto">
-          <table class="w-full text-[12.5px]">
+          <table class="w-full text-[12.5px] border-collapse">
             <thead>
-              <tr class="text-left border-b" style="border-color: var(--line); background: var(--panel-2)">
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[170px]" style="color: var(--txt-dim)">Waktu</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[150px]" style="color: var(--txt-dim)">IP Penyerang</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[180px]" style="color: var(--txt-dim)">Jenis Deteksi</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Target Endpoint</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider w-[130px]" style="color: var(--txt-dim)">Status</th>
-                <th class="px-4 py-3 font-semibold text-[11px] uppercase tracking-wider" style="color: var(--txt-dim)">Keterangan &amp; User Agent</th>
+              <tr class="text-left border-b border-line bg-panel-2 text-[11px] uppercase tracking-[0.05em] text-txt-dim font-semibold">
+                <th class="px-3.5 py-2.5 w-[165px]">Waktu</th>
+                <th class="px-3.5 py-2.5 w-[145px]">IP Penyerang</th>
+                <th class="px-3.5 py-2.5 w-[160px]">Jenis Deteksi</th>
+                <th class="px-3.5 py-2.5">Target Endpoint</th>
+                <th class="px-3.5 py-2.5 w-[130px]">Status</th>
+                <th class="px-3.5 py-2.5">Keterangan &amp; User Agent</th>
               </tr>
             </thead>
-            <tbody class="divide-y" style="border-color: var(--line)">
-              <tr v-for="ev in securityEvents" :key="ev.id" class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                <td class="px-4 py-3 whitespace-nowrap text-[12px]" style="color: var(--txt-dim)">{{ ev.time_str || ev.created_at }}</td>
-                <td class="px-4 py-3 font-mono font-semibold text-rose-600 dark:text-rose-400">{{ ev.ip }}</td>
-                <td class="px-4 py-3">
-                  <Tag
-                    :value="ev.event_type === 'BURST_ATTACK' ? 'BURST ATTACK' : 'BRUTE FORCE LOGIN'"
-                    :severity="ev.event_type === 'BURST_ATTACK' ? 'warn' : 'danger'"
-                    class="!text-[10px]"
-                  />
+            <tbody class="divide-y divide-line">
+              <tr v-for="ev in securityEvents" :key="ev.id" class="data-row">
+                <td class="px-3.5 py-2.5 whitespace-nowrap t-mono !text-[11.5px] text-txt-dim">{{ ev.time_str || ev.created_at }}</td>
+                <td class="px-3.5 py-2.5 t-mono font-semibold text-sig-bad">{{ ev.ip }}</td>
+                <td class="px-3.5 py-2.5">
+                  <StatusChip :kind="ev.event_type === 'BURST_ATTACK' ? 'BURST_ATTACK' : 'BRUTE_FORCE'" />
                 </td>
-                <td class="px-4 py-3 font-mono text-[11.5px]">
-                  <span class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold mr-1.5 text-[10px]">{{ ev.method }}</span>
-                  <span style="color: var(--txt)">{{ ev.endpoint }}</span>
+                <td class="px-3.5 py-2.5 t-mono !text-[11.5px]">
+                  <span class="px-1.5 py-0.5 rounded bg-panel-2 border border-line font-bold mr-1.5 text-[10px] text-txt-dim">{{ ev.method }}</span>
+                  <span class="text-txt">{{ ev.endpoint }}</span>
                 </td>
-                <td class="px-4 py-3">
-                  <Tag :value="ev.status || 'BLOCKED (429)'" severity="danger" class="!text-[10px]" />
+                <td class="px-3.5 py-2.5">
+                  <StatusChip kind="BLOCKED" :label="ev.status || 'BLOCKED (429)'" />
                 </td>
-                <td class="px-4 py-3 text-[11.5px]">
-                  <div class="font-medium" style="color: var(--txt)">{{ ev.details }}</div>
-                  <div class="text-[10.5px] font-mono truncate max-w-xs" style="color: var(--txt-dim)">
-                    {{ ev.user_agent || '—' }}
-                  </div>
+                <td class="px-3.5 py-2.5 text-[11.5px]">
+                  <div class="font-medium text-txt">{{ ev.details }}</div>
+                  <div class="t-mono !text-[10.5px] truncate max-w-xs text-txt-dim">{{ ev.user_agent || '—' }}</div>
                 </td>
               </tr>
             </tbody>

@@ -7,27 +7,22 @@ import Tooltip from 'primevue/tooltip'
 import ConfirmationService from 'primevue/confirmationservice'
 import ToastService from 'primevue/toastservice'
 import router from './router'
+import { useThemeStore } from './stores/theme'
 import './assets/main.css'
 import 'primeicons/primeicons.css'
 import App from './App.vue'
 
 /*
- * "Industrial Precision" — dark shell, single amber accent.
- * All component sizing flows through PrimeVue's own semantic tokens:
- *   form.field.*  → input/button padding, height, border-radius
- *   button.*      → gap, iconOnlyWidth, label weight
- *   surface.*     → mapped to our ink scale (not zinc) for warm-dark cohesion
+ * "Clinical Precision" — unified Cool-Slate surfaces + single Clinical Teal accent.
+ * Subdued saturation for long operator sessions, cohesive across light & dark themes.
  */
-const Industrial = definePreset(Aura, {
+const ClinicalPrecision = definePreset(Aura, {
   semantic: {
     primary: {
-      50:  '#fff8e6', 100: '#ffefc4', 200: '#ffe49c', 300: '#ffd166',
-      400: '#faba46', 500: '#f5a524', 600: '#d98806', 700: '#a96305',
-      800: '#7c4904', 900: '#5c3603', 950: '#3a2202',
+      50:  '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4',
+      400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e',
+      800: '#115e59', 900: '#134e4a', 950: '#042f2e',
     },
-    /* form field tokens — shared by Button, InputText, Select, Textarea, etc.
-       normal: 7px Y + 10px X + 13px font → ~36px tall
-       small:  5px Y +  8px X + 12px font → ~30px tall */
     formField: {
       paddingX: '0.625rem',
       paddingY: '0.4375rem',
@@ -37,61 +32,86 @@ const Industrial = definePreset(Aura, {
         paddingY: '0.3125rem',
       },
       lg: {
-        fontSize: '1rem',
+        fontSize: '0.9375rem',
         paddingX: '0.875rem',
         paddingY: '0.5625rem',
       },
       borderRadius: '{border.radius.md}',
-      transitionDuration: '0.16s',
+      transitionDuration: '0.14s',
     },
-    /* surface mapped to ink scale — warm dark, not zinc cool */
     colorScheme: {
       light: {
         surface: {
           0:   '#ffffff',
-          50:  '{stone.50}',
-          100: '{stone.100}',
-          200: '{stone.200}',
-          300: '{stone.300}',
-          400: '{stone.400}',
-          500: '{stone.500}',
-          600: '{stone.600}',
-          700: '{stone.700}',
-          800: '{stone.800}',
-          900: '{stone.900}',
-          950: '{stone.950}',
+          50:  '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          400: '#94a3b8',
+          500: '#64748b',
+          600: '#475569',
+          700: '#334155',
+          800: '#1e293b',
+          900: '#0f172a',
+          950: '#020617',
+        },
+        primary: {
+          color: '{primary.600}',
+          contrastColor: '#ffffff',
+          hoverColor: '{primary.700}',
+          activeColor: '{primary.800}',
+        },
+        formField: {
+          background: '#ffffff',
+          borderColor: '#d5dde7',
+          hoverBorderColor: '#94a3b8',
+          focusBorderColor: '{primary.600}',
+          color: '#0f172a',
+          placeholderColor: '#64748b',
+          iconColor: '#64748b',
+        },
+        content: {
+          background: '#ffffff',
+          hoverBackground: '#f4f7fa',
+          borderColor: '#dfe6ee',
+          color: '#0f172a',
+        },
+        overlay: {
+          select:  { background: '#ffffff', borderColor: '#d5dde7', color: '#0f172a' },
+          popover: { background: '#ffffff', borderColor: '#d5dde7', color: '#0f172a' },
+          modal:   { background: '#ffffff', borderColor: '#d5dde7', color: '#0f172a' },
         },
       },
       dark: {
         surface: {
           0:   '#ffffff',
-          50:  '#f7f8fa',
-          100: '#eceff4',
-          200: '#d5dae3',
-          300: '#b3bbc9',
-          400: '#8791a3',
-          500: '#5b6678',
-          600: '#3d4759',
-          700: '#2a3242',
-          800: '#1d2331',
-          900: '#111520',
-          950: '#0b0e13',
+          50:  '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          400: '#94a3b8',
+          500: '#64748b',
+          600: '#475569',
+          700: '#263449',
+          800: '#192334',
+          900: '#131b27',
+          950: '#0c1118',
         },
         primary: {
-          color: '{primary.500}',
-          contrastColor: '#0b0e13',
-          hoverColor: '{primary.600}',
-          activeColor: '{primary.700}',
+          color: '{primary.400}',
+          contrastColor: '#042f2e',
+          hoverColor: '{primary.300}',
+          activeColor: '{primary.500}',
         },
         formField: {
-          background: '{surface.900}',
+          background: '{surface.800}',
           borderColor: '{surface.700}',
-          hoverBorderColor: '{surface.600}',
-          focusBorderColor: '{primary.500}',
+          hoverBorderColor: '#3a4c66',
+          focusBorderColor: '{primary.400}',
           color: '{surface.100}',
-          placeholderColor: '{surface.400}',
+          placeholderColor: '{surface.500}',
           floatLabelColor: '{surface.400}',
-          floatLabelFocusColor: '{primary.500}',
+          floatLabelFocusColor: '{primary.400}',
           iconColor: '{surface.400}',
         },
         text: {
@@ -117,25 +137,24 @@ const Industrial = definePreset(Aura, {
 })
 
 const app = createApp(App)
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
 app.use(router)
 app.use(PrimeVue, {
   theme: {
-    preset: Industrial,
+    preset: ClinicalPrecision,
     options: {
       darkModeSelector: 'body.dark',
       cssLayer: false,
     },
   },
-  ripple: true,
+  ripple: false,
 })
 app.use(ConfirmationService)
 app.use(ToastService)
 app.directive('tooltip', Tooltip)
-app.mount('#app')
 
-// Automatically reload when a new deployment creates new chunk hashes
-window.addEventListener('vite:preloadError', (event) => {
-  event.preventDefault()
-  window.location.reload()
-})
+// Sync theme immediately before mount to prevent light/dark flash
+useThemeStore(pinia).apply()
+
+app.mount('#app')

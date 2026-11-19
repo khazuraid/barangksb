@@ -7,6 +7,7 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import api from '@/api'
 
 export interface LabelElement {
@@ -125,6 +126,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const confirm = useConfirm()
 const MM_TO_PX = 3.7795
 const zoom = ref(2.2)
 const snapGrid = ref(true)
@@ -155,7 +157,7 @@ const AVAILABLE_FIELDS = [
 const DEFAULT_PRESETS: LabelTemplate[] = [
   {
     id: 'preset_cirebon_stacked_qr',
-    name: '🏛️ Kota Cirebon BMD (65 × 30 mm) - Lambang & QR Berdampingan Atas-Bawah',
+    name: 'Kota Cirebon BMD (65 × 30 mm) - Lambang & QR Berdampingan Atas-Bawah',
     widthMm: 65,
     heightMm: 30,
     layoutMode: 'table',
@@ -229,7 +231,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
   },
   {
     id: 'preset_tj_103_table',
-    name: '🌟 T&J 103 (64 × 32 mm) - Tabel Bergaris Lengkap',
+    name: 'T&J 103 (64 × 32 mm) - Tabel Bergaris Lengkap',
     widthMm: 64,
     heightMm: 32,
     layoutMode: 'table',
@@ -312,7 +314,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
   },
   {
     id: 'preset_50x30_table',
-    name: '🏷️ Stiker Rol (50 × 30 mm) - 2 Kolom Ringkas',
+    name: 'Stiker Rol (50 × 30 mm) - 2 Kolom Ringkas',
     widthMm: 50,
     heightMm: 30,
     layoutMode: 'table',
@@ -385,7 +387,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
   },
   {
     id: 'preset_70x50_table',
-    name: '🏷️ Kartu Aset BMD (70 × 50 mm) - Full Custom & Dobel Kop',
+    name: 'Kartu Aset BMD (70 × 50 mm) - Full Custom & Dobel Kop',
     widthMm: 70,
     heightMm: 50,
     layoutMode: 'table',
@@ -493,7 +495,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
   },
   {
     id: 'preset_cirebon_bmd_qr',
-    name: '🏛️ Kota Cirebon BMD (50 × 60 mm) - QR Kanan & Garis Dobel',
+    name: 'Kota Cirebon BMD (50 × 60 mm) - QR Kanan & Garis Dobel',
     widthMm: 50,
     heightMm: 60,
     layoutMode: 'table',
@@ -581,6 +583,9 @@ const isPrinting = ref(false)
 const paletteTab = ref<'data' | 'borders' | 'header_footer' | 'free_components'>('data')
 const tableLogoFileInput = ref<HTMLInputElement | null>(null)
 const isUploadingLogo = ref(false)
+const saveTemplateDialog = ref(false)
+const saveTemplateName = ref('')
+const savingTemplate = ref(false)
 
 function triggerTableLogoUpload() {
   tableLogoFileInput.value?.click()
@@ -1149,11 +1154,20 @@ function splitCell(rowIndex: number, cellIndex: number) {
 
 function clearAllRows() {
   if (!activeTemplate.value.tableConfig) return
-  if (!confirm('Yakin ingin menghapus seluruh baris tabel ini? Anda dapat menambah baris baru tanpa batasan.')) return
-  activeTemplate.value.tableConfig.rows = []
-  selectedTableRowIndex.value = null
-  selectedTableCellIndex.value = null
-  toast.add({ severity: 'warn', summary: 'Seluruh Baris Dihapus', life: 1500 })
+  confirm.require({
+    header: 'Kosongkan Semua Baris',
+    message: 'Yakin ingin menghapus seluruh baris tabel ini? Anda dapat menambah baris baru tanpa batasan.',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Batal',
+    acceptLabel: 'Hapus Semua',
+    acceptClass: 'p-button-danger',
+    accept: () => {
+      activeTemplate.value.tableConfig.rows = []
+      selectedTableRowIndex.value = null
+      selectedTableCellIndex.value = null
+      toast.add({ severity: 'warn', summary: 'Seluruh Baris Dihapus', life: 1500 })
+    },
+  })
 }
 
 // Tambah baris preset
@@ -1504,26 +1518,40 @@ function resetLayout() {
   toast.add({ severity: 'info', summary: 'Tata Letak Direset ke Bawaan', life: 1500 })
 }
 
-async function saveCurrentAsNewTemplate() {
-  const name = prompt('Beri nama template label ini:', activeTemplate.value.name.replace(/^[🌟🏷️\s]+/, ''))
-  if (!name) return
-  const newTpl: LabelTemplate = {
-    ...JSON.parse(JSON.stringify(activeTemplate.value)),
-    id: `custom_${Date.now().toString(36)}`,
-    name: `🏷️ ${name.trim()}`,
-  }
-  templates.value.push(newTpl)
-  activeTemplate.value.id = newTpl.id
-  activeTemplate.value.name = newTpl.name
-  saveTemplates()
-  emit('template-saved', newTpl)
+function saveCurrentAsNewTemplate() {
+  saveTemplateName.value = activeTemplate.value.name.replace(/^[🌟🏷️🏛️\s]+/, '').trim()
+  saveTemplateDialog.value = true
+}
 
-  // Sync ke database
+async function confirmSaveNewTemplate() {
+  const trimmed = saveTemplateName.value.trim()
+  if (!trimmed) {
+    toast.add({ severity: 'warn', summary: 'Nama template wajib diisi', life: 2000 })
+    return
+  }
+  savingTemplate.value = true
   try {
-    await api.post('/barcode/templates', newTpl)
-    toast.add({ severity: 'success', summary: 'Tersimpan di Database', detail: newTpl.name, life: 2500 })
-  } catch (err: any) {
-    toast.add({ severity: 'warn', summary: 'Tersimpan Lokal', detail: 'Tersimpan di browser, gagal kirim ke database: ' + (err.response?.data?.error || err.message), life: 3500 })
+    const newTpl: LabelTemplate = {
+      ...JSON.parse(JSON.stringify(activeTemplate.value)),
+      id: `custom_${Date.now().toString(36)}`,
+      name: trimmed,
+    }
+    templates.value.push(newTpl)
+    activeTemplate.value.id = newTpl.id
+    activeTemplate.value.name = newTpl.name
+    saveTemplates()
+    emit('template-saved', newTpl)
+    saveTemplateDialog.value = false
+
+    // Sync ke database
+    try {
+      await api.post('/barcode/templates', newTpl)
+      toast.add({ severity: 'success', summary: 'Tersimpan di Database', detail: newTpl.name, life: 2500 })
+    } catch (err: any) {
+      toast.add({ severity: 'warn', summary: 'Tersimpan Lokal', detail: 'Tersimpan di browser, gagal kirim ke database: ' + (err.response?.data?.error || err.message), life: 3500 })
+    }
+  } finally {
+    savingTemplate.value = false
   }
 }
 
@@ -1547,21 +1575,30 @@ async function updateCurrentCustomTemplate() {
   }
 }
 
-async function deleteCurrentCustomTemplate() {
+function deleteCurrentCustomTemplate() {
   const target = activeTemplate.value
-  if (!confirm(`Hapus template "${target.name}"?`)) return
-  templates.value = templates.value.filter((t) => t.id !== target.id)
-  saveTemplates()
-  applyPreset(DEFAULT_PRESETS[0])
-  emit('template-saved', activeTemplate.value)
+  confirm.require({
+    header: 'Hapus Template Kustom',
+    message: `Hapus template "${target.name}"?`,
+    icon: 'pi pi-trash',
+    rejectLabel: 'Batal',
+    acceptLabel: 'Hapus',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      templates.value = templates.value.filter((t) => t.id !== target.id)
+      saveTemplates()
+      applyPreset(DEFAULT_PRESETS[0])
+      emit('template-saved', activeTemplate.value)
 
-  // Sync ke database
-  try {
-    await api.delete(`/barcode/templates/${target.id}`)
-    toast.add({ severity: 'info', summary: 'Template Dihapus dari Database', life: 2000 })
-  } catch (err: any) {
-    toast.add({ severity: 'info', summary: 'Template Dihapus Lokal', life: 1800 })
-  }
+      // Sync ke database
+      try {
+        await api.delete(`/barcode/templates/${target.id}`)
+        toast.add({ severity: 'info', summary: 'Template Dihapus dari Database', life: 2000 })
+      } catch {
+        toast.add({ severity: 'info', summary: 'Template Dihapus Lokal', life: 1800 })
+      }
+    },
+  })
 }
 
 function exportJSON() {
@@ -1631,27 +1668,27 @@ function printLabels() {
     @update:visible="emit('update:visible', $event)"
   >
     <!-- TOP TOOLBAR: Layout Switcher, Presets, Dimensions & Print Action -->
-    <div class="px-3.5 py-2 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2.5 text-xs select-none shadow-xs">
+    <div class="px-3.5 py-2 border-b border-line bg-panel flex flex-wrap items-center justify-between gap-2.5 text-xs select-none">
       <!-- Left: Mode Switcher + Preset & Size -->
       <div class="flex items-center gap-2 flex-wrap">
         <!-- Layout Mode Toggle (Tabel vs Bebas) -->
-        <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+        <div class="flex items-center bg-panel-2 p-0.5 rounded-lg border border-line shrink-0">
           <button
             type="button"
-            class="px-2.5 py-1 rounded-md font-bold text-xs flex items-center gap-1.5 transition-all"
-            :class="isTableMode ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+            class="px-2.5 py-1 rounded-md font-semibold text-xs flex items-center gap-1.5 transition-all"
+            :class="isTableMode ? 'bg-acc-500 text-white shadow-xs' : 'text-txt-dim hover:text-txt'"
             @click="activeTemplate.layoutMode = 'table'"
           >
-            <i class="pi pi-table" />
+            <i class="pi pi-table" aria-hidden="true" />
             <span>Mode Tabel (Tambah &amp; Hapus Baris/Sel)</span>
           </button>
           <button
             type="button"
-            class="px-2.5 py-1 rounded-md font-bold text-xs flex items-center gap-1.5 transition-all"
-            :class="!isTableMode ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+            class="px-2.5 py-1 rounded-md font-semibold text-xs flex items-center gap-1.5 transition-all"
+            :class="!isTableMode ? 'bg-acc-500 text-white shadow-xs' : 'text-txt-dim hover:text-txt'"
             @click="activeTemplate.layoutMode = 'free'"
           >
-            <i class="pi pi-th-large" />
+            <i class="pi pi-th-large" aria-hidden="true" />
             <span>Mode Bebas (Drag)</span>
           </button>
         </div>
@@ -1667,11 +1704,11 @@ function printLabels() {
           @click="convertTableToFreeMode"
         />
 
-        <div class="h-4 w-px bg-slate-200 mx-0.5 shrink-0" />
+        <div class="h-4 w-px bg-line mx-0.5 shrink-0" />
 
         <!-- Preset Selector -->
         <div class="flex items-center gap-1.5 shrink-0">
-          <span class="text-slate-500 font-semibold">Preset:</span>
+          <span class="text-txt-dim font-semibold">Preset:</span>
           <Select
             v-model="activeTemplate.id"
             :options="allPresets"
@@ -1690,6 +1727,7 @@ function printLabels() {
             rounded
             size="small"
             severity="danger"
+            aria-label="Hapus template kustom ini"
             v-tooltip.top="'Hapus Template Kustom Ini'"
             class="!p-1 shrink-0"
             @click="deleteCurrentCustomTemplate"
@@ -1697,30 +1735,32 @@ function printLabels() {
         </div>
 
         <!-- Dimensi Stiker (mm) -->
-        <div class="flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
+        <div class="flex items-center gap-1 bg-panel-2 px-2 py-0.5 rounded-md border border-line shrink-0">
           <div class="flex items-center gap-1">
-            <span class="text-slate-400 font-mono text-[11px]">P:</span>
+            <span class="text-txt-muted t-mono text-[11px]">P:</span>
             <input
               type="number"
               v-model.number="activeTemplate.widthMm"
               min="20"
               max="297"
-              class="w-13 text-center font-mono font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 px-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+              aria-label="Lebar stiker dalam milimeter"
+              class="w-13 text-center t-mono t-num font-bold text-xs bg-panel text-txt rounded border border-line py-0.5 px-1 focus:ring-1 focus:ring-acc-500 focus:outline-hidden"
               title="Lebar stiker (mm)"
             />
           </div>
-          <span class="text-slate-300 font-bold">&times;</span>
+          <span class="text-txt-muted font-bold">&times;</span>
           <div class="flex items-center gap-1">
-            <span class="text-slate-400 font-mono text-[11px]">L:</span>
+            <span class="text-txt-muted t-mono text-[11px]">L:</span>
             <input
               type="number"
               v-model.number="activeTemplate.heightMm"
               min="15"
               max="297"
-              class="w-13 text-center font-mono font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 px-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+              aria-label="Tinggi stiker dalam milimeter"
+              class="w-13 text-center t-mono t-num font-bold text-xs bg-panel text-txt rounded border border-line py-0.5 px-1 focus:ring-1 focus:ring-acc-500 focus:outline-hidden"
               title="Tinggi stiker (mm)"
             />
-            <span class="text-slate-500 text-[11px] font-medium pl-0.5">mm</span>
+            <span class="text-txt-dim text-[11px] font-medium pl-0.5">mm</span>
           </div>
         </div>
 
@@ -1739,21 +1779,23 @@ function printLabels() {
       <!-- Right: View Controls & Print Action -->
       <div class="flex items-center gap-2 flex-wrap">
         <!-- Zoom Controller -->
-        <div class="flex items-center bg-slate-100 rounded-md border border-slate-200 px-1 py-0.5 shrink-0">
+        <div class="flex items-center bg-panel-2 rounded-md border border-line px-1 py-0.5 shrink-0">
           <button
             type="button"
-            class="px-2 py-0.5 text-slate-600 hover:text-slate-900 font-bold"
+            aria-label="Perkecil kanvas"
+            class="px-2 py-0.5 text-txt-dim hover:text-txt font-bold"
             title="Perkecil Kanvas"
             @click="zoom = Math.max(1.2, zoom - 0.3)"
           >
             -
           </button>
-          <span class="text-xs font-mono font-semibold text-slate-700 w-11 text-center">
+          <span class="text-xs t-mono t-num font-semibold text-txt w-11 text-center">
             {{ Math.round(zoom * 45) }}%
           </span>
           <button
             type="button"
-            class="px-2 py-0.5 text-slate-600 hover:text-slate-900 font-bold"
+            aria-label="Perbesar kanvas"
+            class="px-2 py-0.5 text-txt-dim hover:text-txt font-bold"
             title="Perbesar Kanvas"
             @click="zoom = Math.min(3.5, zoom + 0.3)"
           >
@@ -1762,7 +1804,7 @@ function printLabels() {
         </div>
 
         <!-- Snap Grid Toggle (Free Mode) -->
-        <label v-if="!isTableMode" class="flex items-center gap-1.5 cursor-pointer text-slate-600 text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-md border border-slate-200 shrink-0">
+        <label v-if="!isTableMode" class="flex items-center gap-1.5 cursor-pointer text-txt-dim text-xs bg-panel-2 hover:bg-panel px-2 py-1 rounded-md border border-line shrink-0">
           <Checkbox v-model="snapGrid" binary />
           <span>Snap 0.5mm</span>
         </label>
@@ -1791,32 +1833,32 @@ function printLabels() {
         </div>
 
         <!-- Export / Import -->
-        <Button icon="pi pi-download" text rounded size="small" severity="secondary" v-tooltip.top="'Ekspor JSON Template'" class="shrink-0" @click="exportJSON" />
-        <label class="cursor-pointer p-1.5 rounded-md hover:bg-slate-100 text-slate-600 shrink-0" v-tooltip.top="'Impor File JSON'">
-          <i class="pi pi-upload text-sm" />
+        <Button icon="pi pi-download" text rounded size="small" severity="secondary" aria-label="Ekspor JSON template" v-tooltip.top="'Ekspor JSON Template'" class="shrink-0" @click="exportJSON" />
+        <label class="cursor-pointer p-1.5 rounded-md hover:bg-panel-2 text-txt-dim hover:text-txt shrink-0" aria-label="Impor file JSON template" v-tooltip.top="'Impor File JSON'">
+          <i class="pi pi-upload text-sm" aria-hidden="true" />
           <input type="file" accept=".json" class="hidden" @change="importJSON" />
         </label>
 
-        <span class="h-4 w-px bg-slate-200 mx-0.5 shrink-0" />
+        <span class="h-4 w-px bg-line mx-0.5 shrink-0" />
 
         <!-- Print Action: Copies + Cetak Button -->
         <div class="flex items-center gap-1.5 shrink-0">
-          <div class="flex items-center gap-1 bg-slate-50 px-1.5 py-1 rounded-md border border-slate-200" title="Jumlah rangkap cetak per barang">
-            <span class="text-slate-500 text-[11px] font-medium">&times;</span>
+          <div class="flex items-center gap-1 bg-panel-2 px-1.5 py-1 rounded-md border border-line" title="Jumlah rangkap cetak per barang">
+            <span class="text-txt-dim text-[11px] font-medium">&times;</span>
             <input
               type="number"
               v-model.number="copies"
               min="1"
               max="50"
-              class="w-10 text-center font-bold text-xs bg-white text-slate-800 rounded border border-slate-300 py-0.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+              aria-label="Jumlah rangkap cetak per barang"
+              class="w-10 text-center t-num font-bold text-xs bg-panel text-txt rounded border border-line py-0.5 focus:ring-1 focus:ring-acc-500 focus:outline-hidden"
             />
           </div>
           <Button
             label="Cetak Label Ini"
             icon="pi pi-print"
             size="small"
-            severity="success"
-            class="!text-xs !py-1.5 !px-3 font-bold shadow-xs shrink-0"
+            class="!text-xs !py-1.5 !px-3 font-semibold shrink-0"
             @click="printLabels"
           />
         </div>
@@ -1824,18 +1866,18 @@ function printLabels() {
     </div>
 
     <!-- MAIN WORKSPACE: 3 COLUMNS -->
-    <div class="flex-1 flex overflow-hidden bg-slate-100">
+    <div class="flex-1 flex overflow-hidden bg-canvas">
       <!-- LEFT COLUMN: PALETTE & TABLE ROW BUILDER -->
-      <div class="w-84 border-r border-slate-200 bg-white flex flex-col overflow-hidden select-none">
+      <div class="w-84 border-r border-line bg-panel flex flex-col overflow-hidden select-none">
         <!-- Palette Tab Headers -->
-        <div class="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1 overflow-x-auto">
+        <div class="p-2 border-b border-line bg-panel-2 flex items-center gap-1 overflow-x-auto">
           <button
             type="button"
             class="tab-btn"
             :class="paletteTab === 'data' ? 'tab-btn-active' : ''"
             @click="paletteTab = 'data'"
           >
-            <i class="pi pi-list text-xs mr-1" />
+            <i class="pi pi-list text-xs mr-1" aria-hidden="true" />
             <span>{{ isTableMode ? 'Data, Baris & Sel' : 'Data Form' }}</span>
           </button>
           <button
@@ -1845,7 +1887,7 @@ function printLabels() {
             :class="paletteTab === 'borders' ? 'tab-btn-active' : ''"
             @click="paletteTab = 'borders'"
           >
-            <i class="pi pi-th-large text-xs mr-1" />
+            <i class="pi pi-th-large text-xs mr-1" aria-hidden="true" />
             <span>Garis &amp; Jarak</span>
           </button>
           <button
@@ -1855,7 +1897,7 @@ function printLabels() {
             :class="paletteTab === 'header_footer' ? 'tab-btn-active' : ''"
             @click="paletteTab = 'header_footer'"
           >
-            <i class="pi pi-building text-xs mr-1" />
+            <i class="pi pi-building text-xs mr-1" aria-hidden="true" />
             <span>Kop &amp; Barcode</span>
           </button>
           <button
@@ -1865,7 +1907,7 @@ function printLabels() {
             :class="paletteTab === 'free_components' ? 'tab-btn-active' : ''"
             @click="paletteTab = 'free_components'"
           >
-            <i class="pi pi-plus text-xs mr-1" />
+            <i class="pi pi-plus text-xs mr-1" aria-hidden="true" />
             <span>Komponen</span>
           </button>
         </div>
@@ -1873,89 +1915,89 @@ function printLabels() {
         <!-- 1. TAB DATA & BARIS (MODE TABEL - FITUR TAMBAH & HAPUS BARIS/SEL) -->
         <div v-if="paletteTab === 'data' && isTableMode" class="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
           <!-- A. KONTROL CEPAT TAMBAH & HAPUS BARIS / SEL -->
-          <div class="flex flex-col gap-1.5 p-2 bg-indigo-50/70 rounded-lg border border-indigo-200 shadow-2xs">
-            <span class="text-[10.5px] font-bold text-indigo-950 uppercase tracking-wide flex items-center justify-between">
+          <div class="flex flex-col gap-1.5 p-2 bg-[var(--acc-wash)] rounded-lg border border-[var(--acc-border)]">
+            <span class="t-label text-txt flex items-center justify-between">
               <span>Aksi Baris &amp; Sel:</span>
-              <span class="text-[10px] text-indigo-700 font-semibold">Total {{ activeTemplate.tableConfig.rows.length }} Baris</span>
+              <span class="text-[10px] text-acc-500 t-num font-semibold">Total {{ activeTemplate.tableConfig.rows.length }} Baris</span>
             </span>
 
             <div class="grid grid-cols-2 gap-1.5 pt-0.5">
               <!-- Tambah Baris Baru -->
               <button
                 type="button"
-                class="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-left flex items-center gap-1.5 text-[11px] font-bold shadow-2xs transition-all"
+                class="px-2 py-1.5 bg-acc-500 hover:bg-acc-600 text-white rounded text-left flex items-center gap-1.5 text-[11px] font-semibold transition-all"
                 @click="addNewRow('name', 'Nama')"
               >
-                <i class="pi pi-plus-circle text-xs" />
+                <i class="pi pi-plus-circle text-xs" aria-hidden="true" />
                 <span>+ Baris Baru</span>
               </button>
 
               <!-- Tambah Sel di Baris Terpilih -->
               <button
                 type="button"
-                class="px-2 py-1.5 bg-white border border-indigo-300 hover:border-indigo-600 rounded text-left flex items-center gap-1.5 text-[11px] font-bold text-indigo-900 shadow-2xs transition-all disabled:opacity-50"
+                class="px-2 py-1.5 bg-panel border border-[var(--acc-border)] hover:border-acc-500 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold text-txt transition-all disabled:opacity-50"
                 :disabled="selectedTableRowIndex === null"
                 @click="selectedTableRowIndex !== null && addCellToRow(selectedTableRowIndex)"
               >
-                <i class="pi pi-table text-indigo-600 text-xs" />
+                <i class="pi pi-table text-acc-500 text-xs" aria-hidden="true" />
                 <span>+ Sel / Kolom</span>
               </button>
 
               <!-- Hapus Baris Terpilih -->
               <button
                 type="button"
-                class="px-2 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold shadow-2xs transition-all disabled:opacity-50"
+                class="px-2 py-1.5 bg-panel border border-[var(--sig-bad-line)] hover:bg-[var(--sig-bad-bg)] text-[var(--sig-bad)] rounded text-left flex items-center gap-1.5 text-[11px] font-semibold transition-all disabled:opacity-50"
                 :disabled="selectedTableRowIndex === null"
                 @click="selectedTableRowIndex !== null && removeTableRow(selectedTableRowIndex)"
               >
-                <i class="pi pi-trash text-xs text-rose-600" />
-                <span>✕ Hapus Baris</span>
+                <i class="pi pi-trash text-xs" aria-hidden="true" />
+                <span>Hapus Baris</span>
               </button>
 
               <!-- Hapus Sel Terpilih -->
               <button
                 type="button"
-                class="px-2 py-1.5 bg-white border border-amber-200 hover:bg-amber-50 text-amber-800 rounded text-left flex items-center gap-1.5 text-[11px] font-semibold shadow-2xs transition-all disabled:opacity-50"
+                class="px-2 py-1.5 bg-panel border border-[var(--sig-warn-line)] hover:bg-[var(--sig-warn-bg)] text-[var(--sig-warn)] rounded text-left flex items-center gap-1.5 text-[11px] font-semibold transition-all disabled:opacity-50"
                 :disabled="selectedTableRowIndex === null || selectedTableCellIndex === null"
                 @click="selectedTableRowIndex !== null && selectedTableCellIndex !== null && removeCellFromRow(selectedTableRowIndex, selectedTableCellIndex)"
               >
-                <i class="pi pi-times-circle text-xs text-amber-600" />
-                <span>✕ Hapus Sel</span>
+                <i class="pi pi-times-circle text-xs" aria-hidden="true" />
+                <span>Hapus Sel</span>
               </button>
             </div>
 
             <!-- Shortcut Jenis Baris Multi-Kolom -->
-            <div class="grid grid-cols-2 gap-1.5 pt-1 border-t border-indigo-100">
+            <div class="grid grid-cols-2 gap-1.5 pt-1 border-t border-[var(--acc-border)]">
               <button
                 type="button"
-                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
+                class="px-2 py-1 bg-panel border border-line hover:border-acc-500 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-txt"
                 @click="addMultiCellRow([{ field: 'location', label: 'Ruang' }, { field: 'procurement_year', label: 'Tahun' }])"
               >
-                <i class="pi pi-pause text-indigo-500 text-[10px]" />
+                <i class="pi pi-pause text-acc-500 text-[10px]" aria-hidden="true" />
                 <span>Baris 2 Sel</span>
               </button>
               <button
                 type="button"
-                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
+                class="px-2 py-1 bg-panel border border-line hover:border-acc-500 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-txt"
                 @click="addMultiCellRow([{ field: 'location', label: 'Ruang' }, { field: 'procurement_year', label: 'Tahun' }, { field: 'condition_status', label: 'Kondisi' }])"
               >
-                <i class="pi pi-bars text-indigo-500 text-[10px]" />
+                <i class="pi pi-bars text-acc-500 text-[10px]" aria-hidden="true" />
                 <span>Baris 3 Sel</span>
               </button>
               <button
                 type="button"
-                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
+                class="px-2 py-1 bg-panel border border-line hover:border-acc-500 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-txt"
                 @click="addCustomTextRow"
               >
-                <i class="pi pi-pencil text-purple-600 text-[10px]" />
+                <i class="pi pi-pencil text-acc-500 text-[10px]" aria-hidden="true" />
                 <span>Teks Catatan</span>
               </button>
               <button
                 type="button"
-                class="px-2 py-1 bg-white border border-slate-200 hover:border-indigo-400 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-700"
+                class="px-2 py-1 bg-panel border border-line hover:border-acc-500 rounded text-left flex items-center gap-1.5 text-[10.5px] font-semibold text-txt"
                 @click="addBarcodeStripRow"
               >
-                <i class="pi pi-barcode text-cyan-600 text-[10px]" />
+                <i class="pi pi-barcode text-[var(--sig-info)] text-[10px]" aria-hidden="true" />
                 <span>Barcode 128 Strip</span>
               </button>
             </div>
@@ -1963,25 +2005,25 @@ function printLabels() {
 
           <!-- B. DAFTAR 17 FIELD FORMULIR BARANG -->
           <div class="flex flex-col gap-1">
-            <div class="text-[11px] text-slate-500 px-1 pb-0.5 font-medium flex items-center justify-between">
+            <div class="text-[11px] text-txt-dim px-1 pb-0.5 font-medium flex items-center justify-between">
               <span>Field Formulir (Tambah Baris / Sel):</span>
-              <span class="text-[10px] text-indigo-600 font-bold">{{ AVAILABLE_FIELDS.length }} Field</span>
+              <span class="text-[10px] text-acc-500 t-num font-bold">{{ AVAILABLE_FIELDS.length }} Field</span>
             </div>
 
             <div
               v-for="f in AVAILABLE_FIELDS"
               :key="f.value"
-              class="flex items-center justify-between p-1.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-md transition-all gap-1 shadow-2xs"
+              class="flex items-center justify-between p-1.5 bg-panel border border-line hover:border-acc-500 rounded-md transition-all gap-1"
             >
               <div class="flex items-center gap-1.5 truncate flex-1 min-w-0">
-                <i :class="[f.icon, 'text-slate-500 text-xs shrink-0']" />
-                <span class="truncate text-[11px] font-semibold text-slate-700">{{ f.label }}</span>
+                <i :class="[f.icon, 'text-txt-dim text-xs shrink-0']" aria-hidden="true" />
+                <span class="truncate text-[11px] font-semibold text-txt">{{ f.label }}</span>
               </div>
               <div class="flex items-center gap-1 shrink-0">
                 <!-- Tambah sebagai Baris Baru -->
                 <button
                   type="button"
-                  class="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 border border-indigo-200 text-[10px] font-bold transition-all"
+                  class="px-1.5 py-0.5 rounded bg-[var(--acc-50)] hover:bg-acc-500 hover:text-white text-acc-500 border border-[var(--acc-border)] text-[10px] font-bold transition-all"
                   title="Tambah sebagai Baris Baru"
                   @click="addNewRow(f.value, f.defaultLabel)"
                 >
@@ -1990,7 +2032,7 @@ function printLabels() {
                 <!-- Tambah sebagai Sel ke Baris Terpilih -->
                 <button
                   type="button"
-                  class="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 border border-slate-200 text-[10px] font-bold transition-all disabled:opacity-40"
+                  class="px-1.5 py-0.5 rounded bg-panel-2 hover:bg-[var(--sig-ok)] hover:text-white text-txt-dim border border-line text-[10px] font-bold transition-all disabled:opacity-40"
                   :disabled="selectedTableRowIndex === null"
                   title="Tambah sebagai Sel Baru di Baris Terpilih"
                   @click="selectedTableRowIndex !== null && addCellToRow(selectedTableRowIndex, f.value, f.defaultLabel)"
@@ -2002,15 +2044,34 @@ function printLabels() {
           </div>
         </div>
 
+        <!-- 1B. TAB DATA FORM (MODE BEBAS) -->
+        <div v-else-if="paletteTab === 'data' && !isTableMode" class="flex-1 overflow-y-auto p-2.5 flex flex-col gap-1.5">
+          <div class="text-[11px] text-txt-dim px-1 pb-0.5 font-medium flex items-center justify-between">
+            <span>Klik untuk tambah ke kanvas bebas:</span>
+            <span class="text-[10px] text-acc-500 t-num font-bold">{{ AVAILABLE_FIELDS.length }} Field</span>
+          </div>
+          <button
+            v-for="f in AVAILABLE_FIELDS"
+            :key="f.value"
+            type="button"
+            class="component-item-btn text-left"
+            @click="addFieldElement(f.value, f.defaultLabel ? `${f.defaultLabel}: ` : '')"
+          >
+            <i :class="[f.icon, 'text-acc-500 text-sm shrink-0']" aria-hidden="true" />
+            <span class="truncate text-[11.5px] font-semibold text-txt flex-1">{{ f.label }}</span>
+            <i class="pi pi-plus text-txt-muted text-xs" aria-hidden="true" />
+          </button>
+        </div>
+
         <!-- 2. TAB GARIS & JARAK (MODE TABEL - KUSTOM GARIS FULL) -->
         <div v-else-if="paletteTab === 'borders' && isTableMode" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
           <!-- A. Ketebalan & Bentuk Garis Global -->
-          <div class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <span class="text-[11px] font-bold text-slate-800 uppercase tracking-wide">Ketebalan &amp; Jenis Garis</span>
+          <div class="flex flex-col gap-2 p-2.5 bg-panel-2 rounded-lg border border-line">
+            <span class="t-label text-txt">Ketebalan &amp; Jenis Garis</span>
 
             <div class="grid grid-cols-2 gap-2">
               <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] text-slate-600 font-semibold">Tebal Garis:</label>
+                <label class="text-[10.5px] text-txt-dim font-semibold">Tebal Garis:</label>
                 <Select
                   v-model="activeTemplate.tableConfig.borderWidth"
                   :options="[
@@ -2026,7 +2087,7 @@ function printLabels() {
               </div>
 
               <div class="flex flex-col gap-1">
-                <label class="text-[10.5px] text-slate-600 font-semibold">Jenis Garis:</label>
+                <label class="text-[10.5px] text-txt-dim font-semibold">Jenis Garis:</label>
                 <Select
                   v-model="activeTemplate.tableConfig.borderStyle"
                   :options="[
@@ -2043,27 +2104,30 @@ function printLabels() {
             </div>
 
             <!-- Warna Garis Border -->
-            <div class="flex items-center justify-between pt-1 border-t border-slate-200">
-              <span class="text-[11px] text-slate-600 font-semibold">Warna Garis:</span>
+            <div class="flex items-center justify-between pt-1 border-t border-line">
+              <span class="text-[11px] text-txt-dim font-semibold">Warna Garis:</span>
               <div class="flex items-center gap-1.5">
                 <button
                   type="button"
-                  class="w-5 h-5 rounded-full border border-slate-300"
-                  :class="activeTemplate.tableConfig.borderColor === '#000000' ? 'ring-2 ring-indigo-500 ring-offset-1' : ''"
+                  aria-label="Warna garis hitam pekat"
+                  class="w-5 h-5 rounded-full border border-line"
+                  :class="activeTemplate.tableConfig.borderColor === '#000000' ? 'ring-2 ring-acc-500 ring-offset-1' : ''"
                   style="background-color: #000000"
                   @click="activeTemplate.tableConfig.borderColor = '#000000'"
                 />
                 <button
                   type="button"
-                  class="w-5 h-5 rounded-full border border-slate-300"
-                  :class="activeTemplate.tableConfig.borderColor === '#334155' ? 'ring-2 ring-indigo-500 ring-offset-1' : ''"
+                  aria-label="Warna garis abu gelap"
+                  class="w-5 h-5 rounded-full border border-line"
+                  :class="activeTemplate.tableConfig.borderColor === '#334155' ? 'ring-2 ring-acc-500 ring-offset-1' : ''"
                   style="background-color: #334155"
                   @click="activeTemplate.tableConfig.borderColor = '#334155'"
                 />
                 <button
                   type="button"
-                  class="w-5 h-5 rounded-full border border-slate-300"
-                  :class="activeTemplate.tableConfig.borderColor === '#64748b' ? 'ring-2 ring-indigo-500 ring-offset-1' : ''"
+                  aria-label="Warna garis abu sedang"
+                  class="w-5 h-5 rounded-full border border-line"
+                  :class="activeTemplate.tableConfig.borderColor === '#64748b' ? 'ring-2 ring-acc-500 ring-offset-1' : ''"
                   style="background-color: #64748b"
                   @click="activeTemplate.tableConfig.borderColor = '#64748b'"
                 />
@@ -2072,77 +2136,79 @@ function printLabels() {
           </div>
 
           <!-- B. Toggle Garis Pembatas (Sisi-Sisi) -->
-          <div class="flex flex-col gap-1.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <span class="text-[11px] font-bold text-slate-800 uppercase tracking-wide">Tampilkan Garis Pembatas</span>
+          <div class="flex flex-col gap-1.5 p-2.5 bg-panel-2 rounded-lg border border-line">
+            <span class="t-label text-txt">Tampilkan Garis Pembatas</span>
 
-            <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer py-1 text-txt text-xs">
               <Checkbox v-model="activeTemplate.tableConfig.showOuterBorder" binary />
               <span class="font-semibold">Bingkai Luar Stiker (Outer Box)</span>
             </label>
 
-            <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer py-1 text-txt text-xs">
               <Checkbox v-model="activeTemplate.tableConfig.showGridLines" binary />
               <span class="font-semibold">Garis Horizontal Antar Baris</span>
             </label>
 
-            <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer py-1 text-txt text-xs">
               <Checkbox v-model="activeTemplate.tableConfig.showLabelColBorder" binary />
               <span class="font-semibold">Garis Vertikal Pemisah Label &amp; Sel</span>
             </label>
 
-            <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer py-1 text-txt text-xs">
               <Checkbox v-model="activeTemplate.tableConfig.showColBorder" binary />
               <span class="font-semibold">Garis Vertikal Pemisah Kolom QR</span>
             </label>
 
-            <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer py-1 text-txt text-xs">
               <Checkbox v-model="activeTemplate.tableConfig.showHeaderBorder" binary />
               <span class="font-semibold">Garis Bawah Kop / Header</span>
             </label>
 
-            <label class="flex items-center gap-2 cursor-pointer py-1 text-slate-700 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer py-1 text-txt text-xs">
               <Checkbox v-model="activeTemplate.tableConfig.showFooterBorder" binary />
               <span class="font-semibold">Garis Atas Footer Catatan</span>
             </label>
           </div>
 
           <!-- C. Jarak / Padding & Proporsi Kolom -->
-          <div class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <span class="text-[11px] font-bold text-slate-800 uppercase tracking-wide">Kerapatan &amp; Lebar Kolom</span>
+          <div class="flex flex-col gap-2 p-2.5 bg-panel-2 rounded-lg border border-line">
+            <span class="t-label text-txt">Kerapatan &amp; Lebar Kolom</span>
 
             <div class="flex items-center justify-between">
               <div class="flex flex-col">
-                <span class="text-[11px] font-semibold text-slate-700">Kerapatan Baris (Padding):</span>
-                <span class="text-[9.5px] text-slate-400">Jarak teks ke garis stiker</span>
+                <span class="text-[11px] font-semibold text-txt">Kerapatan Baris (Padding):</span>
+                <span class="text-[9.5px] text-txt-muted">Jarak teks ke garis stiker</span>
               </div>
-              <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
+              <div class="flex items-center gap-1 bg-panel border border-line rounded px-1.5 py-0.5">
                 <input
                   type="number"
                   v-model.number="activeTemplate.tableConfig.cellPaddingMm"
                   min="0.3"
                   max="3"
                   step="0.1"
-                  class="w-11 text-center font-bold text-xs bg-transparent focus:outline-hidden"
+                  aria-label="Kerapatan baris dalam milimeter"
+                  class="w-11 text-center t-num font-bold text-xs text-txt bg-transparent focus:outline-hidden"
                 />
-                <span class="text-[10px] text-slate-400">mm</span>
+                <span class="text-[10px] text-txt-muted">mm</span>
               </div>
             </div>
 
-            <div class="flex items-center justify-between pt-1 border-t border-slate-200">
+            <div class="flex items-center justify-between pt-1 border-t border-line">
               <div class="flex flex-col">
-                <span class="text-[11px] font-semibold text-slate-700">Lebar Kolom Label:</span>
-                <span class="text-[9.5px] text-slate-400">Persentase lebar nama field</span>
+                <span class="text-[11px] font-semibold text-txt">Lebar Kolom Label:</span>
+                <span class="text-[9.5px] text-txt-muted">Persentase lebar nama field</span>
               </div>
-              <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
+              <div class="flex items-center gap-1 bg-panel border border-line rounded px-1.5 py-0.5">
                 <input
                   type="number"
                   v-model.number="activeTemplate.tableConfig.labelColWidthPercent"
                   min="18"
                   max="60"
                   step="1"
-                  class="w-10 text-center font-bold text-xs bg-transparent focus:outline-hidden"
+                  aria-label="Lebar kolom label dalam persen"
+                  class="w-10 text-center t-num font-bold text-xs text-txt bg-transparent focus:outline-hidden"
                 />
-                <span class="text-[10px] text-slate-400">%</span>
+                <span class="text-[10px] text-txt-muted">%</span>
               </div>
             </div>
           </div>
@@ -2151,11 +2217,11 @@ function printLabels() {
         <!-- 3. TAB KOP, BARCODE & FOOTER (MODE TABEL) -->
         <div v-else-if="paletteTab === 'header_footer' && isTableMode" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
           <!-- A. Pengaturan Barcode / QR Kolom -->
-          <div class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <span class="text-[11px] font-bold text-slate-800 uppercase tracking-wide">Kolom Barcode &amp; QR</span>
+          <div class="flex flex-col gap-2 p-2.5 bg-panel-2 rounded-lg border border-line">
+            <span class="t-label text-txt">Kolom Barcode &amp; QR</span>
 
             <div class="flex flex-col gap-1">
-              <label class="text-[11px] font-semibold text-slate-600">Posisi Barcode</label>
+              <label class="text-[11px] font-semibold text-txt-dim">Posisi Barcode</label>
               <Select
                 v-model="activeTemplate.tableConfig.qrPosition"
                 :options="[
@@ -2171,7 +2237,7 @@ function printLabels() {
 
             <div v-if="activeTemplate.tableConfig.qrPosition !== 'none'" class="flex flex-col gap-1.5 pt-1">
               <div class="flex flex-col gap-1">
-                <label class="text-[11px] font-semibold text-slate-600">Tipe Barcode</label>
+                <label class="text-[11px] font-semibold text-txt-dim">Tipe Barcode</label>
                 <Select
                   v-model="activeTemplate.tableConfig.qrType"
                   :options="[
@@ -2184,28 +2250,29 @@ function printLabels() {
                 />
               </div>
 
-              <div class="flex items-center justify-between pt-1 border-t border-slate-200">
-                <span class="text-[11px] text-slate-600 font-medium">Lebar Kolom QR:</span>
-                <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
+              <div class="flex items-center justify-between pt-1 border-t border-line">
+                <span class="text-[11px] text-txt-dim font-medium">Lebar Kolom QR:</span>
+                <div class="flex items-center gap-1 bg-panel border border-line rounded px-1.5 py-0.5">
                   <input
                     type="number"
                     v-model.number="activeTemplate.tableConfig.qrWidthMm"
                     min="15"
                     max="50"
-                    class="w-11 text-center font-bold text-xs bg-transparent focus:outline-hidden"
+                    aria-label="Lebar kolom QR dalam milimeter"
+                    class="w-11 text-center t-num font-bold text-xs text-txt bg-transparent focus:outline-hidden"
                   />
-                  <span class="text-[10px] text-slate-400">mm</span>
+                  <span class="text-[10px] text-txt-muted">mm</span>
                 </div>
               </div>
 
               <!-- Lambang Kota / Logo di Atas Barcode / QR -->
-              <div class="pt-2 border-t border-slate-200 flex flex-col gap-2">
-                <label class="flex items-center gap-1.5 cursor-pointer text-slate-800 font-bold text-xs">
+              <div class="pt-2 border-t border-line flex flex-col gap-2">
+                <label class="flex items-center gap-1.5 cursor-pointer text-txt font-bold text-xs">
                   <Checkbox v-model="activeTemplate.tableConfig.showLogo" binary />
                   <span>Lambang Kota di Atas QR (Atas-Bawah)</span>
                 </label>
 
-                <div v-if="activeTemplate.tableConfig.showLogo" class="flex flex-col gap-2 pl-4 border-l-2 border-indigo-200">
+                <div v-if="activeTemplate.tableConfig.showLogo" class="flex flex-col gap-2 pl-4 border-l-2 border-[var(--acc-border)]">
                   <input type="file" ref="tableLogoFileInput" accept="image/*" class="hidden" @change="onTableLogoSelected" />
                   <div class="flex items-center gap-1.5">
                     <Button
@@ -2232,10 +2299,10 @@ function printLabels() {
                     />
                   </div>
                   <div class="flex flex-col gap-1">
-                    <label class="text-[10px] text-slate-500 font-semibold">Atau Masukkan URL Logo:</label>
+                    <label class="text-[10px] text-txt-dim font-semibold">Atau Masukkan URL Logo:</label>
                     <InputText v-model="activeTemplate.tableConfig.logoUrl" placeholder="Kosongkan untuk Lambang Kota Cirebon" class="w-full !text-xs !py-1" />
                   </div>
-                  <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
+                  <label class="flex items-center gap-1.5 cursor-pointer text-txt text-xs">
                     <Checkbox v-model="activeTemplate.tableConfig.showItemNameUnderLogo" binary />
                     <span>Tampilkan Nama Barang di Bawah (- Nama)</span>
                   </label>
@@ -2245,32 +2312,32 @@ function printLabels() {
           </div>
 
           <!-- B. Kop / Header Instansi -->
-          <div class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+          <div class="flex flex-col gap-2 p-2.5 bg-panel-2 rounded-lg border border-line">
             <div class="flex items-center justify-between">
-              <label class="flex items-center gap-1.5 cursor-pointer text-slate-800 font-bold text-xs">
+              <label class="flex items-center gap-1.5 cursor-pointer text-txt font-bold text-xs">
                 <Checkbox v-model="activeTemplate.tableConfig.showHeader" binary />
                 <span>Kop / Header Instansi</span>
               </label>
-              <label v-if="activeTemplate.tableConfig.showHeader" class="flex items-center gap-1.5 cursor-pointer text-indigo-700 text-xs font-semibold">
+              <label v-if="activeTemplate.tableConfig.showHeader" class="flex items-center gap-1.5 cursor-pointer text-acc-500 text-xs font-semibold">
                 <Checkbox v-model="activeTemplate.tableConfig.showHeaderBorder" binary />
                 <span>Garis Bawah Kop</span>
               </label>
             </div>
 
-            <div v-if="activeTemplate.tableConfig.showHeader" class="flex flex-col gap-2 pt-1 border-t border-slate-200">
+            <div v-if="activeTemplate.tableConfig.showHeader" class="flex flex-col gap-2 pt-1 border-t border-line">
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] text-slate-500 font-semibold">Teks Baris 1 (Utama):</label>
+                <label class="text-[10px] text-txt-dim font-semibold">Teks Baris 1 (Utama):</label>
                 <InputText v-model="activeTemplate.tableConfig.headerText" placeholder="PEMERINTAH KABUPATEN..." class="w-full !text-xs !py-1" />
               </div>
 
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] text-slate-500 font-semibold">Teks Baris 2 (Sub-Kop / Dinas):</label>
+                <label class="text-[10px] text-txt-dim font-semibold">Teks Baris 2 (Sub-Kop / Dinas):</label>
                 <InputText v-model="activeTemplate.tableConfig.headerSubText" placeholder="DINAS KESEHATAN..." class="w-full !text-xs !py-1" />
               </div>
 
               <div class="grid grid-cols-2 gap-2">
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] text-slate-500 font-semibold">Gaya Kop:</label>
+                  <label class="text-[10px] text-txt-dim font-semibold">Gaya Kop:</label>
                   <Select
                     v-model="activeTemplate.tableConfig.headerStyle"
                     :options="[
@@ -2285,17 +2352,18 @@ function printLabels() {
                 </div>
 
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] text-slate-500 font-semibold">Ukuran Font Kop:</label>
-                  <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
+                  <label class="text-[10px] text-txt-dim font-semibold">Ukuran Font Kop:</label>
+                  <div class="flex items-center gap-1 bg-panel border border-line rounded px-1.5 py-0.5">
                     <input
                       type="number"
                       v-model.number="activeTemplate.tableConfig.headerFontSize"
                       min="5"
                       max="14"
                       step="0.5"
-                      class="w-full text-center font-bold text-xs bg-transparent focus:outline-hidden"
+                      aria-label="Ukuran font kop dalam poin"
+                      class="w-full text-center t-num font-bold text-xs text-txt bg-transparent focus:outline-hidden"
                     />
-                    <span class="text-[10px] text-slate-400">pt</span>
+                    <span class="text-[10px] text-txt-muted">pt</span>
                   </div>
                 </div>
               </div>
@@ -2303,28 +2371,29 @@ function printLabels() {
           </div>
 
           <!-- C. Catatan Kaki / Footer -->
-          <div class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+          <div class="flex flex-col gap-2 p-2.5 bg-panel-2 rounded-lg border border-line">
             <div class="flex items-center justify-between">
-              <label class="flex items-center gap-1.5 cursor-pointer text-slate-800 font-bold text-xs">
+              <label class="flex items-center gap-1.5 cursor-pointer text-txt font-bold text-xs">
                 <Checkbox v-model="activeTemplate.tableConfig.showFooter" binary />
                 <span>Catatan Kaki (Footer)</span>
               </label>
             </div>
 
-            <div v-if="activeTemplate.tableConfig.showFooter" class="flex flex-col gap-1.5 pt-1 border-t border-slate-200">
+            <div v-if="activeTemplate.tableConfig.showFooter" class="flex flex-col gap-1.5 pt-1 border-t border-line">
               <InputText v-model="activeTemplate.tableConfig.footerText" placeholder="DILARANG DILEPAS / DIPINDAHKAN..." class="w-full !text-xs !py-1" />
               <div class="flex items-center justify-between">
-                <span class="text-[11px] text-slate-500">Ukuran Huruf Footer:</span>
-                <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
+                <span class="text-[11px] text-txt-dim">Ukuran Huruf Footer:</span>
+                <div class="flex items-center gap-1 bg-panel border border-line rounded px-1.5 py-0.5">
                   <input
                     type="number"
                     v-model.number="activeTemplate.tableConfig.footerFontSize"
                     min="4"
                     max="10"
                     step="0.5"
-                    class="w-11 text-center font-bold text-xs bg-transparent focus:outline-hidden"
+                    aria-label="Ukuran huruf footer dalam poin"
+                    class="w-11 text-center t-num font-bold text-xs text-txt bg-transparent focus:outline-hidden"
                   />
-                  <span class="text-[10px] text-slate-400">pt</span>
+                  <span class="text-[10px] text-txt-muted">pt</span>
                 </div>
               </div>
             </div>
@@ -2334,79 +2403,83 @@ function printLabels() {
         <!-- 4. TAB KOMPONEN BEBAS (MODE BEBAS) -->
         <div v-else class="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2">
           <button type="button" class="component-item-btn" @click="addOtherElement('qr')">
-            <i class="pi pi-qrcode text-indigo-600 text-lg" />
+            <i class="pi pi-qrcode text-acc-500 text-lg" aria-hidden="true" />
             <div class="text-left flex-1 min-w-0">
-              <div class="font-bold text-slate-800 text-[11.5px]">QR Code</div>
-              <div class="text-[10px] text-slate-500">Scan link aset interaktif</div>
+              <div class="font-bold text-txt text-[11.5px]">QR Code</div>
+              <div class="text-[10px] text-txt-dim">Scan link aset interaktif</div>
             </div>
-            <i class="pi pi-plus text-slate-400 text-xs" />
+            <i class="pi pi-plus text-txt-muted text-xs" aria-hidden="true" />
           </button>
 
           <button type="button" class="component-item-btn" @click="addOtherElement('code128')">
-            <i class="pi pi-barcode text-cyan-600 text-lg" />
+            <i class="pi pi-barcode text-[var(--sig-info)] text-lg" aria-hidden="true" />
             <div class="text-left flex-1 min-w-0">
-              <div class="font-bold text-slate-800 text-[11.5px]">Barcode 128</div>
-              <div class="text-[10px] text-slate-500">Barcode garis SKU aset</div>
+              <div class="font-bold text-txt text-[11.5px]">Barcode 128</div>
+              <div class="text-[10px] text-txt-dim">Barcode garis SKU aset</div>
             </div>
-            <i class="pi pi-plus text-slate-400 text-xs" />
+            <i class="pi pi-plus text-txt-muted text-xs" aria-hidden="true" />
           </button>
 
           <button type="button" class="component-item-btn" @click="addOtherElement('header')">
-            <i class="pi pi-building text-amber-600 text-lg" />
+            <i class="pi pi-building text-[var(--sig-warn)] text-lg" aria-hidden="true" />
             <div class="text-left flex-1 min-w-0">
-              <div class="font-bold text-slate-800 text-[11.5px]">Header / Kop Instansi</div>
-              <div class="text-[10px] text-slate-500">Judul kop instansi atas</div>
+              <div class="font-bold text-txt text-[11.5px]">Header / Kop Instansi</div>
+              <div class="text-[10px] text-txt-dim">Judul kop instansi atas</div>
             </div>
-            <i class="pi pi-plus text-slate-400 text-xs" />
+            <i class="pi pi-plus text-txt-muted text-xs" aria-hidden="true" />
           </button>
 
           <button type="button" class="component-item-btn" @click="addOtherElement('line')">
-            <i class="pi pi-minus text-slate-500 text-lg" />
+            <i class="pi pi-minus text-txt-dim text-lg" aria-hidden="true" />
             <div class="text-left flex-1 min-w-0">
-              <div class="font-bold text-slate-800 text-[11.5px]">Garis Pembatas</div>
-              <div class="text-[10px] text-slate-500">Garis pemisah horizontal</div>
+              <div class="font-bold text-txt text-[11.5px]">Garis Pembatas</div>
+              <div class="text-[10px] text-txt-dim">Garis pemisah horizontal</div>
             </div>
-            <i class="pi pi-plus text-slate-400 text-xs" />
+            <i class="pi pi-plus text-txt-muted text-xs" aria-hidden="true" />
           </button>
 
           <button type="button" class="component-item-btn" @click="addOtherElement('static_text')">
-            <i class="pi pi-pencil text-purple-600 text-lg" />
+            <i class="pi pi-pencil text-acc-500 text-lg" aria-hidden="true" />
             <div class="text-left flex-1 min-w-0">
-              <div class="font-bold text-slate-800 text-[11.5px]">Teks Bebas Statis</div>
-              <div class="text-[10px] text-slate-500">Teks peringatan / keterangan</div>
+              <div class="font-bold text-txt text-[11.5px]">Teks Bebas Statis</div>
+              <div class="text-[10px] text-txt-dim">Teks peringatan / keterangan</div>
             </div>
-            <i class="pi pi-plus text-slate-400 text-xs" />
+            <i class="pi pi-plus text-txt-muted text-xs" aria-hidden="true" />
           </button>
         </div>
 
-        <div class="p-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 leading-tight">
-          <span v-if="isTableMode">💡 <b>Mode Tabel Kustom:</b> Tambah atau hapus baris &amp; sel langsung melalui tombol hover di kanvas atau panel samping.</span>
-          <span v-else>💡 Geser elemen langsung di stiker. Tarik titik biru di pojok untuk ubah ukuran.</span>
+        <div class="p-2.5 border-t border-line bg-panel-2 text-[11px] text-txt-dim leading-tight flex items-start gap-1.5">
+          <i class="pi pi-info-circle text-acc-500 text-xs mt-0.5 shrink-0" aria-hidden="true" />
+          <span v-if="isTableMode"><b>Mode Tabel Kustom:</b> Tambah atau hapus baris &amp; sel langsung melalui tombol hover di kanvas atau panel samping.</span>
+          <span v-else>Geser elemen langsung di stiker. Tarik titik di pojok untuk ubah ukuran.</span>
         </div>
       </div>
 
       <!-- CENTER COLUMN: VISUAL STICKER CANVAS -->
       <div
-        class="flex-1 overflow-auto p-8 grid place-items-center relative bg-slate-200/60"
+        class="flex-1 overflow-auto p-8 grid place-items-center relative bg-canvas"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
       >
         <div class="flex flex-col items-center gap-2">
           <!-- Sticker Label Badge Info + Quick Row Adder -->
-          <div class="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white/80 px-3 py-1 rounded-full border border-slate-300 shadow-xs">
-            <span>🏷️ {{ activeTemplate.widthMm }} &times; {{ activeTemplate.heightMm }} mm</span>
-            <span class="text-slate-300">|</span>
-            <span class="text-indigo-600 font-bold">{{ isTableMode ? 'Tabel Kustom Penuh' : 'Mode Bebas' }}</span>
-            <span class="text-slate-300">|</span>
-            <span class="text-slate-500 font-normal">Sampel: {{ sampleItem.name }}</span>
+          <div class="flex items-center gap-2 text-xs font-semibold text-txt-dim bg-panel px-3 py-1 rounded-full border border-line shadow-xs">
+            <span class="inline-flex items-center gap-1.5 t-num">
+              <i class="pi pi-tag text-acc-500 text-[11px]" aria-hidden="true" />
+              {{ activeTemplate.widthMm }} &times; {{ activeTemplate.heightMm }} mm
+            </span>
+            <span class="text-line">|</span>
+            <span class="text-acc-500 font-bold">{{ isTableMode ? 'Tabel Kustom Penuh' : 'Mode Bebas' }}</span>
+            <span class="text-line">|</span>
+            <span class="text-txt-dim font-normal">Sampel: {{ sampleItem.name }}</span>
             <template v-if="isTableMode">
-              <span class="text-slate-300">|</span>
+              <span class="text-line">|</span>
               <button
                 type="button"
-                class="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs transition-all"
+                class="px-2 py-0.5 rounded bg-acc-500 hover:bg-acc-600 text-white font-semibold text-[11px] flex items-center gap-1 transition-all"
                 @click="addNewRow('name', 'Nama')"
               >
-                <i class="pi pi-plus text-[10px]" />
+                <i class="pi pi-plus text-[10px]" aria-hidden="true" />
                 <span>Tambah Baris</span>
               </button>
             </template>
@@ -2538,7 +2611,7 @@ function printLabels() {
                     class="group/row flex-1 flex items-stretch cursor-pointer transition-colors relative"
                     :class="[
                       row.bgColor === 'light_gray' ? 'bg-slate-100' : row.bgColor === 'dark' ? 'bg-slate-800 text-white' : 'bg-white',
-                      selectedTableRowIndex === rIdx ? 'ring-1 ring-indigo-500 bg-indigo-50/50' : 'hover:bg-indigo-50/20',
+                      selectedTableRowIndex === rIdx ? 'ring-1 ring-acc-500 bg-teal-50/50' : 'hover:bg-teal-50/20',
                     ]"
                     :style="{
                       borderBottom: (activeTemplate.tableConfig.showGridLines && rIdx < activeTemplate.tableConfig.rows.length - 1) || row.hasBottomBorder
@@ -2563,7 +2636,7 @@ function printLabels() {
                         class="group/cell flex-1 flex items-center min-w-0 relative transition-all"
                         :class="[
                           cell.bgColor === 'light_gray' ? 'bg-slate-100' : cell.bgColor === 'dark' ? 'bg-slate-800 text-white' : '',
-                          selectedTableRowIndex === rIdx && selectedTableCellIndex === cIdx ? 'ring-1 ring-emerald-500 bg-emerald-50/60 font-semibold' : 'hover:bg-emerald-50/30',
+                          selectedTableRowIndex === rIdx && selectedTableCellIndex === cIdx ? 'ring-1 ring-acc-500 bg-teal-50/60 font-semibold' : 'hover:bg-teal-50/30',
                         ]"
                         :style="{
                           padding: `${activeTemplate.tableConfig.cellPaddingMm * MM_TO_PX * (zoom / 2.2)}px 4px`,
@@ -2598,77 +2671,84 @@ function printLabels() {
                         </span>
 
                         <!-- Tombol Cepat Aksi Sel (Pecah/Split, Gabung/Merge, Hapus Sel) -->
-                        <div class="opacity-0 group-hover/cell:opacity-100 absolute right-0.5 top-0.5 flex items-center gap-0.5 z-10 bg-white/95 rounded px-0.5 shadow-2xs border border-slate-200">
+                        <div class="opacity-0 group-hover/cell:opacity-100 absolute right-0.5 top-0.5 flex items-center gap-0.5 z-10 bg-panel/95 rounded px-0.5 shadow-2xs border border-line">
                           <!-- Split / Pecah Kolom -->
                           <button
                             type="button"
-                            class="p-0.5 rounded hover:bg-indigo-600 hover:text-white text-indigo-600 text-[8px]"
+                            aria-label="Pecah sel atau tambah kolom"
+                            class="p-0.5 rounded hover:bg-acc-500 hover:text-white text-acc-500 text-[8px]"
                             title="Pecah Sel / Tambah Kolom (Split)"
                             @click.stop="splitCell(rIdx, cIdx)"
                           >
-                            <i class="pi pi-arrows-h text-[8px]" />
+                            <i class="pi pi-arrows-h text-[8px]" aria-hidden="true" />
                           </button>
                           <!-- Merge / Gabung dengan Sel Kanan -->
                           <button
                             v-if="cIdx < getRowCells(row).length - 1"
                             type="button"
-                            class="p-0.5 rounded hover:bg-emerald-600 hover:text-white text-emerald-600 text-[8px]"
+                            aria-label="Gabung dengan sel kanan"
+                            class="p-0.5 rounded hover:bg-[var(--sig-ok)] hover:text-white text-[var(--sig-ok)] text-[8px]"
                             title="Gabung dengan Sel Kanan (Merge)"
                             @click.stop="mergeCellsWithNext(rIdx, cIdx)"
                           >
-                            <i class="pi pi-link text-[8px]" />
+                            <i class="pi pi-link text-[8px]" aria-hidden="true" />
                           </button>
                           <!-- Hapus Sel Ini -->
                           <button
                             type="button"
-                            class="p-0.5 rounded hover:bg-rose-600 hover:text-white text-rose-500 text-[8px]"
+                            aria-label="Hapus sel ini"
+                            class="p-0.5 rounded hover:bg-[var(--sig-bad)] hover:text-white text-[var(--sig-bad)] text-[8px]"
                             title="Hapus Sel Ini"
                             @click.stop="removeCellFromRow(rIdx, cIdx)"
                           >
-                            <i class="pi pi-times text-[8px]" />
+                            <i class="pi pi-times text-[8px]" aria-hidden="true" />
                           </button>
                         </div>
                       </div>
                     </template>
 
                     <!-- TOMBOL CEPAT BARIS (Hover Overlay di ujung kanan baris) -->
-                    <div class="opacity-0 group-hover/row:opacity-100 absolute right-0 top-0 bottom-0 flex items-center gap-0.5 bg-white/95 px-1 border-l border-slate-300 shadow-xs transition-opacity z-20">
+                    <div class="opacity-0 group-hover/row:opacity-100 absolute right-0 top-0 bottom-0 flex items-center gap-0.5 bg-panel/95 px-1 border-l border-line shadow-xs transition-opacity z-20">
                       <!-- Tambah Sel ke Baris Ini -->
                       <button
                         type="button"
-                        class="p-0.5 rounded bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-[10px]"
+                        aria-label="Tambah sel atau kolom di baris ini"
+                        class="p-0.5 rounded bg-[var(--acc-50)] hover:bg-acc-500 hover:text-white text-acc-500 text-[10px]"
                         title="Tambah Sel / Kolom di Baris Ini"
                         @click.stop="addCellToRow(rIdx)"
                       >
-                        <i class="pi pi-plus-circle text-[10px]" />
+                        <i class="pi pi-plus-circle text-[10px]" aria-hidden="true" />
                       </button>
                       <!-- Sisip Baris Baru Tepat di Bawah Ini -->
                       <button
                         type="button"
-                        class="p-0.5 rounded bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-700 text-[10px]"
+                        aria-label="Sisipkan baris baru di bawah ini"
+                        class="p-0.5 rounded bg-panel-2 hover:bg-acc-500 hover:text-white text-txt-dim text-[10px]"
                         title="Sisipkan Baris Baru di Bawah Ini"
                         @click.stop="addNewRow('location', 'Ruang', rIdx)"
                       >
-                        <i class="pi pi-plus text-[10px]" />
+                        <i class="pi pi-plus text-[10px]" aria-hidden="true" />
                       </button>
                       <!-- Gabung (Merge) dengan Baris di Bawah Ini -->
                       <button
                         v-if="rIdx < activeTemplate.tableConfig.rows.length - 1"
                         type="button"
-                        class="p-0.5 rounded bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 text-[10px]"
+                        aria-label="Gabung dengan baris di bawahnya"
+                        class="p-0.5 rounded bg-[var(--sig-ok-bg)] hover:bg-[var(--sig-ok)] hover:text-white text-[var(--sig-ok)] text-[10px]"
                         title="Gabung (Merge) dengan Baris di Bawahnya"
                         @click.stop="mergeRowWithNext(rIdx)"
                       >
-                        <i class="pi pi-link text-[10px]" />
+                        <i class="pi pi-link text-[10px]" aria-hidden="true" />
                       </button>
                       <!-- Hapus Baris Ini -->
                       <button
                         type="button"
-                        class="p-0.5 rounded bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 text-[10px]"
+                        aria-label="Hapus seluruh baris ini"
+                        class="p-0.5 rounded bg-[var(--sig-bad-bg)] hover:bg-[var(--sig-bad)] hover:text-white text-[var(--sig-bad)] text-[10px]"
                         title="Hapus Seluruh Baris Ini"
                         @click.stop="removeTableRow(rIdx)"
                       >
-                        <i class="pi pi-trash text-[10px]" />
+                        <i class="pi pi-trash text-[10px]" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -2680,7 +2760,7 @@ function printLabels() {
                     <span>Tabel masih kosong.</span>
                     <button
                       type="button"
-                      class="px-2.5 py-1 bg-indigo-600 text-white rounded font-bold text-xs shadow-xs"
+                      class="px-2.5 py-1 bg-acc-500 hover:bg-acc-600 text-white rounded font-semibold text-xs shadow-xs"
                       @click="addNewRow('name', 'Nama')"
                     >
                       + Tambah Baris Pertama
@@ -2734,7 +2814,7 @@ function printLabels() {
                 :key="el.id"
                 class="absolute cursor-move select-none transition-shadow"
                 :class="[
-                  activeElementId === el.id ? 'ring-2 ring-indigo-600 shadow-md z-20' : 'hover:ring-1 hover:ring-slate-400 z-10',
+                  activeElementId === el.id ? 'ring-2 ring-acc-500 shadow-md z-20' : 'hover:ring-1 hover:ring-slate-400 z-10',
                 ]"
                 :style="{
                   left: `${el.x * MM_TO_PX * zoom}px`,
@@ -2821,7 +2901,7 @@ function printLabels() {
                 <!-- Resize Handle -->
                 <div
                   v-if="activeElementId === el.id"
-                  class="absolute -right-1 -bottom-1 w-3.5 h-3.5 bg-indigo-600 border-2 border-white rounded-xs cursor-nwse-resize z-30 shadow-xs"
+                  class="absolute -right-1 -bottom-1 w-3.5 h-3.5 bg-acc-500 border-2 border-white rounded-xs cursor-nwse-resize z-30 shadow-xs"
                   @pointerdown.stop="startResize($event, el)"
                 />
               </div>
@@ -2832,19 +2912,19 @@ function printLabels() {
           <div v-if="isTableMode" class="mt-3 flex items-center justify-center">
             <button
               type="button"
-              class="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 rounded-md border border-indigo-200 shadow-2xs text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              class="px-3 py-1.5 bg-[var(--panel)] hover:bg-[var(--acc-wash)] text-[var(--acc-600)] rounded-md border border-[var(--acc-border)] shadow-2xs text-[11px] font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
               @click="addNewRow('location', 'Ruang')"
             >
-              <i class="pi pi-plus-circle text-xs" />
-              <span>+ Tambah Baris Baru</span>
+              <i class="pi pi-plus-circle text-xs" aria-hidden="true" />
+              <span>Tambah Baris Baru</span>
             </button>
           </div>
         </div>
       </div>
 
       <!-- RIGHT COLUMN: PROPERTIES INSPECTOR (FULL KUSTOM BARIS & SEL) -->
-      <div class="w-88 shrink-0 border-l border-slate-200 bg-white p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
-        <div class="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between pb-2 border-b border-slate-200">
+      <div class="w-88 shrink-0 border-l border-[var(--line)] bg-[var(--panel)] p-3.5 flex flex-col gap-3 text-xs overflow-y-auto select-none">
+        <div class="t-label flex items-center justify-between pb-2 border-b border-[var(--line)]">
           <span>{{ isTableMode ? 'Inspektor Baris & Sel' : 'Pengaturan Elemen' }}</span>
           <Tag :value="isTableMode ? 'KUSTOM BARIS & SEL' : 'MODE BEBAS'" severity="info" class="!text-[9px] !py-0" />
         </div>
@@ -2852,72 +2932,76 @@ function printLabels() {
         <!-- 1. INSPECTOR UNTUK MODE TABEL -->
         <div v-if="isTableMode" class="flex flex-col gap-3">
           <!-- A. Pengaturan Baris Terpilih -->
-          <div v-if="selectedTableRow" class="p-3 bg-indigo-50/60 rounded-lg border border-indigo-200 flex flex-col gap-2.5">
+          <div v-if="selectedTableRow" class="p-3 bg-[var(--acc-wash)] rounded-lg border border-[var(--acc-border)] flex flex-col gap-2.5">
             <div class="flex items-center justify-between">
-              <span class="font-bold text-indigo-900 text-xs">Baris #{{ (selectedTableRowIndex ?? 0) + 1 }}</span>
+              <span class="font-semibold text-[var(--txt)] text-xs t-num">Baris #{{ (selectedTableRowIndex ?? 0) + 1 }}</span>
               <div class="flex items-center gap-1">
                 <button
                   type="button"
-                  class="p-1 rounded bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40"
+                  class="p-1 rounded bg-[var(--panel)] border border-[var(--line)] text-[var(--txt-dim)] hover:text-[var(--acc-600)] hover:border-[var(--acc-border)] disabled:opacity-40 transition-colors"
                   :disabled="selectedTableRowIndex === 0"
                   title="Pindah Baris ke Atas"
+                  aria-label="Pindah baris ke atas"
                   @click="moveRowUp(selectedTableRowIndex!)"
                 >
-                  <i class="pi pi-arrow-up text-xs" />
+                  <i class="pi pi-arrow-up text-xs" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  class="p-1 rounded bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40"
+                  class="p-1 rounded bg-[var(--panel)] border border-[var(--line)] text-[var(--txt-dim)] hover:text-[var(--acc-600)] hover:border-[var(--acc-border)] disabled:opacity-40 transition-colors"
                   :disabled="selectedTableRowIndex === activeTemplate.tableConfig.rows.length - 1"
                   title="Pindah Baris ke Bawah"
+                  aria-label="Pindah baris ke bawah"
                   @click="moveRowDown(selectedTableRowIndex!)"
                 >
-                  <i class="pi pi-arrow-down text-xs" />
+                  <i class="pi pi-arrow-down text-xs" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  class="p-1 rounded bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 ml-0.5"
+                  class="p-1 rounded bg-[var(--panel)] border border-[var(--line)] text-[var(--txt-dim)] hover:text-[var(--acc-600)] hover:border-[var(--acc-border)] ml-0.5 transition-colors"
                   title="Duplikat Baris Ini"
+                  aria-label="Duplikat baris ini"
                   @click="duplicateTableRow(selectedTableRowIndex!)"
                 >
-                  <i class="pi pi-copy text-xs" />
+                  <i class="pi pi-copy text-xs" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  class="p-1 rounded bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 ml-0.5"
+                  class="p-1 rounded bg-[var(--sig-bad-bg)] border border-[var(--sig-bad-line)] text-[var(--sig-bad)] hover:opacity-85 ml-0.5 transition-opacity"
                   title="Hapus Baris Ini"
+                  aria-label="Hapus baris ini"
                   @click="removeTableRow(selectedTableRowIndex!)"
                 >
-                  <i class="pi pi-trash text-xs" />
+                  <i class="pi pi-trash text-xs" aria-hidden="true" />
                 </button>
               </div>
             </div>
 
             <!-- Bagian Kelola Sel / Kolom di Baris Ini -->
-            <div class="p-2 bg-white rounded border border-indigo-100 flex flex-col gap-2">
+            <div class="p-2 bg-[var(--panel)] rounded border border-[var(--line)] flex flex-col gap-2">
               <div class="flex items-center justify-between">
-                <span class="text-[10.5px] font-bold text-slate-700 uppercase">
+                <span class="t-label t-num">
                   Kolom / Sel ({{ getRowCells(selectedTableRow).length }})
                 </span>
                 <div class="flex items-center gap-1">
                   <button
                     v-if="selectedTableRowIndex !== null && selectedTableRowIndex < activeTemplate.tableConfig.rows.length - 1"
                     type="button"
-                    class="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 font-bold text-[10px] rounded border border-emerald-200 transition-all flex items-center gap-1"
+                    class="px-2 py-0.5 bg-[var(--sig-ok-bg)] hover:bg-[var(--sig-ok)] hover:text-white text-[var(--sig-ok)] font-semibold text-[10px] rounded border border-[var(--sig-ok-line)] transition-colors flex items-center gap-1"
                     title="Gabung baris ini dengan baris di bawahnya"
                     @click="mergeRowWithNext(selectedTableRowIndex!)"
                   >
-                    <i class="pi pi-link text-[9px]" />
+                    <i class="pi pi-link text-[9px]" aria-hidden="true" />
                     <span>Merge Baris</span>
                   </button>
                   <button
                     type="button"
-                    class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold text-[10px] rounded border border-indigo-200 transition-all flex items-center gap-1"
+                    class="px-2 py-0.5 bg-[var(--acc-wash)] hover:bg-acc-500 hover:text-white text-[var(--acc-600)] font-semibold text-[10px] rounded border border-[var(--acc-border)] transition-colors flex items-center gap-1"
                     title="Tambah Sel / Kolom Baru di Baris Ini"
                     @click="addCellToRow(selectedTableRowIndex!)"
                   >
-                    <i class="pi pi-plus text-[9px]" />
-                    <span>+ Tambah Sel</span>
+                    <i class="pi pi-plus text-[9px]" aria-hidden="true" />
+                    <span>Tambah Sel</span>
                   </button>
                 </div>
               </div>
@@ -2927,48 +3011,49 @@ function printLabels() {
                 <div
                   v-for="(c, cIdx) in getRowCells(selectedTableRow)"
                   :key="c.id"
-                  class="flex items-center gap-1 px-2 py-1 rounded border text-[11px] cursor-pointer transition-all"
-                  :class="selectedTableCellIndex === cIdx ? 'bg-emerald-500 border-emerald-600 text-white font-bold shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'"
+                  class="flex items-center gap-1 px-2 py-1 rounded border text-[11px] cursor-pointer transition-colors"
+                  :class="selectedTableCellIndex === cIdx ? 'bg-acc-500 border-acc-600 text-white font-semibold shadow-2xs' : 'bg-[var(--panel-2)] border-[var(--line)] text-[var(--txt-dim)] hover:text-[var(--txt)]'"
                   @click="selectedTableCellIndex = cIdx"
                 >
-                  <span>Sel {{ cIdx + 1 }}: {{ c.label || c.field }}</span>
+                  <span class="t-num">Sel {{ cIdx + 1 }}: {{ c.label || c.field }}</span>
                   <button
                     v-if="getRowCells(selectedTableRow).length > 1"
                     type="button"
                     class="ml-0.5 p-0.5 rounded-full hover:bg-black/20 text-current transition-colors"
                     title="Hapus Sel Ini"
+                    aria-label="Hapus sel ini"
                     @click.stop="removeCellFromRow(selectedTableRowIndex!, cIdx)"
                   >
-                    <i class="pi pi-times text-[8px]" />
+                    <i class="pi pi-times text-[8px]" aria-hidden="true" />
                   </button>
                 </div>
               </div>
             </div>
 
             <!-- Detail Edit Sel Terpilih -->
-            <div v-if="selectedTableCell" class="p-2.5 bg-white rounded border border-indigo-100 flex flex-col gap-2">
-              <div class="flex items-center justify-between border-b border-slate-100 pb-1">
-                <span class="font-bold text-emerald-800 text-[11px]">
+            <div v-if="selectedTableCell" class="p-2.5 bg-[var(--panel)] rounded border border-[var(--line)] flex flex-col gap-2">
+              <div class="flex items-center justify-between border-b border-[var(--line-soft)] pb-1">
+                <span class="font-semibold text-[var(--acc-600)] text-[11px] t-num">
                   Edit Sel #{{ (selectedTableCellIndex ?? 0) + 1 }}
                 </span>
                 <button
                   v-if="getRowCells(selectedTableRow).length > 1"
                   type="button"
-                  class="text-rose-600 hover:text-rose-800 font-bold text-[10px] flex items-center gap-1"
+                  class="text-[var(--sig-bad)] hover:underline font-semibold text-[10px] flex items-center gap-1"
                   @click="removeCellFromRow(selectedTableRowIndex!, selectedTableCellIndex!)"
                 >
-                  <i class="pi pi-trash text-[9px]" />
+                  <i class="pi pi-trash text-[9px]" aria-hidden="true" />
                   <span>Hapus Sel Ini</span>
                 </button>
               </div>
 
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-semibold text-slate-600">Label Judul Sel:</label>
+                <label class="text-[10px] font-semibold text-[var(--txt-dim)]">Label Judul Sel:</label>
                 <InputText v-model="selectedTableCell.label" placeholder="Contoh: Ruang" class="w-full !text-xs !py-1" />
               </div>
 
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-semibold text-slate-600">Field Data Barang:</label>
+                <label class="text-[10px] font-semibold text-[var(--txt-dim)]">Field Data Barang:</label>
                 <Select
                   v-model="selectedTableCell.field"
                   :options="AVAILABLE_FIELDS"
@@ -2979,28 +3064,28 @@ function printLabels() {
               </div>
 
               <div class="flex flex-col gap-1">
-                <label class="text-[10px] font-semibold text-slate-600">Teks Manual (Opsional):</label>
+                <label class="text-[10px] font-semibold text-[var(--txt-dim)]">Teks Manual (Opsional):</label>
                 <InputText v-model="selectedTableCell.customText" placeholder="Kosongkan jika ambil otomatis dari field" class="w-full !text-xs !py-1" />
               </div>
 
-              <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+              <div class="grid grid-cols-2 gap-2 pt-1 border-t border-[var(--line-soft)]">
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] text-slate-600">Ukuran Font:</label>
-                  <div class="flex items-center gap-1 bg-white border border-slate-300 rounded px-1.5 py-0.5">
+                  <label class="text-[10px] text-[var(--txt-dim)]">Ukuran Font:</label>
+                  <div class="flex items-center gap-1 bg-[var(--panel-2)] border border-[var(--line)] rounded px-1.5 py-0.5">
                     <input
                       type="number"
                       v-model.number="selectedTableCell.fontSize"
                       min="4"
                       max="14"
                       step="0.5"
-                      class="w-full text-center font-bold text-xs bg-transparent focus:outline-hidden"
+                      class="w-full text-center font-semibold text-xs t-num text-[var(--txt)] bg-transparent focus:outline-hidden"
                     />
-                    <span class="text-[10px] text-slate-400">pt</span>
+                    <span class="text-[10px] text-[var(--txt-muted)]">pt</span>
                   </div>
                 </div>
 
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] text-slate-600">Warna Latar Sel:</label>
+                  <label class="text-[10px] text-[var(--txt-dim)]">Warna Latar Sel:</label>
                   <Select
                     v-model="selectedTableCell.bgColor"
                     :options="[
@@ -3016,32 +3101,32 @@ function printLabels() {
               </div>
 
               <div class="flex items-center justify-between pt-1">
-                <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
+                <label class="flex items-center gap-1.5 cursor-pointer text-[var(--txt)] text-xs">
                   <Checkbox v-model="selectedTableCell.bold" binary />
-                  <span class="font-bold">Teks Tebal</span>
+                  <span class="font-semibold">Teks Tebal</span>
                 </label>
 
                 <div class="flex items-center gap-1">
                   <button
                     type="button"
-                    class="px-2 py-0.5 rounded border text-[10.5px]"
-                    :class="selectedTableCell.align === 'left' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
+                    class="px-2 py-0.5 rounded border text-[10.5px] transition-colors"
+                    :class="selectedTableCell.align === 'left' ? 'bg-acc-500 border-acc-600 text-white font-semibold' : 'bg-[var(--panel-2)] border-[var(--line)] text-[var(--txt-dim)]'"
                     @click="selectedTableCell.align = 'left'"
                   >
                     Kiri
                   </button>
                   <button
                     type="button"
-                    class="px-2 py-0.5 rounded border text-[10.5px]"
-                    :class="selectedTableCell.align === 'center' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
+                    class="px-2 py-0.5 rounded border text-[10.5px] transition-colors"
+                    :class="selectedTableCell.align === 'center' ? 'bg-acc-500 border-acc-600 text-white font-semibold' : 'bg-[var(--panel-2)] border-[var(--line)] text-[var(--txt-dim)]'"
                     @click="selectedTableCell.align = 'center'"
                   >
                     Tengah
                   </button>
                   <button
                     type="button"
-                    class="px-2 py-0.5 rounded border text-[10.5px]"
-                    :class="selectedTableCell.align === 'right' ? 'bg-indigo-600 text-white font-bold' : 'bg-white text-slate-600'"
+                    class="px-2 py-0.5 rounded border text-[10.5px] transition-colors"
+                    :class="selectedTableCell.align === 'right' ? 'bg-acc-500 border-acc-600 text-white font-semibold' : 'bg-[var(--panel-2)] border-[var(--line)] text-[var(--txt-dim)]'"
                     @click="selectedTableCell.align = 'right'"
                   >
                     Kanan
@@ -3049,24 +3134,24 @@ function printLabels() {
                 </div>
               </div>
               <!-- Tombol Cepat Aksi Sel (Pecah / Split & Gabung / Merge) -->
-              <div class="flex items-center gap-1.5 pt-2 border-t border-slate-100 flex-wrap">
+              <div class="flex items-center gap-1.5 pt-2 border-t border-[var(--line-soft)] flex-wrap">
                 <button
                   type="button"
-                  class="flex-1 py-1 px-1.5 rounded bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 border border-indigo-200 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
+                  class="flex-1 py-1 px-1.5 rounded bg-[var(--acc-wash)] hover:bg-acc-500 hover:text-white text-[var(--acc-600)] border border-[var(--acc-border)] text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors"
                   title="Pecah sel ini / tambah kolom baru di sebelahnya"
                   @click="splitCell(selectedTableRowIndex!, selectedTableCellIndex!)"
                 >
-                  <i class="pi pi-arrows-h text-xs" />
+                  <i class="pi pi-arrows-h text-xs" aria-hidden="true" />
                   <span>Pecah (Split)</span>
                 </button>
                 <button
                   type="button"
                   :disabled="selectedTableCellIndex === null || selectedTableCellIndex >= getRowCells(selectedTableRow).length - 1"
-                  class="flex-1 py-1 px-1.5 rounded bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 text-[10px] font-bold flex items-center justify-center gap-1 disabled:opacity-40 transition-colors"
+                  class="flex-1 py-1 px-1.5 rounded bg-[var(--sig-ok-bg)] hover:bg-[var(--sig-ok)] hover:text-white text-[var(--sig-ok)] border border-[var(--sig-ok-line)] text-[10px] font-semibold flex items-center justify-center gap-1 disabled:opacity-40 transition-colors"
                   title="Gabung sel ini dengan sel sebelah kanan"
                   @click="mergeCellsWithNext(selectedTableRowIndex!, selectedTableCellIndex!)"
                 >
-                  <i class="pi pi-link text-xs" />
+                  <i class="pi pi-link text-xs" aria-hidden="true" />
                   <span>Gabung (Merge)</span>
                 </button>
               </div>
@@ -3074,48 +3159,49 @@ function printLabels() {
 
             <!-- Tombol Aksi Hapus Baris -->
             <div class="pt-1 flex items-center justify-between">
-              <label class="flex items-center gap-1.5 cursor-pointer text-slate-700 text-xs">
+              <label class="flex items-center gap-1.5 cursor-pointer text-[var(--txt)] text-xs">
                 <Checkbox v-model="selectedTableRow.hasBottomBorder" binary />
                 <span>Paksa Garis Bawah</span>
               </label>
 
               <button
                 type="button"
-                class="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1"
+                class="px-2.5 py-1 rounded bg-[var(--sig-bad-bg)] hover:bg-[var(--sig-bad)] hover:text-white text-[var(--sig-bad)] border border-[var(--sig-bad-line)] text-xs font-semibold transition-colors flex items-center gap-1"
                 @click="removeTableRow(selectedTableRowIndex!)"
               >
-                <i class="pi pi-trash text-xs" />
+                <i class="pi pi-trash text-xs" aria-hidden="true" />
                 <span>Hapus Seluruh Baris</span>
               </button>
             </div>
           </div>
 
-          <div v-else class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-500 text-xs text-center">
-            👉 Klik salah satu baris pada kanvas stiker untuk mengatur isi sel, menambah kolom, atau menghapusnya.
+          <div v-else class="p-3 bg-[var(--panel-2)] rounded-lg border border-[var(--line)] text-[var(--txt-dim)] text-xs text-center flex flex-col items-center gap-1.5">
+            <i class="pi pi-arrow-left text-sm text-[var(--txt-muted)]" aria-hidden="true" />
+            <span>Klik salah satu baris pada kanvas stiker untuk mengatur isi sel, menambah kolom, atau menghapusnya.</span>
           </div>
 
           <!-- B. Daftar Urutan Baris Aktif -->
           <div class="flex flex-col gap-1.5">
             <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Urutan Baris ({{ activeTemplate.tableConfig.rows.length }})</span>
+              <span class="t-label t-num">Urutan Baris ({{ activeTemplate.tableConfig.rows.length }})</span>
               <div class="flex items-center gap-2">
                 <button
                   v-if="activeTemplate.tableConfig.rows.length > 0"
                   type="button"
-                  class="text-rose-600 hover:text-rose-800 text-[10px] font-bold flex items-center gap-1"
+                  class="text-[var(--sig-bad)] hover:underline text-[10px] font-semibold flex items-center gap-1"
                   title="Hapus seluruh baris stiker"
                   @click="clearAllRows"
                 >
-                  <i class="pi pi-trash text-[9px]" />
+                  <i class="pi pi-trash text-[9px]" aria-hidden="true" />
                   <span>Kosongkan</span>
                 </button>
                 <button
                   type="button"
-                  class="text-indigo-600 hover:text-indigo-800 text-[11px] font-bold flex items-center gap-1"
+                  class="text-[var(--acc-600)] hover:underline text-[11px] font-semibold flex items-center gap-1"
                   @click="addNewRow('name', 'Nama')"
                 >
-                  <i class="pi pi-plus text-[10px]" />
-                  <span>+ Tambah Baris</span>
+                  <i class="pi pi-plus text-[10px]" aria-hidden="true" />
+                  <span>Tambah Baris</span>
                 </button>
               </div>
             </div>
@@ -3125,35 +3211,54 @@ function printLabels() {
                 v-for="(r, idx) in activeTemplate.tableConfig.rows"
                 :key="r.id"
                 class="flex items-center justify-between px-2 py-1 rounded border text-xs cursor-pointer transition-colors"
-                :class="selectedTableRowIndex === idx ? 'bg-indigo-100 border-indigo-400 font-bold text-indigo-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'"
+                :class="selectedTableRowIndex === idx ? 'bg-[var(--acc-wash)] border-[var(--acc-border)] font-semibold text-[var(--txt)]' : 'bg-[var(--panel)] border-[var(--line)] text-[var(--txt-dim)] hover:bg-[var(--panel-2)]'"
                 @click="selectedTableRowIndex = idx; selectedTableCellIndex = 0"
               >
                 <div class="flex items-center gap-1.5 truncate">
-                  <span class="text-slate-400 text-[10px]">{{ idx + 1 }}.</span>
-                  <span v-if="r.type === 'barcode_strip'" class="truncate text-cyan-700">|||| Barcode Garis</span>
+                  <span class="text-[var(--txt-muted)] text-[10px] t-num">{{ idx + 1 }}.</span>
+                  <span v-if="r.type === 'barcode_strip'" class="truncate text-[var(--acc-600)] t-mono">|||| Barcode Garis</span>
                   <span v-else class="truncate">
                     {{ getRowCells(r).map((c) => c.label || c.field).join(' | ') }}
-                    <span class="text-[10px] font-normal text-slate-400">({{ getRowCells(r).length }} sel)</span>
+                    <span class="text-[10px] font-normal text-[var(--txt-muted)] t-num">({{ getRowCells(r).length }} sel)</span>
                   </span>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
                   <button
                     v-if="idx < activeTemplate.tableConfig.rows.length - 1"
                     type="button"
-                    class="text-emerald-600 hover:text-emerald-800 p-0.5"
+                    class="text-[var(--sig-ok)] hover:opacity-80 p-0.5"
                     title="Gabung (Merge) dengan baris di bawahnya"
+                    aria-label="Gabung dengan baris di bawahnya"
                     @click.stop="mergeRowWithNext(idx)"
                   >
-                    <i class="pi pi-link text-[11px]" />
+                    <i class="pi pi-link text-[11px]" aria-hidden="true" />
                   </button>
-                  <button type="button" class="text-indigo-600 hover:text-indigo-800 p-0.5" title="Tambah Sel" @click.stop="addCellToRow(idx)">
-                    <i class="pi pi-plus-circle text-[11px]" />
+                  <button
+                    type="button"
+                    class="text-[var(--acc-600)] hover:opacity-80 p-0.5"
+                    title="Tambah Sel"
+                    aria-label="Tambah sel ke baris"
+                    @click.stop="addCellToRow(idx)"
+                  >
+                    <i class="pi pi-plus-circle text-[11px]" aria-hidden="true" />
                   </button>
-                  <button type="button" class="text-slate-400 hover:text-indigo-600 p-0.5" title="Duplikat" @click.stop="duplicateTableRow(idx)">
-                    <i class="pi pi-copy text-[10px]" />
+                  <button
+                    type="button"
+                    class="text-[var(--txt-muted)] hover:text-[var(--acc-600)] p-0.5"
+                    title="Duplikat"
+                    aria-label="Duplikat baris"
+                    @click.stop="duplicateTableRow(idx)"
+                  >
+                    <i class="pi pi-copy text-[10px]" aria-hidden="true" />
                   </button>
-                  <button type="button" class="text-rose-500 hover:text-rose-700 p-0.5" title="Hapus Baris" @click.stop="removeTableRow(idx)">
-                    <i class="pi pi-trash text-[10px]" />
+                  <button
+                    type="button"
+                    class="text-[var(--sig-bad)] hover:opacity-80 p-0.5"
+                    title="Hapus Baris"
+                    aria-label="Hapus baris"
+                    @click.stop="removeTableRow(idx)"
+                  >
+                    <i class="pi pi-trash text-[10px]" aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -3164,13 +3269,13 @@ function printLabels() {
         <!-- 2. INSPECTOR UNTUK MODE BEBAS (Drag & Drop) -->
         <div v-else-if="activeElement" class="flex flex-col gap-3">
           <div v-if="activeElement.type === 'header' || activeElement.type === 'static_text'" class="flex flex-col gap-1">
-            <label class="text-slate-600 font-semibold text-[11px]">Teks Tampilan</label>
+            <label class="text-[var(--txt-dim)] font-semibold text-[11px]">Teks Tampilan</label>
             <InputText v-model="activeElement.text" class="w-full !text-xs !py-1" />
           </div>
 
-          <div v-if="activeElement.type === 'field'" class="flex flex-col gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+          <div v-if="activeElement.type === 'field'" class="flex flex-col gap-2 p-2.5 bg-[var(--panel-2)] rounded-lg border border-[var(--line)]">
             <div class="flex flex-col gap-1">
-              <label class="text-slate-600 font-semibold text-[11px]">Field dari Formulir</label>
+              <label class="text-[var(--txt-dim)] font-semibold text-[11px]">Field dari Formulir</label>
               <Select
                 v-model="activeElement.field"
                 :options="AVAILABLE_FIELDS"
@@ -3180,30 +3285,30 @@ function printLabels() {
               />
             </div>
             <div class="flex flex-col gap-1">
-              <label class="text-slate-600 font-semibold text-[11px]">Teks Awalan (Prefix)</label>
+              <label class="text-[var(--txt-dim)] font-semibold text-[11px]">Teks Awalan (Prefix)</label>
               <InputText v-model="activeElement.prefix" placeholder="Contoh: NUP: " class="w-full !text-xs !py-1" />
             </div>
           </div>
 
           <!-- Position & Dimension -->
-          <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-2">
-            <span class="text-[11px] font-bold text-slate-700">Posisi &amp; Ukuran (mm)</span>
+          <div class="p-2.5 bg-[var(--panel-2)] rounded-lg border border-[var(--line)] flex flex-col gap-2">
+            <span class="text-[11px] font-semibold text-[var(--txt)]">Posisi &amp; Ukuran (mm)</span>
             <div class="grid grid-cols-2 gap-2">
-              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
-                <span class="text-slate-400 text-[10px] mr-1">X:</span>
-                <input type="number" v-model.number="activeElement.x" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
+              <div class="flex items-center bg-[var(--panel)] rounded border border-[var(--line)] px-2 py-1">
+                <span class="text-[var(--txt-muted)] text-[10px] mr-1">X:</span>
+                <input type="number" v-model.number="activeElement.x" step="0.5" class="w-full text-xs font-semibold t-num text-[var(--txt)] bg-transparent focus:outline-hidden" />
               </div>
-              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
-                <span class="text-slate-400 text-[10px] mr-1">Y:</span>
-                <input type="number" v-model.number="activeElement.y" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
+              <div class="flex items-center bg-[var(--panel)] rounded border border-[var(--line)] px-2 py-1">
+                <span class="text-[var(--txt-muted)] text-[10px] mr-1">Y:</span>
+                <input type="number" v-model.number="activeElement.y" step="0.5" class="w-full text-xs font-semibold t-num text-[var(--txt)] bg-transparent focus:outline-hidden" />
               </div>
-              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
-                <span class="text-slate-400 text-[10px] mr-1">P:</span>
-                <input type="number" v-model.number="activeElement.w" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
+              <div class="flex items-center bg-[var(--panel)] rounded border border-[var(--line)] px-2 py-1">
+                <span class="text-[var(--txt-muted)] text-[10px] mr-1">P:</span>
+                <input type="number" v-model.number="activeElement.w" step="0.5" class="w-full text-xs font-semibold t-num text-[var(--txt)] bg-transparent focus:outline-hidden" />
               </div>
-              <div class="flex items-center bg-white rounded border border-slate-300 px-2 py-1">
-                <span class="text-slate-400 text-[10px] mr-1">L:</span>
-                <input type="number" v-model.number="activeElement.h" step="0.5" class="w-full text-xs font-bold bg-transparent focus:outline-hidden" />
+              <div class="flex items-center bg-[var(--panel)] rounded border border-[var(--line)] px-2 py-1">
+                <span class="text-[var(--txt-muted)] text-[10px] mr-1">L:</span>
+                <input type="number" v-model.number="activeElement.h" step="0.5" class="w-full text-xs font-semibold t-num text-[var(--txt)] bg-transparent focus:outline-hidden" />
               </div>
             </div>
           </div>
@@ -3214,12 +3319,41 @@ function printLabels() {
           </div>
         </div>
 
-        <div v-else class="flex flex-col items-center justify-center p-8 text-center text-slate-400">
-          <i class="pi pi-mouse text-3xl mb-2 text-slate-300" />
+        <div v-else class="flex flex-col items-center justify-center p-8 text-center text-[var(--txt-muted)]">
+          <i class="pi pi-mouse text-3xl mb-2 opacity-50" aria-hidden="true" />
           <p class="text-xs">Klik salah satu elemen pada stiker untuk mengatur ukuran, teks, atau posisinya.</p>
         </div>
       </div>
     </div>
+  </Dialog>
+
+  <!-- Dialog Simpan Template Baru -->
+  <Dialog
+    v-model:visible="saveTemplateDialog"
+    modal
+    header="Simpan Template Label Baru"
+    :style="{ width: '26rem' }"
+    :breakpoints="{ '640px': '92vw' }"
+  >
+    <form class="flex flex-col gap-3 pt-1" @submit.prevent="confirmSaveNewTemplate">
+      <div class="flex flex-col gap-1.5">
+        <label for="save-template-name" class="text-xs font-semibold text-[var(--txt)]">Nama Template</label>
+        <InputText
+          id="save-template-name"
+          v-model="saveTemplateName"
+          placeholder="Contoh: Stiker BMN Lab Komputer"
+          autofocus
+          class="w-full"
+        />
+        <p class="text-[11px] text-[var(--txt-muted)]">
+          Template tersimpan di database dan langsung muncul di dropdown pilihan template.
+        </p>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-[var(--line-soft)]">
+        <Button type="button" label="Batal" severity="secondary" outlined size="small" @click="saveTemplateDialog = false" />
+        <Button type="submit" label="Simpan Template" icon="pi pi-check" size="small" :loading="savingTemplate" />
+      </div>
+    </form>
   </Dialog>
 
   <!-- PURE PRINT ENGINE (Direnter khusus saat window.print) -->
@@ -3525,7 +3659,7 @@ function printLabels() {
   font-size: 11px;
   font-weight: 600;
   border-radius: 6px;
-  color: #64748b;
+  color: var(--txt-dim);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -3535,10 +3669,13 @@ function printLabels() {
   justify-content: center;
   white-space: nowrap;
 }
+.tab-btn:hover {
+  color: var(--txt);
+}
 .tab-btn-active {
-  background: #ffffff;
-  color: #4f46e5;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  background: var(--panel);
+  color: var(--acc-500);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.06);
 }
 
 .component-item-btn {
@@ -3546,16 +3683,16 @@ function printLabels() {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
+  background-color: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .component-item-btn:hover {
-  background-color: #f8fafc;
-  border-color: #6366f1;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  background-color: var(--panel-2);
+  border-color: var(--acc-500);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
 }
 </style>
 

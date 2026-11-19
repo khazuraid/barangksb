@@ -26,4 +26,51 @@ api.interceptors.response.use(
   }
 )
 
+export function safeHref(raw?: string | null): string {
+  const s = (raw || '').trim()
+  if (!s) return ''
+  if (s.startsWith('/api/uploads/') || s.startsWith('/uploads/')) {
+    if (!s.startsWith('//') && !s.includes('..')) return s
+    return ''
+  }
+  try {
+    const u = new URL(s)
+    if (u.protocol === 'https:' || u.protocol === 'http:') return u.toString()
+  } catch {
+    return ''
+  }
+  return ''
+}
+
+export async function downloadAuthenticatedFile(
+  path: string,
+  fallbackFilename: string,
+  openInNewTab = false
+): Promise<void> {
+  const res = await api.get(path, { responseType: 'blob' })
+  const contentType = String(res.headers['content-type'] || 'application/octet-stream')
+  const blob = new Blob([res.data], { type: contentType })
+  const blobUrl = URL.createObjectURL(blob)
+
+  if (openInNewTab) {
+    window.open(blobUrl, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    return
+  }
+
+  let filename = fallbackFilename
+  const disp = res.headers['content-disposition'] as string | undefined
+  if (disp) {
+    const m = /filename="?([^";]+)"?/i.exec(disp)
+    if (m?.[1]) filename = m[1]
+  }
+  const a = document.createElement('a')
+  a.href = blobUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
+}
+
 export default api

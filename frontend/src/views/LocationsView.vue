@@ -102,23 +102,26 @@ function remove(r: any) {
 
 <template>
   <div>
-    <PageHeader crumb="Master Data" title="Lokasi"
-      sub="Ruangan, rak, dan titik penyimpanan barang" />
+    <PageHeader
+      crumb="Master Data"
+      title="Lokasi"
+      sub="Ruangan, rak, dan titik penyimpanan barang."
+    />
 
     <Panel title="Tambah Lokasi" icon="pi pi-plus">
       <form @submit.prevent="add" class="flex flex-wrap gap-2.5 items-end">
         <label class="flex flex-col gap-1.5 w-[160px]">
-          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">No. Kode Lokasi</span>
+          <span class="text-[11.5px] font-semibold text-txt-dim">No. Kode Lokasi</span>
           <InputText v-model="newCode" placeholder="mis. 11.02.01" class="w-full t-mono" />
         </label>
         <label class="flex flex-col gap-1.5 flex-1 min-w-[240px]">
-          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Nama Ruangan / Lokasi</span>
+          <span class="text-[11.5px] font-semibold text-txt-dim">Nama Ruangan / Lokasi</span>
           <InputText v-model="newName" placeholder="mis. Gudang Lantai 2 / Ruang Tata Usaha" class="w-full" required />
         </label>
         <Button type="submit" label="Tambah" icon="pi pi-plus" :loading="busy" />
       </form>
-      <p class="text-[11.5px] mt-2.5" style="color: var(--txt-dim)">
-        No. Kode Lokasi berguna untuk standarisasi kode ruangan inventaris KIB/KIR (cth: 01.01 atau KOD-LOK-01).
+      <p class="text-[11.5px] text-txt-dim mt-2.5">
+        No. Kode Lokasi berguna untuk standarisasi kode ruangan inventaris KIB/KIR (cth: <span class="t-mono text-txt">01.01</span> atau <span class="t-mono text-txt">KOD-LOK-01</span>).
       </p>
     </Panel>
 
@@ -129,23 +132,42 @@ function remove(r: any) {
           <Tag severity="secondary" :value="rows.length + ' lokasi'" />
         </template>
 
-        <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat lokasi…" />
-        <EmptyState v-else-if="!filtered.length" icon="pi pi-map-marker" title="Tidak ada lokasi cocok"
-                    sub="Ubah kata kunci pencarian atau tambah lokasi baru." />
+        <EmptyState v-if="loading" loading title="Memuat lokasi…" />
+        <EmptyState
+          v-else-if="!filtered.length"
+          icon="pi pi-map-marker"
+          title="Tidak ada lokasi cocok"
+          sub="Ubah kata kunci pencarian atau tambah lokasi baru."
+        />
 
         <div v-else class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 p-3">
-          <div v-for="r in pagedRows" :key="r.id"
-               class="p-3.5 rounded-xl border flex items-start gap-3 transition-all hover:shadow-xs"
-               style="border-color: var(--line); background: var(--panel)">
-            <span class="w-8 h-8 shrink-0 grid place-items-center rounded-lg border text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800">
-              <i class="pi pi-map-marker text-[13px]" />
+          <div
+            v-for="r in pagedRows"
+            :key="r.id"
+            class="p-3.5 rounded-[10px] border border-line bg-panel hover:border-[var(--acc-border)] flex items-start gap-3 transition-colors"
+          >
+            <span class="w-8 h-8 shrink-0 grid place-items-center rounded-[7px] border border-[var(--sig-info-line)] bg-[var(--sig-info-bg)] text-sig-info">
+              <i class="pi pi-map-marker text-[13px]" aria-hidden="true" />
             </span>
 
             <template v-if="editingId === r.id">
               <div class="flex-1 min-w-0 flex flex-col gap-1.5">
                 <div class="flex items-center gap-1.5">
-                  <InputText v-model="editCode" placeholder="Kode Lokasi" class="w-[110px] t-mono !text-[12px]" @keyup.enter="saveEdit(r)" @keyup.esc="cancelEdit" />
-                  <InputText v-model="editName" placeholder="Nama Ruangan" class="flex-1 !text-[12.5px]" @keyup.enter="saveEdit(r)" @keyup.esc="cancelEdit" autofocus />
+                  <InputText
+                    v-model="editCode"
+                    placeholder="Kode Lokasi"
+                    class="w-[110px] t-mono !text-[12px]"
+                    @keyup.enter="saveEdit(r)"
+                    @keyup.esc="cancelEdit"
+                  />
+                  <InputText
+                    v-model="editName"
+                    placeholder="Nama Ruangan"
+                    class="flex-1 !text-[12.5px]"
+                    @keyup.enter="saveEdit(r)"
+                    @keyup.esc="cancelEdit"
+                    autofocus
+                  />
                 </div>
                 <div class="flex items-center gap-1">
                   <Button label="Simpan" icon="pi pi-check" size="small" severity="success" :loading="busy" @click="saveEdit(r)" />
@@ -156,16 +178,19 @@ function remove(r: any) {
             <template v-else>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
-                  <span v-if="r.code" class="t-mono text-[10px] font-bold px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                  <span
+                    v-if="r.code"
+                    class="t-mono !text-[10px] font-bold px-1.5 py-0.5 rounded-[5px] border border-[var(--acc-border)] bg-[var(--acc-50)] text-acc-500"
+                  >
                     {{ r.code }}
                   </span>
-                  <div class="text-[13px] font-semibold truncate" style="color: var(--txt)">{{ r.name }}</div>
+                  <div class="text-[13px] font-semibold text-txt truncate">{{ r.name }}</div>
                 </div>
-                <div class="t-mono text-[11px] truncate mt-0.5" style="color: var(--txt-dim)">{{ r.id }}</div>
+                <div class="t-mono !text-[11px] text-txt-dim truncate mt-0.5">{{ r.id }}</div>
               </div>
               <div class="flex gap-0.5 shrink-0">
-                <Button icon="pi pi-pencil" text rounded size="small" severity="secondary" @click="startEdit(r)" />
-                <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="remove(r)" />
+                <Button icon="pi pi-pencil" text rounded size="small" severity="secondary" aria-label="Edit lokasi" @click="startEdit(r)" />
+                <Button icon="pi pi-trash" text rounded size="small" severity="danger" aria-label="Hapus lokasi" @click="remove(r)" />
               </div>
             </template>
           </div>
@@ -173,14 +198,12 @@ function remove(r: any) {
 
         <template v-if="filtered.length" #footer>
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+            <span class="t-mono !text-[11.5px] text-txt-dim">{{ range }}</span>
             <div class="flex items-center gap-2">
               <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
-              <Button icon="pi pi-angle-left" size="small" text severity="secondary"
-                      :disabled="page === 0" @click="page--" />
-              <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-              <Button icon="pi pi-angle-right" size="small" text severity="secondary"
-                      :disabled="page >= lastPage" @click="page++" />
+              <Button icon="pi pi-angle-left" size="small" text severity="secondary" aria-label="Halaman sebelumnya" :disabled="page === 0" @click="page--" />
+              <span class="t-num text-[12px] px-1 text-txt">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+              <Button icon="pi pi-angle-right" size="small" text severity="secondary" aria-label="Halaman berikutnya" :disabled="page >= lastPage" @click="page++" />
             </div>
           </div>
         </template>

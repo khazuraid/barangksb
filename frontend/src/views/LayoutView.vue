@@ -4,7 +4,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import Button from 'primevue/button'
-import Tag from 'primevue/tag'
 import CommandPalette from '@/components/CommandPalette.vue'
 import AppLogo from '@/components/AppLogo.vue'
 
@@ -21,6 +20,7 @@ const NAV: { section: string; items: Nav[] }[] = [
   { section: 'Operasional', items: [
     { label: 'Dashboard', icon: 'pi pi-th-large', to: '/' },
     { label: 'Barang', icon: 'pi pi-box', to: '/items' },
+    { label: 'Mutasi Stok', icon: 'pi pi-arrow-right-arrow-left', to: '/movement' },
     { label: 'Pengaduan & Laporan', icon: 'pi pi-megaphone', to: '/reports' },
     { label: 'Log & Riwayat', icon: 'pi pi-history', to: '/history' },
   ]},
@@ -47,7 +47,7 @@ const sections = computed(() =>
 
 const TITLES: Record<string, [string, string]> = {
   '/': ['Dashboard', 'Ringkasan stok dan pergerakan terkini'],
-  '/items': ['Daftar Barang', 'Master inventaris kantor'],
+  '/items': ['Daftar Barang', 'Master inventaris puskesmas'],
   '/categories': ['Kategori', 'Pengelompokan jenis barang'],
   '/locations': ['Lokasi', 'Ruangan dan titik penyimpanan'],
   '/movement': ['Mutasi Barang', 'Catat barang masuk, keluar, dan opname'],
@@ -64,13 +64,15 @@ const TITLES: Record<string, [string, string]> = {
 
 const crumb = computed(() => {
   const found = Object.entries(TITLES).find(([p]) => route.path === p || route.path.startsWith(p + '/'))
-  return found?.[1] ?? ['Inventaris Kantor', '']
+  return found?.[1] ?? ['Inventaris Puskesmas', '']
 })
 
 function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     commandPaletteVisible.value = !commandPaletteVisible.value
+  } else if (e.key === 'Escape' && sidebarVisible.value) {
+    sidebarVisible.value = false
   }
 }
 
@@ -91,31 +93,34 @@ function go(to: string) {
   router.push(to)
   sidebarVisible.value = false
 }
-const isActive = (to: string) => to === '/' ? route.path === '/' : route.path.startsWith(to)
+const isActive = (to: string) => to === '/' ? route.path === '/' : route.path === to || route.path.startsWith(to + '/')
 </script>
 
 <template>
+  <a href="#main-content" class="skip-link">Lewati ke konten utama</a>
+
   <div class="app-shell">
-    <!-- ============ COMMAND PALETTE ============ -->
     <CommandPalette v-model:visible="commandPaletteVisible" />
 
     <!-- ============ SIDEBAR ============ -->
-    <aside class="app-aside" :class="sidebarVisible ? 'is-open' : ''">
-      <div class="app-brand cursor-pointer" @click="go('/')">
-        <AppLogo />
+    <aside class="app-aside" :class="{ 'is-open': sidebarVisible }" aria-label="Sidebar navigasi">
+      <div class="app-brand">
+        <AppLogo size="md" />
       </div>
 
-      <nav class="app-nav">
+      <nav class="app-nav" aria-label="Navigasi utama">
         <div v-for="sec in sections" :key="sec.section" class="nav-group">
-          <div class="nav-section t-label">{{ sec.section }}</div>
+          <div class="nav-section">{{ sec.section }}</div>
           <button
             v-for="item in sec.items"
             :key="item.to"
-            @click="go(item.to)"
+            type="button"
             class="nav-item"
-            :class="isActive(item.to) ? 'is-active' : ''"
+            :class="{ 'is-active': isActive(item.to) }"
+            :aria-current="isActive(item.to) ? 'page' : undefined"
+            @click="go(item.to)"
           >
-            <i :class="item.icon" class="nav-icon" />
+            <i :class="item.icon" class="nav-icon" aria-hidden="true" />
             <span class="nav-label">{{ item.label }}</span>
           </button>
         </div>
@@ -123,59 +128,105 @@ const isActive = (to: string) => to === '/' ? route.path === '/' : route.path.st
 
       <div class="app-user">
         <div class="user-row">
-          <div class="user-avatar">{{ auth.user?.name?.[0]?.toUpperCase() || '?' }}</div>
+          <div class="user-avatar" aria-hidden="true">
+            {{ auth.user?.name?.[0]?.toUpperCase() || '?' }}
+          </div>
           <div class="user-meta">
             <div class="user-name">{{ auth.user?.name || '—' }}</div>
-            <div class="t-label user-role">{{ auth.user?.role || '' }}</div>
+            <div class="user-role">{{ auth.user?.role || '' }}</div>
           </div>
-          <Button icon="pi pi-power-off" text rounded size="small" severity="danger"
-                  v-tooltip.top="'Keluar'" @click="logout" />
+          <Button
+            icon="pi pi-sign-out"
+            text
+            rounded
+            size="small"
+            severity="danger"
+            aria-label="Keluar dari akun"
+            v-tooltip.top="'Keluar'"
+            @click="logout"
+          />
         </div>
         <div class="user-actions">
-          <Button icon="pi pi-key" text size="small" class="grow" v-tooltip.top="'Ganti password'"
-                  @click="go('/password')" />
-          <Button icon="pi pi-download" text size="small" class="grow"
-                  v-tooltip.top="'Data Barang'" @click="go('/items')" />
+          <Button
+            icon="pi pi-key"
+            label="Password"
+            text
+            size="small"
+            severity="secondary"
+            class="grow !text-[11.5px] !py-1"
+            @click="go('/password')"
+          />
+          <Button
+            icon="pi pi-plus"
+            label="Barang"
+            text
+            size="small"
+            severity="secondary"
+            class="grow !text-[11.5px] !py-1"
+            @click="go('/items/new')"
+          />
         </div>
       </div>
     </aside>
 
-    <div v-if="sidebarVisible" class="app-backdrop" @click="sidebarVisible = false" />
+    <div
+      v-if="sidebarVisible"
+      class="app-backdrop"
+      aria-hidden="true"
+      @click="sidebarVisible = false"
+    />
 
     <!-- ============ MAIN ============ -->
     <div class="app-main">
       <header class="app-topbar">
-        <Button icon="pi pi-bars" text rounded size="small" class="topbar-burger"
-                @click="sidebarVisible = !sidebarVisible" />
+        <Button
+          icon="pi pi-bars"
+          text
+          rounded
+          size="small"
+          severity="secondary"
+          class="topbar-burger"
+          aria-label="Buka menu navigasi"
+          @click="sidebarVisible = !sidebarVisible"
+        />
+
         <div class="topbar-title">
           <span class="topbar-page">{{ crumb[0] }}</span>
-          <span class="topbar-sub hidden sm:inline">{{ crumb[1] }}</span>
+          <span v-if="crumb[1]" class="topbar-sep hidden md:inline" aria-hidden="true">/</span>
+          <span class="topbar-sub hidden md:inline">{{ crumb[1] }}</span>
         </div>
 
         <div class="topbar-right">
-          <!-- Spotlight trigger button -->
-          <button class="topbar-search" @click="commandPaletteVisible = true">
-            <i class="pi pi-search text-[12px]" />
-            <span class="text-[12px] hidden md:inline">Cari menu, barang…</span>
-            <kbd class="t-mono text-[10px] px-1.5 py-0.5 rounded border ml-2 hidden sm:inline-block">⌘K</kbd>
+          <button
+            type="button"
+            class="topbar-search"
+            aria-label="Buka pencarian cepat (Command + K)"
+            @click="commandPaletteVisible = true"
+          >
+            <i class="pi pi-search text-[11.5px]" aria-hidden="true" />
+            <span class="text-[12px] hidden sm:inline">Cari barang atau menu…</span>
+            <kbd class="t-mono !text-[10px] px-1.5 py-0.5 rounded border ml-1.5 hidden sm:inline-block">⌘K</kbd>
           </button>
 
-          <!-- Theme toggle button -->
           <Button
             :icon="theme.isDark ? 'pi pi-sun' : 'pi pi-moon'"
             text
             rounded
             size="small"
             severity="secondary"
-            :v-tooltip.top="theme.isDark ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap'"
+            :aria-label="theme.isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'"
+            v-tooltip.bottom="theme.isDark ? 'Mode Terang' : 'Mode Gelap'"
             @click="theme.toggle()"
           />
 
-          <Tag severity="success" value="ONLINE" class="hidden sm:inline-flex" />
+          <div class="topbar-status hidden sm:inline-flex" title="Koneksi server aktif">
+            <span class="status-dot" aria-hidden="true" />
+            <span>Aktif</span>
+          </div>
         </div>
       </header>
 
-      <main class="app-body">
+      <main id="main-content" class="app-body" tabindex="-1">
         <div class="app-container">
           <RouterView />
         </div>
@@ -187,67 +238,66 @@ const isActive = (to: string) => to === '/' ? route.path === '/' : route.path.st
 <style scoped>
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--ink-950);
   color: var(--txt);
 }
 
-/* ---------- sidebar ---------- */
+/* ---------- Sidebar (Subtle Tinted Spine, Never Pitch-Black) ---------- */
 .app-aside {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 40;
+  z-index: var(--z-sidebar);
   display: flex;
   flex-direction: column;
-  width: 250px;
-  height: 100vh;
+  width: 236px;
+  height: 100dvh;
   flex-shrink: 0;
-  background: var(--panel);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--line);
   transform: translateX(-100%);
-  transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 160ms var(--ease-out);
 }
 .app-aside.is-open { transform: translateX(0); }
 
 .app-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 58px;
-  padding: 0 18px;
+  height: 52px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
-}
-.brand-mark {
-  width: 32px; height: 32px;
-  display: grid; place-items: center;
-  border-radius: 8px;
-  background: var(--acc-500);
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: 0 2px 6px -1px rgba(79, 70, 229, 0.4);
-}
-.brand-text { min-width: 0; line-height: 1.15; }
-.brand-name { font-size: 13px; font-weight: 800; letter-spacing: -0.01em; color: var(--txt); }
-.brand-sub {
-  font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--txt-dim);
+  flex-shrink: 0;
 }
 
-.app-nav { flex: 1; overflow-y: auto; padding: 14px 12px; }
-.nav-group { margin-bottom: 18px; }
-.nav-section { padding: 0 10px; margin-bottom: 6px; font-size: 10px; color: var(--txt-dim); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.app-nav {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 10px;
+}
+.nav-group { margin-bottom: 16px; }
+.nav-group:last-child { margin-bottom: 0; }
+.nav-section {
+  padding: 0 10px;
+  margin-bottom: 5px;
+  font-size: 10.5px;
+  color: var(--txt-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
 
 .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 7px 10px;
   margin-bottom: 2px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: var(--txt-dim);
   font-family: inherit;
@@ -255,132 +305,220 @@ const isActive = (to: string) => to === '/' ? route.path === '/' : route.path.st
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background 150ms ease, color 150ms ease;
+  transition: background-color 110ms ease, color 110ms ease;
 }
 .nav-item:hover {
-  background: var(--panel-2);
+  background: var(--row-hover);
   color: var(--txt);
 }
 .nav-item.is-active {
-  background: var(--panel-2);
+  background: var(--acc-wash);
   color: var(--acc-500);
   font-weight: 600;
 }
 .nav-item.is-active::before {
   content: "";
   position: absolute;
-  left: 0; top: 6px; bottom: 6px;
-  width: 3px;
-  border-radius: 0 4px 4px 0;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2.5px;
+  border-radius: 0 3px 3px 0;
   background: var(--acc-500);
 }
-.nav-icon { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
-.nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 12.5px;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .app-user {
-  padding: 12px;
+  padding: 10px;
   border-top: 1px solid var(--line);
-  background: var(--panel-2);
-}
-.user-row { display: flex; align-items: center; gap: 10px; padding: 2px 4px; }
-.user-avatar {
-  width: 32px; height: 32px; flex-shrink: 0;
-  display: grid; place-items: center;
-  border-radius: 8px;
-  border: 1px solid var(--line);
   background: var(--panel);
+  flex-shrink: 0;
+}
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 4px;
+}
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 1px solid var(--acc-border);
+  background: var(--acc-50);
   color: var(--acc-500);
-  font-size: 12px; font-weight: 700;
+  font-size: 12px;
+  font-weight: 700;
 }
-.user-meta { flex: 1; min-width: 0; line-height: 1.2; }
+.user-meta { flex: 1; min-width: 0; line-height: 1.25; }
 .user-name {
-  font-size: 12.5px; font-weight: 600; color: var(--txt);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.user-role { font-size: 10px; text-transform: uppercase; color: var(--txt-dim); font-weight: 600; }
-.user-actions { display: flex; gap: 6px; margin-top: 8px; }
+.user-role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--txt-dim);
+}
+.user-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
 .grow { flex: 1; }
 
 .app-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 30;
-  background: rgba(0, 0, 0, 0.4);
+  z-index: var(--z-backdrop);
+  background: rgba(2, 6, 23, 0.5);
   backdrop-filter: blur(2px);
 }
 
-/* ---------- main column ---------- */
+/* ---------- Main Column ---------- */
 .app-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: 100vh;
+  height: 100dvh;
   margin-left: 0;
 }
 
 .app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 58px;
+  gap: 10px;
+  height: 52px;
   flex-shrink: 0;
-  padding: 0 24px;
-  background: var(--panel);
+  padding: 0 20px;
+  background: var(--topbar-bg);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
 .topbar-burger { display: inline-flex; }
-.topbar-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.topbar-page {
-  font-size: 14px; font-weight: 700; color: var(--txt);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.topbar-sub {
-  font-size: 12px; color: var(--txt-dim);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-
-.topbar-search {
+.topbar-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  min-width: 0;
+}
+.topbar-page {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar-sep {
+  color: var(--line);
+  font-size: 12px;
+}
+.topbar-sub {
+  font-size: 12px;
+  color: var(--txt-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
   border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--txt-dim);
   cursor: pointer;
-  transition: all 150ms ease;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
 }
 .topbar-search:hover {
-  border-color: var(--acc-500);
+  border-color: var(--acc-border);
   color: var(--txt);
 }
 .topbar-search kbd {
   border-color: var(--line);
   background: var(--panel);
+  color: var(--txt-dim);
 }
 
-.app-body { flex: 1; overflow-y: auto; background: var(--ink-950); }
+.topbar-status {
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt-dim);
+}
+.status-dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 999px;
+  background: var(--sig-ok);
+  box-shadow: 0 0 0 2px var(--sig-ok-bg);
+}
+
+.app-body {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--ink-950);
+}
 .app-container {
   width: 100%;
-  max-width: 100%;
-  padding: 20px 24px 40px;
-  margin: 0;
+  max-width: 1440px;
+  padding: 20px 24px 44px;
+  margin: 0 auto;
   box-sizing: border-box;
 }
 
 @media (max-width: 640px) {
-  .app-container {
-    padding: 14px 12px 32px;
-  }
+  .app-topbar { padding: 0 12px; }
+  .app-container { padding: 14px 12px 32px; }
 }
 
 @media (min-width: 1024px) {
   .app-aside { transform: translateX(0); }
-  .app-main { margin-left: 250px; }
-  .app-backdrop { display: none; }
+  .app-main { margin-left: 236px; }
   .topbar-burger { display: none; }
 }
 </style>

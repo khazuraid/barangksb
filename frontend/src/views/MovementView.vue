@@ -100,51 +100,81 @@ async function submit() {
 
 <template>
   <div>
-    <PageHeader crumb="Operasional" title="Mutasi Barang"
-      sub="Setiap pencatatan langsung mengubah stok dan terekam pada riwayat serta audit log" />
+    <PageHeader
+      crumb="Operasional"
+      title="Mutasi Barang"
+      sub="Setiap pencatatan langsung mengubah stok dan terekam pada riwayat serta audit log."
+    />
 
-    <div class="grid lg:grid-cols-[270px_1fr] gap-5 items-start">
+    <div class="grid lg:grid-cols-[260px_1fr] gap-4 items-start">
       <!-- mode rail -->
-      <div class="flex lg:flex-col gap-2.5 overflow-x-auto lg:overflow-visible">
+      <div class="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible" role="tablist" aria-label="Jenis mutasi">
         <button
-          v-for="m in MODES" :key="m.key"
-          @click="setMode(m.key)"
-          class="text-left p-4 rounded-xl border transition-all shrink-0 lg:shrink lg:w-full min-w-[220px] relative overflow-hidden"
+          v-for="m in MODES"
+          :key="m.key"
+          type="button"
+          role="tab"
+          :aria-selected="mode === m.key"
+          class="text-left p-3.5 rounded-[10px] border transition-colors shrink-0 lg:shrink lg:w-full min-w-[216px] relative overflow-hidden cursor-pointer"
           :class="mode === m.key
-            ? '!border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 shadow-xs'
-            : 'hover:border-slate-300 dark:hover:border-slate-700'"
-          :style="mode === m.key ? '' : 'border-color: var(--line); background: var(--panel)'"
+            ? 'border-[var(--acc-border)] bg-[var(--acc-wash)]'
+            : 'border-line bg-panel hover:bg-panel-2'"
+          @click="setMode(m.key)"
         >
-          <div v-if="mode === m.key" class="absolute top-0 left-0 bottom-0 w-1 bg-indigo-600 dark:bg-indigo-400" />
+          <span
+            v-if="mode === m.key"
+            class="absolute top-0 left-0 bottom-0 w-[3px] bg-acc-500"
+            aria-hidden="true"
+          />
           <div class="flex items-center gap-2.5">
             <span
-              class="w-7 h-7 rounded-lg grid place-items-center text-[12px] border transition-colors shrink-0"
+              class="w-7 h-7 rounded-[7px] grid place-items-center text-[12px] border shrink-0 transition-colors"
               :class="mode === m.key
-                ? (m.key === 'in' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-                  : m.key === 'out' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400 border-rose-200 dark:border-rose-800'
-                  : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800')
-                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-transparent'"
+                ? (m.key === 'in'
+                    ? 'bg-[var(--sig-ok-bg)] text-sig-ok border-[var(--sig-ok-line)]'
+                    : m.key === 'out'
+                      ? 'bg-[var(--sig-bad-bg)] text-sig-bad border-[var(--sig-bad-line)]'
+                      : 'bg-[var(--sig-warn-bg)] text-sig-warn border-[var(--sig-warn-line)]')
+                : 'bg-panel-2 text-txt-dim border-line'"
             >
-              <i :class="m.icon" />
+              <i :class="m.icon" aria-hidden="true" />
             </span>
-            <span class="text-[13px] font-bold" :class="mode === m.key ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'">{{ m.label }}</span>
+            <span
+              class="text-[13px] font-semibold"
+              :class="mode === m.key ? 'text-acc-500' : 'text-txt'"
+            >
+              {{ m.label }}
+            </span>
           </div>
-          <p class="text-[11.5px] mt-2 leading-relaxed" style="color: var(--txt-dim)">{{ m.desc }}</p>
+          <p class="text-[11.5px] text-txt-dim mt-2 leading-relaxed">{{ m.desc }}</p>
         </button>
       </div>
 
-      <!-- form -->
-      <div class="grid xl:grid-cols-[1fr_320px] gap-5 items-start">
+      <!-- form + preview -->
+      <div class="grid xl:grid-cols-[1fr_320px] gap-4 items-start">
         <Panel :title="current.label" :icon="current.icon">
           <form @submit.prevent="submit" class="grid sm:grid-cols-2 gap-4">
             <Field label="Barang" required span>
-              <Select v-model="form.item_id" :options="options" optionLabel="label" optionValue="value"
-                      filter :filterFields="['label']" :loading="loadingItems" showClear
-                      placeholder="Pilih barang…" class="w-full" @filter="(e: any) => search = e.value" />
+              <Select
+                v-model="form.item_id"
+                :options="options"
+                optionLabel="label"
+                optionValue="value"
+                filter
+                :filterFields="['label']"
+                :loading="loadingItems"
+                showClear
+                placeholder="Pilih barang…"
+                class="w-full"
+                @filter="(e: any) => search = e.value"
+              />
             </Field>
 
-            <Field :label="mode === 'adjust' ? 'Stok Fisik Hasil Hitung' : (mode === 'in' ? 'Jumlah Masuk' : 'Jumlah Keluar')"
-                   :required="mode !== 'adjust'" :hint="mode === 'adjust' ? 'Isi jumlah nyata hasil penghitungan fisik.' : undefined">
+            <Field
+              :label="mode === 'adjust' ? 'Stok Fisik Hasil Hitung' : (mode === 'in' ? 'Jumlah Masuk' : 'Jumlah Keluar')"
+              :required="mode !== 'adjust'"
+              :hint="mode === 'adjust' ? 'Isi jumlah nyata hasil penghitungan fisik.' : undefined"
+            >
               <InputNumber v-model="form.quantity" :min="mode === 'adjust' ? 0 : 1" showButtons class="w-full" />
             </Field>
 
@@ -153,8 +183,13 @@ async function submit() {
             </Field>
 
             <Field label="Keterangan" span>
-              <Textarea v-model="form.notes" rows="2" autoResize class="w-full"
-                        :placeholder="mode === 'adjust' ? 'Alasan koreksi (mis. selisih opname)' : 'Catatan tambahan'" />
+              <Textarea
+                v-model="form.notes"
+                rows="2"
+                autoResize
+                class="w-full"
+                :placeholder="mode === 'adjust' ? 'Alasan koreksi (mis. selisih opname)' : 'Catatan tambahan'"
+              />
             </Field>
 
             <div class="sm:col-span-2">
@@ -168,57 +203,84 @@ async function submit() {
               />
             </div>
 
-            <div class="sm:col-span-2 flex gap-2.5 pt-2 border-t" style="border-color: var(--line)">
-              <Button type="submit" :label="mode === 'in' ? 'Catat Masuk' : mode === 'out' ? 'Catat Keluar' : 'Simpan Opname'"
-                      :icon="current.icon" :loading="submitting"
-                      :severity="mode === 'in' ? 'success' : mode === 'out' ? 'danger' : 'warn'" />
-              <Button label="Lihat Riwayat" icon="pi pi-history" text severity="secondary"
-                      @click="router.push('/history')" />
+            <div class="sm:col-span-2 flex flex-wrap gap-2.5 pt-3 border-t border-line">
+              <Button
+                type="submit"
+                :label="mode === 'in' ? 'Catat Masuk' : mode === 'out' ? 'Catat Keluar' : 'Simpan Opname'"
+                :icon="current.icon"
+                :loading="submitting"
+                :severity="mode === 'in' ? 'success' : mode === 'out' ? 'danger' : 'warn'"
+              />
+              <Button
+                type="button"
+                label="Lihat Riwayat"
+                icon="pi pi-history"
+                text
+                severity="secondary"
+                @click="router.push('/history')"
+              />
             </div>
           </form>
         </Panel>
 
         <!-- preview -->
         <Panel title="Pratinjau Perubahan" icon="pi pi-eye">
-          <EmptyState v-if="!preview" icon="pi pi-arrow-left" title="Belum ada barang dipilih"
-                      sub="Pilih barang dan jumlah untuk melihat simulasi perubahan stok." />
+          <EmptyState
+            v-if="!preview"
+            icon="pi pi-arrow-left"
+            title="Belum ada barang dipilih"
+            sub="Pilih barang dan jumlah untuk melihat simulasi perubahan stok."
+          />
           <template v-else>
-            <div class="p-3 rounded-lg border mb-3" style="border-color: var(--line); background: var(--panel-2)">
-              <div class="text-[13px] font-bold truncate">{{ selectedItem?.name }}</div>
-              <div class="t-mono text-[11px] mt-0.5" style="color: var(--txt-dim)">{{ selectedItem?.sku }} · {{ selectedItem?.location }}</div>
+            <div class="p-3 rounded-[8px] border border-line bg-panel-2 mb-3">
+              <div class="text-[13px] font-semibold text-txt truncate">{{ selectedItem?.name }}</div>
+              <div class="t-mono !text-[11px] text-txt-dim mt-0.5 truncate">
+                {{ selectedItem?.sku }} · {{ selectedItem?.location }}
+              </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-2 p-3 rounded-lg border text-center" style="border-color: var(--line); background: var(--panel-2)">
+            <div class="grid grid-cols-2 gap-2 p-3 rounded-[8px] border border-line bg-panel-2 text-center">
               <div>
                 <div class="t-label">Sebelum</div>
-                <div class="t-num text-[22px] font-bold mt-0.5" style="color: var(--txt)">{{ preview.from }}</div>
-                <div class="text-[11px]" style="color: var(--txt-dim)">{{ preview.unit }}</div>
+                <div class="t-num text-[22px] font-bold text-txt mt-0.5">{{ preview.from }}</div>
+                <div class="text-[11px] text-txt-dim">{{ preview.unit }}</div>
               </div>
-              <div class="border-l" style="border-color: var(--line)">
+              <div class="border-l border-line">
                 <div class="t-label">Sesudah</div>
-                <div class="t-num text-[22px] font-bold mt-0.5"
-                     :class="preview.to < preview.from ? 'text-rose-600 dark:text-rose-400' : preview.to > preview.from ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'">
+                <div
+                  class="t-num text-[22px] font-bold mt-0.5"
+                  :class="preview.to < preview.from ? 'text-sig-bad' : preview.to > preview.from ? 'text-sig-ok' : 'text-txt'"
+                >
                   {{ preview.to }}
                 </div>
-                <div class="text-[11px]" style="color: var(--txt-dim)">{{ preview.unit }}</div>
+                <div class="text-[11px] text-txt-dim">{{ preview.unit }}</div>
               </div>
             </div>
 
-            <div class="mt-3 p-3 rounded-lg border flex items-center justify-between text-[12.5px]"
-                 style="border-color: var(--line); background: var(--panel-2)">
-              <span style="color: var(--txt-dim)">Estimasi Selisih</span>
-              <span class="t-num font-bold text-[13px]"
-                    :class="preview.to - preview.from < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'">
+            <div class="mt-3 p-3 rounded-[8px] border border-line bg-panel-2 flex items-center justify-between text-[12.5px]">
+              <span class="text-txt-dim">Estimasi Selisih</span>
+              <span
+                class="t-num font-bold text-[13px]"
+                :class="preview.to - preview.from < 0 ? 'text-sig-bad' : preview.to - preview.from > 0 ? 'text-sig-ok' : 'text-txt-dim'"
+              >
                 {{ preview.to - preview.from > 0 ? '+' : '' }}{{ preview.to - preview.from }} {{ preview.unit }}
               </span>
             </div>
 
-            <Tag v-if="mode === 'out' && preview.to < 0" severity="danger"
-                 class="w-full justify-center mt-3"
-                 icon="pi pi-exclamation-triangle" value="Peringatan: Stok tidak mencukupi" />
-            <Tag v-else-if="mode === 'out' && preview.to <= (selectedItem?.min_stock ?? 0)"
-                 severity="warn" class="w-full justify-center mt-3"
-                 icon="pi pi-exclamation-triangle" value="Perhatian: Menembus batas minimum" />
+            <Tag
+              v-if="mode === 'out' && preview.to < 0"
+              severity="danger"
+              class="w-full justify-center mt-3"
+              icon="pi pi-exclamation-triangle"
+              value="Peringatan: Stok tidak mencukupi"
+            />
+            <Tag
+              v-else-if="mode === 'out' && preview.to <= (selectedItem?.min_stock ?? 0)"
+              severity="warn"
+              class="w-full justify-center mt-3"
+              icon="pi pi-exclamation-triangle"
+              value="Perhatian: Menembus batas minimum"
+            />
           </template>
         </Panel>
       </div>

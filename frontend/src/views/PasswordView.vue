@@ -69,12 +69,15 @@ async function submit() {
       <Panel title="Syarat Kekuatan" icon="pi pi-shield">
         <ul class="flex flex-col gap-2.5 text-[12px]">
           <li v-for="r in rules" :key="r.t" class="flex items-center gap-2.5">
-            <i class="pi text-[11px]" :class="r.ok() ? 'pi-check-circle text-sig-ok' : 'pi-circle text-ink-300'" />
-            <span :style="r.ok() ? '' : 'color: var(--txt-dim)'">{{ r.t }}</span>
+            <i
+              class="pi text-[11px]"
+              :class="r.ok() ? 'pi-check-circle text-sig-ok' : 'pi-circle text-txt-muted'"
+              aria-hidden="true"
+            />
+            <span :class="r.ok() ? 'text-txt font-medium' : 'text-txt-dim'">{{ r.t }}</span>
           </li>
         </ul>
-        <div class="mt-4 pt-3.5 border-t text-[11.5px] leading-relaxed"
-             style="border-color: var(--line); color: var(--txt-dim)">
+        <div class="mt-4 pt-3.5 border-t border-line text-[11.5px] text-txt-dim leading-relaxed">
           Setelah password diganti, aktivitas login Anda tetap tercatat pada audit log sistem.
         </div>
       </Panel>

@@ -99,19 +99,23 @@ function remove(r: any) {
 
 <template>
   <div>
-    <PageHeader crumb="Master Data" title="Kategori"
-      sub="Pengelompokan barang — dipakai sebagai prefiks pembuatan SKU otomatis" />
+    <PageHeader
+      crumb="Master Data"
+      title="Kategori"
+      sub="Pengelompokan barang — dipakai sebagai prefiks pembuatan SKU otomatis."
+    />
 
     <Panel title="Tambah Kategori" icon="pi pi-plus">
       <form @submit.prevent="add" class="flex flex-wrap gap-2.5 items-end">
         <label class="flex flex-col gap-1.5 flex-1 min-w-[240px]">
-          <span class="text-[11.5px] font-semibold" style="color: var(--txt-dim)">Nama Kategori</span>
+          <span class="text-[11.5px] font-semibold text-txt-dim">Nama Kategori</span>
           <InputText v-model="newName" placeholder="mis. Peralatan Medis &amp; Alkes" class="w-full" />
         </label>
         <Button type="submit" label="Tambah" icon="pi pi-plus" :loading="busy" />
       </form>
-      <p class="text-[11.5px] mt-2.5" style="color: var(--txt-dim)">
-        ID kategori dibuat otomatis dari nama (slug) dan menjadi prefiks SKU, mis. <span class="t-mono">peralatan-medis</span> → <span class="t-mono">PERA-2026-001</span>.
+      <p class="text-[11.5px] text-txt-dim mt-2.5">
+        ID kategori dibuat otomatis dari nama (slug) dan menjadi prefiks SKU, mis.
+        <span class="t-mono text-txt">peralatan-medis</span> → <span class="t-mono text-acc-500">PERA-2026-001</span>.
       </p>
     </Panel>
 
@@ -122,29 +126,38 @@ function remove(r: any) {
           <Tag severity="secondary" :value="rows.length + ' kategori'" />
         </template>
 
-        <EmptyState v-if="loading" icon="pi pi-spin pi-spinner" title="Memuat kategori…" />
-        <EmptyState v-else-if="!filtered.length" icon="pi pi-tags" title="Tidak ada kategori cocok"
-                    sub="Ubah kata kunci pencarian atau buat kategori baru." />
+        <EmptyState v-if="loading" loading title="Memuat kategori…" />
+        <EmptyState
+          v-else-if="!filtered.length"
+          icon="pi pi-tags"
+          title="Tidak ada kategori cocok"
+          sub="Ubah kata kunci pencarian atau buat kategori baru."
+        />
 
-        <ul v-else class="divide-y" style="border-color: var(--line)">
-          <li v-for="r in pagedRows" :key="r.id" class="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+        <ul v-else class="divide-y divide-line">
+          <li v-for="r in pagedRows" :key="r.id" class="data-row flex items-center gap-3 px-4 py-3">
             <template v-if="editingId === r.id">
-              <InputText v-model="editName" class="flex-1 !text-[12.5px]" @keyup.enter="saveEdit(r)"
-                         @keyup.esc="cancelEdit" autofocus />
-              <Button icon="pi pi-check" size="small" severity="success" :loading="busy" @click="saveEdit(r)" />
-              <Button icon="pi pi-times" size="small" text severity="secondary" @click="cancelEdit" />
+              <InputText
+                v-model="editName"
+                class="flex-1 !text-[12.5px]"
+                @keyup.enter="saveEdit(r)"
+                @keyup.esc="cancelEdit"
+                autofocus
+              />
+              <Button icon="pi pi-check" size="small" severity="success" aria-label="Simpan kategori" :loading="busy" @click="saveEdit(r)" />
+              <Button icon="pi pi-times" size="small" text severity="secondary" aria-label="Batal edit" @click="cancelEdit" />
             </template>
             <template v-else>
-              <div class="w-8 h-8 rounded-lg grid place-items-center border shrink-0 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800">
-                <i class="pi pi-tag text-xs" />
+              <div class="w-8 h-8 rounded-[7px] grid place-items-center border border-[var(--acc-border)] bg-[var(--acc-50)] text-acc-500 shrink-0">
+                <i class="pi pi-tag text-xs" aria-hidden="true" />
               </div>
               <div class="flex-1 min-w-0">
-                <div class="text-[13px] font-semibold" style="color: var(--txt)">{{ r.name }}</div>
-                <div class="t-mono text-[11px]" style="color: var(--txt-dim)">{{ r.id }}</div>
+                <div class="text-[13px] font-semibold text-txt truncate">{{ r.name }}</div>
+                <div class="t-mono !text-[11px] text-txt-dim truncate">{{ r.id }}</div>
               </div>
               <div class="flex items-center gap-1 shrink-0">
-                <Button icon="pi pi-pencil" text rounded size="small" severity="secondary" @click="startEdit(r)" />
-                <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="remove(r)" />
+                <Button icon="pi pi-pencil" text rounded size="small" severity="secondary" aria-label="Edit kategori" @click="startEdit(r)" />
+                <Button icon="pi pi-trash" text rounded size="small" severity="danger" aria-label="Hapus kategori" @click="remove(r)" />
               </div>
             </template>
           </li>
@@ -152,14 +165,12 @@ function remove(r: any) {
 
         <template v-if="filtered.length" #footer>
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <span class="text-[11.5px]" style="color: var(--txt-dim)">{{ range }}</span>
+            <span class="t-mono !text-[11.5px] text-txt-dim">{{ range }}</span>
             <div class="flex items-center gap-2">
               <Select v-model="perPage" :options="perPageOptions" class="!text-[12px] !py-1 w-[95px]" />
-              <Button icon="pi pi-angle-left" size="small" text severity="secondary"
-                      :disabled="page === 0" @click="page--" />
-              <span class="t-num text-[12px] px-1">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
-              <Button icon="pi pi-angle-right" size="small" text severity="secondary"
-                      :disabled="page >= lastPage" @click="page++" />
+              <Button icon="pi pi-angle-left" size="small" text severity="secondary" aria-label="Halaman sebelumnya" :disabled="page === 0" @click="page--" />
+              <span class="t-num text-[12px] px-1 text-txt">Hal. {{ page + 1 }} / {{ lastPage + 1 }}</span>
+              <Button icon="pi pi-angle-right" size="small" text severity="secondary" aria-label="Halaman berikutnya" :disabled="page >= lastPage" @click="page++" />
             </div>
           </div>
         </template>

@@ -2,25 +2,23 @@
 @plugin "tailwindcss-primeui";
 
 /* ============================================================
-   Inventaris Kantor — dark theme, PrimeVue-native.
-   Bridge aliases use hardcoded dark values as fallback so the
-   custom markup matches PrimeVue dark components even if
-   PrimeVue runtime CSS injection is delayed/unavailable.
+   Inventaris Puskesmas — Clinical Precision Design System
+   Single accent (Clinical Teal) + unified Cool Slate surfaces
+   Dense operator ergonomics: 4/8px grid, tabular-nums, mono IDs
    ============================================================ */
 
 @theme {
-  --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Tailwind v4 scales restored */
   --spacing: 0.25rem;
   --radius-xs: 0.125rem;
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
-  --radius-2xl: 1rem;
-  --radius-3xl: 1.5rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.875rem;
+  --radius-3xl: 1.25rem;
   --container-xs: 20rem;
   --container-sm: 24rem;
   --container-md: 28rem;
@@ -33,152 +31,376 @@
   --container-6xl: 72rem;
   --container-7xl: 80rem;
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ---------- light / dark dual palette ---------- */
+/* Bind semantic Tailwind utilities to live light/dark CSS variables */
+@theme inline {
+  --color-acc-50:  var(--acc-50);
+  --color-acc-300: var(--acc-300);
+  --color-acc-500: var(--acc-500);
+  --color-acc-600: var(--acc-600);
+
+  --color-ink-50:  var(--ink-50);
+  --color-ink-100: var(--ink-100);
+  --color-ink-200: var(--ink-200);
+  --color-ink-300: var(--ink-300);
+  --color-ink-400: var(--ink-400);
+  --color-ink-500: var(--ink-500);
+  --color-ink-600: var(--ink-600);
+  --color-ink-700: var(--ink-700);
+  --color-ink-800: var(--ink-800);
+  --color-ink-850: var(--ink-850);
+  --color-ink-900: var(--ink-900);
+  --color-ink-950: var(--ink-950);
+
+  --color-paper-0: var(--paper-0);
+  --color-paper-1: var(--paper-1);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-panel:   var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line:    var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-txt:     var(--txt);
+  --color-txt-dim: var(--txt-dim);
+
+  --color-sig-ok:   var(--sig-ok);
+  --color-sig-warn: var(--sig-warn);
+  --color-sig-bad:  var(--sig-bad);
+  --color-sig-info: var(--sig-info);
+}
+
+/* ---------- Light Mode (Default Token Set) ---------- */
 :root {
-  --ink-950: #ffffff;
-  --ink-900: #f8fafc;
-  --ink-850: #f1f5f9;
-  --ink-800: #e2e8f0;
-  --ink-700: #cbd5e1;
-  --ink-600: #94a3b8;
+  --ink-950: #f4f6f9;
+  --ink-900: #eef2f6;
+  --ink-850: #e7edf3;
+  --ink-800: #dce4ee;
+  --ink-700: #c8d3e0;
+  --ink-600: #8c9bae;
   --ink-500: #64748b;
   --ink-400: #475569;
   --ink-300: #334155;
   --ink-200: #1e293b;
   --ink-100: #0f172a;
   --ink-50:  #020617;
-  --acc-500: #4f46e5;
-  --acc-600: #4338ca;
-  --acc-300: #a5b4fc;
-  --acc-50:  #eef2ff;
-  --line: #e2e8f0;
-  --line-soft: #f1f5f9;
-  --txt: #0f172a;
-  --txt-dim: #64748b;
+
+  /* Single Brand Accent — Clinical Teal */
+  --acc-500: #0d9488;
+  --acc-600: #0f766e;
+  --acc-300: #5eead4;
+  --acc-50:  rgba(13, 148, 136, 0.08);
+  --acc-ring: rgba(13, 148, 136, 0.24);
+  --acc-wash: rgba(13, 148, 136, 0.06);
+  --acc-border: rgba(13, 148, 136, 0.24);
+
+  /* Surfaces & Lines */
+  --sidebar-bg: #eef2f6;
+  --topbar-bg: rgba(255, 255, 255, 0.88);
+  --panel: #ffffff;
+  --panel-2: #f7f9fb;
   --paper-0: #ffffff;
   --paper-1: #ffffff;
-  --paper-2: #f8fafc;
-  --paper-3: #f1f5f9;
-  --sig-ok: #10b981;
-  --sig-warn: #f59e0b;
-  --sig-bad: #ef4444;
+  --paper-2: #f4f6f9;
+  --paper-3: #eaf0f6;
+  --row-hover: #f3f6fa;
+  --line: #dfe6ee;
+  --line-soft: #ebf0f5;
+
+  /* Typography */
+  --txt: #0f172a;
+  --txt-dim: #5b6b80;
+  --txt-muted: #7c8ca1;
+
+  /* Subdued Semantic Status */
+  --sig-ok: #0f9d68;
+  --sig-ok-bg: rgba(15, 157, 104, 0.09);
+  --sig-ok-line: rgba(15, 157, 104, 0.24);
+  --sig-warn: #c27803;
+  --sig-warn-bg: rgba(194, 120, 3, 0.09);
+  --sig-warn-line: rgba(194, 120, 3, 0.24);
+  --sig-bad: #cf3544;
+  --sig-bad-bg: rgba(207, 53, 68, 0.09);
+  --sig-bad-line: rgba(207, 53, 68, 0.24);
   --sig-info: #0284c7;
-  --panel: #ffffff;
-  --panel-2: #f8fafc;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --sig-info-bg: rgba(2, 132, 199, 0.09);
+  --sig-info-line: rgba(2, 132, 199, 0.24);
+
+  /* Tinted Slate Shadows (Consistent Top-Down Light Source) */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 14px 28px -8px rgba(15, 23, 42, 0.10), 0 4px 10px -4px rgba(15, 23, 42, 0.05);
+
+  /* Z-Index Scale */
+  --z-sticky: 20;
+  --z-backdrop: 30;
+  --z-sidebar: 40;
+  --z-modal: 50;
 }
 
+/* ---------- Dark Mode (Unified Deep Cool Slate) ---------- */
 body.dark, html.dark {
-  --ink-950: #090d16;
-  --ink-900: #0f172a;
-  --ink-850: #172033;
-  --ink-800: #1e293b;
-  --ink-700: #334155;
-  --ink-600: #475569;
+  --ink-950: #0c1118;
+  --ink-900: #101722;
+  --ink-850: #151e2c;
+  --ink-800: #1b2638;
+  --ink-700: #27364c;
+  --ink-600: #3d506b;
   --ink-500: #64748b;
   --ink-400: #94a3b8;
   --ink-300: #cbd5e1;
   --ink-200: #e2e8f0;
-  --ink-100: #f8fafc;
+  --ink-100: #f1f5f9;
   --ink-50:  #ffffff;
-  --acc-500: #6366f1;
-  --acc-600: #4f46e5;
-  --acc-300: #c7d2fe;
-  --acc-50:  #1e1b4b;
-  --line: #1e293b;
-  --line-soft: #172033;
-  --txt: #f8fafc;
+
+  /* Single Brand Accent — Luminous Clinical Teal */
+  --acc-500: #2dd4bf;
+  --acc-600: #14b8a6;
+  --acc-300: #99f6e4;
+  --acc-50:  rgba(45, 212, 191, 0.11);
+  --acc-ring: rgba(45, 212, 191, 0.28);
+  --acc-wash: rgba(45, 212, 191, 0.07);
+  --acc-border: rgba(45, 212, 191, 0.26);
+
+  /* Surfaces & Lines (Subtle Tinted Sidebar, Never Pure #000) */
+  --sidebar-bg: #101722;
+  --topbar-bg: rgba(16, 23, 34, 0.86);
+  --panel: #131b27;
+  --panel-2: #182231;
+  --paper-0: #131b27;
+  --paper-1: #131b27;
+  --paper-2: #182231;
+  --paper-3: #1f2c3f;
+  --row-hover: rgba(148, 163, 184, 0.06);
+  --line: #223044;
+  --line-soft: #1a2536;
+
+  /* Typography */
+  --txt: #f1f5f9;
   --txt-dim: #94a3b8;
-  --paper-0: #0f172a;
-  --paper-1: #0f172a;
-  --paper-2: #172033;
-  --paper-3: #1e293b;
-  --sig-ok: #10b981;
-  --sig-warn: #f59e0b;
-  --sig-bad: #ef4444;
+  --txt-muted: #64748b;
+
+  /* Subdued Semantic Status */
+  --sig-ok: #34d399;
+  --sig-ok-bg: rgba(52, 211, 153, 0.11);
+  --sig-ok-line: rgba(52, 211, 153, 0.25);
+  --sig-warn: #fbbf24;
+  --sig-warn-bg: rgba(251, 191, 36, 0.11);
+  --sig-warn-line: rgba(251, 191, 36, 0.25);
+  --sig-bad: #f87171;
+  --sig-bad-bg: rgba(248, 113, 113, 0.12);
+  --sig-bad-line: rgba(248, 113, 113, 0.26);
   --sig-info: #38bdf8;
-  --panel: #0f172a;
-  --panel-2: #172033;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --sig-info-bg: rgba(56, 189, 248, 0.11);
+  --sig-info-line: rgba(56, 189, 248, 0.25);
 
-  /* PrimeVue native CSS tokens bridge for dark mode */
-  --p-form-field-background: #172033;
-  --p-form-field-border-color: #27354a;
-  --p-form-field-color: #f8fafc;
+  --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.35);
+  --shadow-md: 0 6px 16px -4px rgba(2, 6, 23, 0.45);
+  --shadow-lg: 0 18px 36px -8px rgba(2, 6, 23, 0.6);
+
+  /* PrimeVue CSS token bridge */
+  --p-form-field-background: #182231;
+  --p-form-field-border-color: #27364c;
+  --p-form-field-color: #f1f5f9;
   --p-form-field-placeholder-color: #64748b;
-  --p-form-field-focus-border-color: #f5a524;
-  --p-inputtext-background: #172033;
-  --p-inputtext-border-color: #27354a;
-  --p-inputtext-color: #f8fafc;
+  --p-form-field-focus-border-color: #2dd4bf;
+  --p-inputtext-background: #182231;
+  --p-inputtext-border-color: #27364c;
+  --p-inputtext-color: #f1f5f9;
   --p-inputtext-placeholder-color: #64748b;
-  --p-inputtext-focus-border-color: #f5a524;
-  --p-select-background: #172033;
-  --p-select-border-color: #27354a;
-  --p-select-color: #f8fafc;
+  --p-inputtext-focus-border-color: #2dd4bf;
+  --p-select-background: #182231;
+  --p-select-border-color: #27364c;
+  --p-select-color: #f1f5f9;
   --p-select-placeholder-color: #64748b;
-  --p-select-focus-border-color: #f5a524;
+  --p-select-focus-border-color: #2dd4bf;
   --p-select-dropdown-color: #94a3b8;
-  --p-textarea-background: #172033;
-  --p-textarea-border-color: #27354a;
-  --p-textarea-color: #f8fafc;
+  --p-textarea-background: #182231;
+  --p-textarea-border-color: #27364c;
+  --p-textarea-color: #f1f5f9;
   --p-textarea-placeholder-color: #64748b;
-  --p-textarea-focus-border-color: #f5a524;
+  --p-textarea-focus-border-color: #2dd4bf;
 }
 
-/* ---------- type helpers ---------- */
-.t-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--txt-dim);
-}
-.t-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
-.t-mono { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: -0.01em; }
-.t-page { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
-
-/* ---------- shell / panel / work ---------- */
-.shell {
-  background: var(--ink-950);
-  color: var(--txt);
-}
-.shell-panel { background: var(--ink-900); border: 1px solid var(--line); }
-.shell-panel-2 { background: var(--ink-850); border: 1px solid var(--line-soft); }
-.work { background: var(--ink-950); color: var(--txt); }
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+/* ---------- Base & Accessibility ---------- */
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
   background: var(--ink-950);
   color: var(--txt);
-  min-height: 100vh;
+  min-height: 100dvh;
+  text-rendering: optimizeLegibility;
 }
 
-/* ---------- PrimeVue Form Controls Dark Theme Alignment ---------- */
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acc-500);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 100;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--acc-500);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 140ms ease;
+}
+.skip-link:focus {
+  top: 12px;
+}
+
+/* ---------- Typography Helpers ---------- */
+.t-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+}
+.t-num, .tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.t-mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+.t-page {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+/* ---------- Surfaces, Texture & Density ---------- */
+.shell {
+  background: var(--ink-950);
+  color: var(--txt);
+}
+.shell-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.shell-panel-2 {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.work {
+  background: var(--ink-950);
+  color: var(--txt);
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+/* Architectural hairline dot-grid surface texture */
+.grid-bg {
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Dense Data Table Row Micro-Motion (80ms) */
+.data-row {
+  transition: background-color 80ms ease;
+}
+.data-row:hover {
+  background-color: var(--row-hover);
+}
+.data-row-active {
+  background-color: var(--acc-wash);
+  box-shadow: inset 2px 0 0 var(--acc-500);
+}
+
+/* Skeleton Shimmer */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--paper-3);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  animation: skeleton-sweep 1.5s infinite;
+}
+html:not(.dark) .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+}
+@keyframes skeleton-sweep {
+  100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
+
+/* Tactile Press Feedback on Buttons */
+.p-button {
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 90ms ease !important;
+}
+.p-button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+/* Subtle Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-500);
+}
+
+/* ---------- PrimeVue Dark Theme Alignment ---------- */
 body.dark .p-inputtext,
 body.dark .p-select,
 body.dark .p-textarea,
 body.dark .p-inputnumber-input,
 body.dark .p-multiselect,
-body.dark .p-password-input {
-  background-color: #172033 !important;
-  color: #f8fafc !important;
-  border-color: #27354a !important;
+body.dark .p-password-input,
+body.dark .p-datepicker-input {
+  background-color: #182231 !important;
+  color: #f1f5f9 !important;
+  border-color: #27364c !important;
 }
 
 body.dark .p-inputtext:hover,
@@ -186,7 +408,7 @@ body.dark .p-select:hover,
 body.dark .p-textarea:hover,
 body.dark .p-inputnumber-input:hover,
 body.dark .p-multiselect:hover {
-  border-color: #3d4d68 !important;
+  border-color: #3a4f6d !important;
 }
 
 body.dark .p-inputtext:focus,
@@ -195,8 +417,17 @@ body.dark .p-textarea:focus,
 body.dark .p-inputnumber-input:focus,
 body.dark .p-multiselect:focus,
 body.dark .p-select:focus-within {
-  border-color: #f5a524 !important;
-  box-shadow: 0 0 0 1px rgba(245, 165, 36, 0.35) !important;
+  border-color: #2dd4bf !important;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.22) !important;
+}
+
+html:not(.dark) .p-inputtext:focus,
+html:not(.dark) .p-select:focus,
+html:not(.dark) .p-textarea:focus,
+html:not(.dark) .p-inputnumber-input:focus,
+html:not(.dark) .p-select:focus-within {
+  border-color: #0d9488 !important;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.18) !important;
 }
 
 body.dark .p-inputtext::placeholder,
@@ -207,7 +438,7 @@ body.dark .p-select-label.p-placeholder {
 }
 
 body.dark .p-select-label {
-  color: #f8fafc !important;
+  color: #f1f5f9 !important;
 }
 
 body.dark .p-select-dropdown {
@@ -218,26 +449,26 @@ body.dark .p-select-overlay,
 body.dark .p-popover,
 body.dark .p-dialog,
 body.dark .p-autocomplete-overlay {
-  background: #172033 !important;
-  border-color: #27354a !important;
-  color: #f8fafc !important;
+  background: #131b27 !important;
+  border-color: #27364c !important;
+  color: #f1f5f9 !important;
 }
 
 body.dark .p-select-option {
-  color: #f8fafc !important;
+  color: #f1f5f9 !important;
 }
 
 body.dark .p-select-option:not(.p-select-option-selected):not(.p-disabled).p-focus {
-  background: #1e293b !important;
+  background: #1f2c3f !important;
   color: #ffffff !important;
 }
 
 body.dark .p-select-option.p-select-option-selected {
-  background: rgba(245, 165, 36, 0.15) !important;
-  color: #f5a524 !important;
+  background: rgba(45, 212, 191, 0.14) !important;
+  color: #2dd4bf !important;
 }
 
-/* ---------- Unified Form Controls Height & Sizing (InputText, Select, InputNumber, MultiSelect) ---------- */
+/* ---------- Unified Form Controls Height & Sizing (36px standard / 30px compact) ---------- */
 .p-inputtext,
 .p-select,
 .p-inputnumber,
@@ -246,17 +477,6 @@ body.dark .p-select-option.p-select-option-selected {
 .p-password,
 .p-password-input {
   box-sizing: border-box !important;
-  font-family: inherit;
-}
-
-/* Base height: locked to 36px for standard form controls */
-.p-inputtext:not(.p-textarea),
-.p-select,
-.p-inputnumber,
-.p-inputnumber-input,
-.p-multiselect,
-.p-password,
-.p-password-input {
   height: 36px !important;
   min-height: 36px !important;
   max-height: 36px !important;
@@ -359,9 +579,9 @@ body.dark .p-select-option.p-select-option-selected {
 
 .p-textarea {
   height: auto !important;
-  min-height: 60px !important;
+  min-height: 68px !important;
   max-height: none !important;
-  line-height: 1.4 !important;
+  line-height: 1.5 !important;
   padding-top: 0.5rem !important;
   padding-bottom: 0.5rem !important;
 }
@@ -378,5 +598,13 @@ body.dark .p-select-option.p-select-option-selected {
   font-size: 12px !important;
 }
 
-.tabular { font-variant-numeric: tabular-nums; }
+/* Crisp dense PrimeVue Tags */
+.p-tag {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 0.18rem 0.5rem !important;
+  border-radius: 6px !important;
+  letter-spacing: 0.01em !important;
+}
+
 @media print { .no-print { display: none !important; } }

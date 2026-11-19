@@ -2,11 +2,16 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useThemeStore = defineStore('theme', () => {
-  const isDark = ref(localStorage.getItem('theme') !== 'light')
+  const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('theme') : null
+  const isDark = ref(saved ? saved !== 'light' : true)
 
   function toggle() {
     isDark.value = !isDark.value
-    localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+    try {
+      localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+    } catch {
+      // ignore storage errors in restricted contexts
+    }
     apply()
   }
 
@@ -14,9 +19,11 @@ export const useThemeStore = defineStore('theme', () => {
     if (isDark.value) {
       document.body.classList.add('dark')
       document.documentElement.classList.add('dark')
+      document.documentElement.style.colorScheme = 'dark'
     } else {
       document.body.classList.remove('dark')
       document.documentElement.classList.remove('dark')
+      document.documentElement.style.colorScheme = 'light'
     }
   }
 
