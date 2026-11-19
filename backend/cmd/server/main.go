@@ -33,11 +33,6 @@ func dbMigrate(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func seedAdminUser(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) {
-	var count int
-	pool.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&count)
-	if count > 0 {
-		return
-	}
 	adminEmail := os.Getenv("ADMIN_EMAIL")
 	if adminEmail == "" {
 		adminEmail = "admin@kantor.id"
@@ -46,15 +41,28 @@ func seedAdminUser(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) 
 	if adminPw == "" {
 		adminPw = "admin12345"
 	}
+
+	var exists bool
+	pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`, adminEmail).Scan(&exists)
+	if exists {
+		if os.Getenv("RESET_ADMIN") == "true" {
+			hash, _ := bcrypt.GenerateFromPassword([]byte(adminPw), bcrypt.DefaultCost)
+			_, _ = pool.Exec(ctx, `UPDATE users SET password_hash = $1, role = 'admin' WHERE email = $2`, string(hash), adminEmail)
+			slog.Info("admin user password reset", "email", adminEmail)
+		}
+		return
+	}
+
 	hash, _ := bcrypt.GenerateFromPassword([]byte(adminPw), bcrypt.DefaultCost)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,'admin')`,
+		`INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,'admin')
+		 ON CONFLICT (email) DO UPDATE SET password_hash=$3, role='admin'`,
 		"Admin", adminEmail, string(hash))
 	if err != nil {
 		slog.Error("seed admin failed", "err", err)
 		return
 	}
-	slog.Info("admin user seeded", "email", adminEmail)
+	slog.Info("admin user seeded successfully", "email", adminEmail)
 }
 
 func main() {
