@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,9 +14,14 @@ import (
 	"inventariskantor/internal/middleware"
 )
 
+var dummyBcryptHash = func() []byte {
+	h, _ := bcrypt.GenerateFromPassword([]byte("dummy-timing-equalizer-password"), bcrypt.DefaultCost)
+	return h
+}()
+
 type AuthHandler struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
+	pool *pgxpool.Pool
+	cfg  *config.Config
 }
 
 func NewAuthHandler(pool *pgxpool.Pool, cfg *config.Config) *AuthHandler {
@@ -34,41 +40,56 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !middleware.CheckAccountLoginAllowed(email, 5, 5*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error": "Terlalu banyak percobaan login gagal untuk akun ini. Silakan tunggu beberapa menit.",
+		})
+		return
+	}
+
 	var id, name, role, hash string
-	err := h.pool.QueryRow(c, `SELECT id, name, role, password_hash FROM users WHERE email=$1`,
-		strings.ToLower(req.Email)).Scan(&id, &name, &role, &hash)
+	var tokenVersion int
+	err := h.pool.QueryRow(c,
+		`SELECT id::text, name, role, password_hash, COALESCE(token_version, 1) FROM users WHERE email=$1`,
+		email,
+	).Scan(&id, &name, &role, &hash, &tokenVersion)
 	if err != nil {
+		_ = bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(req.Password))
+		middleware.RecordAccountLoginFailure(c, email, 5, 5*time.Minute)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "email atau password salah"})
 		return
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
+		middleware.RecordAccountLoginFailure(c, email, 5, 5*time.Minute)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "email atau password salah"})
 		return
 	}
 
-	token, err := auth.GenerateToken(h.cfg.JWTSecret, id, req.Email, role, name)
+	ttl := time.Duration(h.cfg.JWTTTLHours) * time.Hour
+	token, err := auth.GenerateToken(h.cfg.JWTSecret, id, email, role, name, tokenVersion, ttl)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
+		internalError(c, "gagal membuat token autentikasi", err)
 		return
 	}
 
-	middleware.ResetLoginAttempts(c.ClientIP())
+	middleware.ResetLoginAttempts(c.ClientIP(), email)
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
 		"user": gin.H{
-			"id": id, "name": name, "email": req.Email, "role": role,
+			"id": id, "name": name, "email": email, "role": role,
 		},
 	})
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"id": c.GetString("uid"),
-		"name": c.GetString("name"),
+		"id":    c.GetString("uid"),
+		"name":  c.GetString("name"),
 		"email": c.GetString("email"),
-		"role": c.GetString("role"),
+		"role":  c.GetString("role"),
 	})
 }
 
@@ -78,13 +99,13 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		New string `json:"new" binding:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password lama wajib diisi dan password baru minimal 8 karakter"})
 		return
 	}
-	email := c.GetString("email")
+	uid := c.GetString("uid")
 
 	var hash string
-	err := h.pool.QueryRow(c, `SELECT password_hash FROM users WHERE email=$1`, email).Scan(&hash)
+	err := h.pool.QueryRow(c, `SELECT password_hash FROM users WHERE id::text=$1`, uid).Scan(&hash)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user tidak ditemukan"})
 		return
@@ -93,9 +114,23 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "password lama salah"})
 		return
 	}
-	newHash, _ := bcrypt.GenerateFromPassword([]byte(req.New), bcrypt.DefaultCost)
-	h.pool.Exec(c, `UPDATE users SET password_hash=$2 WHERE email=$1`, email, string(newHash))
-	c.JSON(http.StatusOK, gin.H{"message": "password berhasil diganti"})
+	if len(req.New) > 72 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password baru maksimal 72 karakter"})
+		return
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.New), bcrypt.DefaultCost)
+	if err != nil {
+		internalError(c, "gagal memproses password baru", err)
+		return
+	}
+	if _, err := h.pool.Exec(c,
+		`UPDATE users SET password_hash=$2, token_version=COALESCE(token_version, 1)+1 WHERE id::text=$1`,
+		uid, string(newHash),
+	); err != nil {
+		internalError(c, "gagal mengganti password", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password berhasil diganti, silakan login ulang"})
 }
 
 func (h *AuthHandler) CreateUserCLI(c *gin.Context) {

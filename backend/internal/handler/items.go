@@ -143,7 +143,7 @@ func (h *ItemHandler) List(c *gin.Context) {
 
 	rows, err := h.pool.Query(c, queryStr, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal mengambil daftar barang", err)
 		return
 	}
 	defer rows.Close()
@@ -215,7 +215,21 @@ func (h *ItemHandler) Get(c *gin.Context) {
 func (h *ItemHandler) Create(c *gin.Context) {
 	var req itemReq
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "data barang tidak valid"})
+		return
+	}
+	safePhoto, err := SanitizePhotoURL(req.PhotoURL)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.PhotoURL = safePhoto
+	if req.CurrentStock < 0 || req.MinStock < 0 || req.PricePerUnit < 0 || req.InitialUnits < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "stok, stok minimum, harga, dan jumlah unit tidak boleh negatif"})
+		return
+	}
+	if req.InitialUnits > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "jumlah unit awal maksimal 500 per permintaan"})
 		return
 	}
 	sku := strings.TrimSpace(req.SKU)
@@ -235,7 +249,7 @@ func (h *ItemHandler) Create(c *gin.Context) {
 		}
 	}
 	var id string
-	err := h.pool.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, location_code, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, size, material, item_code, register_number, geo_lat, geo_lng, geo_acc, geo_name, track_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id::text`,
+	err = h.pool.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, location_code, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, size, material, item_code, register_number, geo_lat, geo_lng, geo_acc, geo_name, track_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id::text`,
 		sku, req.Name, req.Category, req.Location, nullable(req.LocationCode), initialStock, req.MinStock, req.Unit, req.PricePerUnit,
 		nullable(req.Description), nullable(req.PhotoURL), nullable(req.Merk), nullable(req.TypeModel), nullable(req.SerialNumber),
 		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd),
@@ -243,7 +257,7 @@ func (h *ItemHandler) Create(c *gin.Context) {
 		req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), trackStock).
 		Scan(&id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal menyimpan barang baru", err)
 		return
 	}
 
@@ -295,25 +309,31 @@ func (h *ItemHandler) Update(c *gin.Context) {
 	id := c.Param("id")
 	var req itemReq
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "data barang tidak valid"})
+		return
+	}
+	safePhoto, err := SanitizePhotoURL(req.PhotoURL)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.PhotoURL = safePhoto
+	if req.CurrentStock < 0 || req.MinStock < 0 || req.PricePerUnit < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "stok, stok minimum, dan harga tidak boleh negatif"})
 		return
 	}
 	trackStock := true
 	if req.TrackStock != nil {
 		trackStock = *req.TrackStock
 	}
-	currentStock := req.CurrentStock
-	if !trackStock {
-		currentStock = 1
-	}
-	_, err := h.pool.Exec(c, `UPDATE inventory_items SET sku=$2, name=$3, category=$4, location=$5, location_code=$6, current_stock=$7, min_stock=$8, unit=$9, price_per_unit=$10, description=$11, photo_url=$12, merk=$13, type_model=$14, serial_number=$15, procurement_year=$16, condition_status=$17, funding_source=$18, distributor=$19, akl_akd=$20, size=$21, material=$22, item_code=$23, register_number=$24, geo_lat=$25, geo_lng=$26, geo_acc=$27, geo_name=$28, track_stock=$29, updated_at=now() WHERE id=$1`,
-		id, req.SKU, req.Name, req.Category, req.Location, nullable(req.LocationCode), currentStock, req.MinStock, req.Unit, req.PricePerUnit,
+	_, err = h.pool.Exec(c, `UPDATE inventory_items SET sku=$2, name=$3, category=$4, location=$5, location_code=$6, current_stock=CASE WHEN $29 THEN $7 ELSE GREATEST((SELECT COUNT(*) FROM item_units WHERE item_id=$1), 1) END, min_stock=$8, unit=$9, price_per_unit=$10, description=$11, photo_url=$12, merk=$13, type_model=$14, serial_number=$15, procurement_year=$16, condition_status=$17, funding_source=$18, distributor=$19, akl_akd=$20, size=$21, material=$22, item_code=$23, register_number=$24, geo_lat=$25, geo_lng=$26, geo_acc=$27, geo_name=$28, track_stock=$29, updated_at=now() WHERE id=$1`,
+		id, req.SKU, req.Name, req.Category, req.Location, nullable(req.LocationCode), req.CurrentStock, req.MinStock, req.Unit, req.PricePerUnit,
 		nullable(req.Description), nullable(req.PhotoURL), nullable(req.Merk), nullable(req.TypeModel), nullable(req.SerialNumber),
 		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd),
 		nullable(req.Size), nullable(req.Material), nullable(req.ItemCode), nullable(req.RegisterNumber),
 		req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), trackStock)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal memperbarui barang", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
@@ -326,19 +346,21 @@ func (h *ItemHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	// 1. Gather all photo URLs associated with this item to delete physical files
+	// 1. Gather all photo URLs associated with this item before deleting DB rows
+	var photosToDelete []string
 	var itemPhoto *string
 	_ = h.pool.QueryRow(c, `SELECT photo_url FROM inventory_items WHERE id::text=$1`, id).Scan(&itemPhoto)
 	if itemPhoto != nil && *itemPhoto != "" {
-		DeleteUploadedPhoto(*itemPhoto)
+		photosToDelete = append(photosToDelete, *itemPhoto)
 	}
 
 	txPhotos, errTx := h.pool.Query(c, `SELECT photo_url FROM stock_transactions WHERE (item_id::text=$1 OR item_sku IN (SELECT sku FROM inventory_items WHERE id::text=$1)) AND photo_url IS NOT NULL`, id)
 	if errTx == nil {
 		for txPhotos.Next() {
 			var p string
-			txPhotos.Scan(&p)
-			DeleteUploadedPhoto(p)
+			if txPhotos.Scan(&p) == nil && p != "" {
+				photosToDelete = append(photosToDelete, p)
+			}
 		}
 		txPhotos.Close()
 	}
@@ -347,8 +369,9 @@ func (h *ItemHandler) Delete(c *gin.Context) {
 	if errMaint == nil {
 		for maintPhotos.Next() {
 			var p string
-			maintPhotos.Scan(&p)
-			DeleteUploadedPhoto(p)
+			if maintPhotos.Scan(&p) == nil && p != "" {
+				photosToDelete = append(photosToDelete, p)
+			}
 		}
 		maintPhotos.Close()
 	}
@@ -357,23 +380,45 @@ func (h *ItemHandler) Delete(c *gin.Context) {
 	if errUnitPhotos == nil {
 		for unitPhotos.Next() {
 			var up string
-			unitPhotos.Scan(&up)
-			DeleteUploadedPhoto(up)
+			if unitPhotos.Scan(&up) == nil && up != "" {
+				photosToDelete = append(photosToDelete, up)
+			}
 		}
 		unitPhotos.Close()
 	}
 
-	// 2. Delete related transactions, maintenance records, and the item from database
-	_, _ = h.pool.Exec(c, `DELETE FROM stock_transactions WHERE item_id::text=$1 OR item_sku IN (SELECT sku FROM inventory_items WHERE id::text=$1)`, id)
-	_, _ = h.pool.Exec(c, `DELETE FROM item_maintenances WHERE item_id::text=$1`, id)
-	tag, err := h.pool.Exec(c, `DELETE FROM inventory_items WHERE id::text=$1`, id)
+	// 2. Delete related transactions, maintenance records, and the item from database atomically
+	tx, err := h.pool.Begin(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal memulai transaksi hapus barang", err)
+		return
+	}
+	defer tx.Rollback(c)
+
+	if _, err := tx.Exec(c, `DELETE FROM stock_transactions WHERE item_id::text=$1 OR item_sku IN (SELECT sku FROM inventory_items WHERE id::text=$1)`, id); err != nil {
+		internalError(c, "gagal menghapus riwayat transaksi barang", err)
+		return
+	}
+	if _, err := tx.Exec(c, `DELETE FROM item_maintenances WHERE item_id::text=$1`, id); err != nil {
+		internalError(c, "gagal menghapus riwayat pemeliharaan barang", err)
+		return
+	}
+	tag, err := tx.Exec(c, `DELETE FROM inventory_items WHERE id::text=$1`, id)
+	if err != nil {
+		internalError(c, "gagal menghapus barang", err)
 		return
 	}
 	if tag.RowsAffected() == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "barang tidak ditemukan"})
 		return
+	}
+	if err := tx.Commit(c); err != nil {
+		internalError(c, "gagal menyimpan penghapusan barang", err)
+		return
+	}
+
+	for _, p := range photosToDelete {
+		DeleteUploadedPhoto(c.Request.Context(), h.pool, p)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
@@ -382,7 +427,11 @@ func (h *ItemHandler) Dashboard(c *gin.Context) {
 	var totalItems, totalStock int
 	h.pool.QueryRow(c, `SELECT count(*), COALESCE(sum(current_stock),0) FROM inventory_items`).Scan(&totalItems, &totalStock)
 
-	lowRows, _ := h.pool.Query(c, `SELECT name, sku, current_stock, min_stock, unit, COALESCE(location, '') FROM inventory_items WHERE COALESCE(track_stock, true) = true AND current_stock <= min_stock ORDER BY current_stock LIMIT 10`)
+	lowRows, err := h.pool.Query(c, `SELECT name, sku, current_stock, min_stock, unit, COALESCE(location, '') FROM inventory_items WHERE COALESCE(track_stock, true) = true AND current_stock <= min_stock ORDER BY current_stock LIMIT 10`)
+	if err != nil {
+		internalError(c, "gagal mengambil data stok menipis", err)
+		return
+	}
 	defer lowRows.Close()
 	type lowRow struct {
 		Name string `json:"name"`
@@ -399,7 +448,11 @@ func (h *ItemHandler) Dashboard(c *gin.Context) {
 		lowStock = append(lowStock, l)
 	}
 
-	txRows, _ := h.pool.Query(c, `SELECT timestamp, item_name, item_sku, quantity, unit, type FROM stock_transactions ORDER BY timestamp DESC LIMIT 8`)
+	txRows, err := h.pool.Query(c, `SELECT timestamp, item_name, item_sku, quantity, unit, type FROM stock_transactions ORDER BY timestamp DESC LIMIT 8`)
+	if err != nil {
+		internalError(c, "gagal mengambil transaksi terbaru", err)
+		return
+	}
 	defer txRows.Close()
 	type txRow struct {
 		Time string `json:"time"`
@@ -418,7 +471,11 @@ func (h *ItemHandler) Dashboard(c *gin.Context) {
 		recent = append(recent, t)
 	}
 
-	catRows, _ := h.pool.Query(c, `SELECT category, COALESCE(sum(current_stock),0) FROM inventory_items GROUP BY category`)
+	catRows, err := h.pool.Query(c, `SELECT category, COALESCE(sum(current_stock),0) FROM inventory_items GROUP BY category`)
+	if err != nil {
+		internalError(c, "gagal mengambil ringkasan kategori", err)
+		return
+	}
 	defer catRows.Close()
 	stockByCat := map[string]int{}
 	for catRows.Next() {
@@ -474,7 +531,7 @@ func (h *ItemHandler) ListUnits(c *gin.Context) {
 	id := c.Param("id")
 	rows, err := h.pool.Query(c, `SELECT id::text, item_id::text, unit_number, COALESCE(register_number, ''), COALESCE(barcode, ''), COALESCE(serial_number, ''), COALESCE(condition_status, 'Baik (B)'), COALESCE(location, ''), COALESCE(location_code, ''), COALESCE(photo_url, ''), geo_lat, geo_lng, geo_acc, COALESCE(geo_name, ''), COALESCE(notes, ''), created_at::text, updated_at::text FROM item_units WHERE item_id::text=$1 ORDER BY unit_number ASC, created_at ASC`, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal mengambil daftar unit barang", err)
 		return
 	}
 	defer rows.Close()
@@ -498,9 +555,16 @@ func (h *ItemHandler) CreateUnit(c *gin.Context) {
 		return
 	}
 
+	safePhoto, err := SanitizePhotoURL(req.PhotoURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.PhotoURL = safePhoto
+
 	// Verify item exists and get default metadata
 	var itemSKU, itemLoc, itemLocCode, itemCond string
-	err := h.pool.QueryRow(c, `SELECT sku, location, COALESCE(location_code, ''), COALESCE(condition_status, 'Baik (B)') FROM inventory_items WHERE id::text=$1`, id).
+	err = h.pool.QueryRow(c, `SELECT sku, location, COALESCE(location_code, ''), COALESCE(condition_status, 'Baik (B)') FROM inventory_items WHERE id::text=$1`, id).
 		Scan(&itemSKU, &itemLoc, &itemLocCode, &itemCond)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
@@ -535,7 +599,7 @@ func (h *ItemHandler) CreateUnit(c *gin.Context) {
 		id, req.UnitNumber, req.RegisterNumber, req.Barcode, nullable(req.SerialNumber), req.ConditionStatus, req.Location, nullable(req.LocationCode), nullable(req.PhotoURL), req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), nullable(req.Notes)).
 		Scan(&unitID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal menambah unit barang", err)
 		return
 	}
 
@@ -552,14 +616,20 @@ func (h *ItemHandler) UpdateUnit(c *gin.Context) {
 	unitID := c.Param("unitId")
 	var req ItemUnit
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "data unit tidak valid"})
+		return
+	}
+	safePhoto, err := SanitizePhotoURL(req.PhotoURL)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.PhotoURL = safePhoto
 
-	_, err := h.pool.Exec(c, `UPDATE item_units SET register_number=$3, barcode=$4, serial_number=$5, condition_status=$6, location=$7, location_code=$8, photo_url=$9, geo_lat=$10, geo_lng=$11, geo_acc=$12, geo_name=$13, notes=$14, updated_at=now() WHERE id::text=$1 AND item_id::text=$2`,
+	_, err = h.pool.Exec(c, `UPDATE item_units SET register_number=$3, barcode=$4, serial_number=$5, condition_status=$6, location=$7, location_code=$8, photo_url=$9, geo_lat=$10, geo_lng=$11, geo_acc=$12, geo_name=$13, notes=$14, updated_at=now() WHERE id::text=$1 AND item_id::text=$2`,
 		unitID, id, req.RegisterNumber, req.Barcode, nullable(req.SerialNumber), req.ConditionStatus, req.Location, nullable(req.LocationCode), nullable(req.PhotoURL), req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), nullable(req.Notes))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal memperbarui unit barang", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
@@ -569,16 +639,13 @@ func (h *ItemHandler) DeleteUnit(c *gin.Context) {
 	id := c.Param("id")
 	unitID := c.Param("unitId")
 
-	// Delete photo if exists
+	// Fetch photo before deleting DB row, then delete physical file only after DB delete succeeds
 	var photo string
 	_ = h.pool.QueryRow(c, `SELECT COALESCE(photo_url, '') FROM item_units WHERE id::text=$1 AND item_id::text=$2`, unitID, id).Scan(&photo)
-	if photo != "" {
-		DeleteUploadedPhoto(photo)
-	}
 
 	tag, err := h.pool.Exec(c, `DELETE FROM item_units WHERE id::text=$1 AND item_id::text=$2`, unitID, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal menghapus unit barang", err)
 		return
 	}
 	if tag.RowsAffected() == 0 {
@@ -588,6 +655,10 @@ func (h *ItemHandler) DeleteUnit(c *gin.Context) {
 
 	// Sync current_stock to total physical units count
 	_, _ = h.pool.Exec(c, `UPDATE inventory_items SET current_stock = (SELECT COUNT(*) FROM item_units WHERE item_id::text=$1) WHERE id::text=$1`, id)
+
+	if photo != "" {
+		DeleteUploadedPhoto(c.Request.Context(), h.pool, photo)
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }

@@ -40,15 +40,32 @@ func (h *MovementHandler) doMovement(c *gin.Context, txType string) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "quantity harus > 0"})
 		return
 	}
+	safePhoto, err := SanitizePhotoURL(req.PhotoURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.PhotoURL = safePhoto
 
 	tx, err := h.pool.Begin(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal memulai transaksi stok", err)
 		return
 	}
 	defer tx.Rollback(c)
 
 	itemID := req.ItemID
+
+	var trackStock bool
+	err = tx.QueryRow(c, `SELECT COALESCE(track_stock, true) FROM inventory_items WHERE id::text=$1 FOR UPDATE`, itemID).Scan(&trackStock)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "barang tidak ditemukan"})
+		return
+	}
+	if !trackStock {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "barang adalah aset tetap (kelola melalui daftar unit fisik)"})
+		return
+	}
 
 	var name, unit string
 	var prev, next int32
@@ -83,12 +100,12 @@ func (h *MovementHandler) doMovement(c *gin.Context, txType string) {
 		txType, itemID, txSKU, name, req.Quantity, unit, prev, next,
 		nullableS(req.Person), nullableS(req.Notes), nullableS(req.PhotoURL))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mencatat transaksi: " + err.Error()})
+		internalError(c, "gagal mencatat transaksi", err)
 		return
 	}
 
 	if err := tx.Commit(c); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menyimpan perubahan stok: " + err.Error()})
+		internalError(c, "gagal menyimpan perubahan stok", err)
 		return
 	}
 
@@ -115,20 +132,31 @@ func (h *MovementHandler) Adjust(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "stok hasil opname tidak boleh negatif"})
 		return
 	}
+	safePhoto, err := SanitizePhotoURL(req.PhotoURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.PhotoURL = safePhoto
 
 	tx, err := h.pool.Begin(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal memproses mutasi", err)
 		return
 	}
 	defer tx.Rollback(c)
 
 	var current int32
 	var name, unit, sku string
-	err = tx.QueryRow(c, `SELECT current_stock, name, unit, sku FROM inventory_items WHERE id::text=$1 FOR UPDATE`, req.ItemID).
-		Scan(&current, &name, &unit, &sku)
+	var trackStock bool
+	err = tx.QueryRow(c, `SELECT current_stock, name, unit, sku, COALESCE(track_stock, true) FROM inventory_items WHERE id::text=$1 FOR UPDATE`, req.ItemID).
+		Scan(&current, &name, &unit, &sku, &trackStock)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "barang tidak ditemukan"})
+		return
+	}
+	if !trackStock {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "barang adalah aset tetap (tidak mengelola kuantitas stok)"})
 		return
 	}
 
@@ -144,19 +172,19 @@ func (h *MovementHandler) Adjust(c *gin.Context) {
 	if absDiff < 0 { absDiff = -absDiff }
 
 	if _, err := tx.Exec(c, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, req.ItemID, req.Quantity); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal update stok: " + err.Error()})
+		internalError(c, "gagal update stok", err)
 		return
 	}
 	if _, err := tx.Exec(c, `INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, photo_url)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		txType, req.ItemID, sku, name, absDiff, unit, current, req.Quantity,
 		nullableS(req.Person), nullableS("Opname: "+req.Notes), nullableS(req.PhotoURL)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mencatat transaksi opname: " + err.Error()})
+		internalError(c, "gagal mencatat transaksi opname", err)
 		return
 	}
 
 	if err := tx.Commit(c); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menyimpan opname: " + err.Error()})
+		internalError(c, "gagal menyimpan opname", err)
 		return
 	}
 
@@ -186,7 +214,7 @@ func (h *MovementHandler) ListTransactions(c *gin.Context) {
 	args = append(args, perPage, offset)
 	rows, err := h.pool.Query(c, fmtSprintf(`SELECT id::text, timestamp, type, item_sku, item_name, quantity, unit, previous_stock, new_stock, received_by, notes, COALESCE(photo_url, '') FROM stock_transactions%s ORDER BY timestamp DESC LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal memproses mutasi", err)
 		return
 	}
 	defer rows.Close()
@@ -218,7 +246,11 @@ func (h *MovementHandler) ListTransactions(c *gin.Context) {
 }
 
 func (h *MovementHandler) Categories(c *gin.Context) {
-	rows, _ := h.pool.Query(c, `SELECT id, name FROM categories ORDER BY name`)
+	rows, err := h.pool.Query(c, `SELECT id, name FROM categories ORDER BY name`)
+	if err != nil {
+		internalError(c, "gagal mengambil daftar kategori", err)
+		return
+	}
 	defer rows.Close()
 	type cat struct {
 		ID   string `json:"id"`
@@ -234,7 +266,11 @@ func (h *MovementHandler) Categories(c *gin.Context) {
 }
 
 func (h *MovementHandler) Locations(c *gin.Context) {
-	rows, _ := h.pool.Query(c, `SELECT id, name, COALESCE(code, '') FROM locations ORDER BY name`)
+	rows, err := h.pool.Query(c, `SELECT id, name, COALESCE(code, '') FROM locations ORDER BY name`)
+	if err != nil {
+		internalError(c, "gagal mengambil daftar lokasi", err)
+		return
+	}
 	defer rows.Close()
 	type loc struct {
 		ID   string `json:"id"`

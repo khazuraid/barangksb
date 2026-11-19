@@ -7,6 +7,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"inventariskantor/internal/auth"
 )
@@ -25,7 +26,7 @@ func isPublicRoute(p string) bool {
 	return false
 }
 
-func AuthMiddleware(secret string) gin.HandlerFunc {
+func AuthMiddleware(secret string, pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		p := path.Clean(c.Request.URL.Path)
 		if isPublicRoute(p) {
@@ -36,9 +37,7 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		tokenStr := ""
 		header := c.GetHeader("Authorization")
 		if strings.HasPrefix(header, "Bearer ") {
-			tokenStr = strings.TrimPrefix(header, "Bearer ")
-		} else if q := c.Query("token"); q != "" {
-			tokenStr = q
+			tokenStr = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		}
 
 		if tokenStr == "" {
@@ -52,10 +51,31 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		role := claims.Role
+		name := claims.Name
+		email := claims.Email
+		if pool != nil {
+			var dbRole, dbName, dbEmail string
+			var dbTokenVersion int
+			err := pool.QueryRow(c,
+				`SELECT email, name, role, COALESCE(token_version, 1) FROM users WHERE id::text = $1`,
+				claims.UserID,
+			).Scan(&dbEmail, &dbName, &dbRole, &dbTokenVersion)
+			if err != nil || claims.TokenVersion != dbTokenVersion {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "sesi tidak valid atau telah dicabut, silakan login ulang"})
+				c.Abort()
+				return
+			}
+			role = dbRole
+			name = dbName
+			email = dbEmail
+		}
+
 		c.Set("uid", claims.UserID)
-		c.Set("email", claims.Email)
-		c.Set("role", claims.Role)
-		c.Set("name", claims.Name)
+		c.Set("email", email)
+		c.Set("role", role)
+		c.Set("name", name)
 		c.Next()
 	}
 }

@@ -22,8 +22,21 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "SAMEORIGIN")
-		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("X-XSS-Protection", "0")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self), payment=()")
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			if strings.HasPrefix(c.Request.URL.Path, "/api/barcode/sheet") {
+				c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'self'; base-uri 'self'")
+			} else {
+				c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+			}
+		} else {
+			c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'")
+		}
+		if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		c.Next()
 	}
 }
@@ -62,8 +75,13 @@ var (
 	redisMu           sync.RWMutex
 
 	// In-memory rate limiter for login brute-force prevention
-	loginBuckets = make(map[string]*ipRateBucket)
-	bucketMu     sync.Mutex
+	loginBuckets        = make(map[string]*ipRateBucket)
+	accountLoginBuckets = make(map[string]*ipRateBucket)
+	bucketMu            sync.Mutex
+
+	// In-memory rate limiter for public endpoints
+	publicBuckets = make(map[string]*ipRateBucket)
+	publicMu      sync.Mutex
 
 	// In-memory rate limiter for general API burst attacks
 	burstBuckets = make(map[string]*burstBucket)
@@ -82,7 +100,20 @@ func init() {
 					delete(loginBuckets, ip)
 				}
 			}
+			for acct, b := range accountLoginBuckets {
+				if now.Sub(b.lastSeen) > 15*time.Minute {
+					delete(accountLoginBuckets, acct)
+				}
+			}
 			bucketMu.Unlock()
+
+			publicMu.Lock()
+			for key, b := range publicBuckets {
+				if now.Sub(b.lastSeen) > 10*time.Minute {
+					delete(publicBuckets, key)
+				}
+			}
+			publicMu.Unlock()
 
 			burstMu.Lock()
 			for ip, b := range burstBuckets {
@@ -109,19 +140,156 @@ func SetWorkerQueue(q *worker.Queue) {
 	redisMu.Unlock()
 }
 
-// ResetLoginAttempts clears failed login attempts for an IP upon successful authentication
-func ResetLoginAttempts(ip string) {
-	bucketMu.Lock()
-	delete(loginBuckets, ip)
-	bucketMu.Unlock()
+// ResetLoginAttempts clears per-account failed login attempts upon successful authentication.
+// Note: per-IP rate-limit buckets are intentionally NOT cleared so an attacker on a shared IP
+// cannot reset IP throttling by logging into a low-privilege account.
+func ResetLoginAttempts(ip string, account ...string) {
+	acct := ""
+	if len(account) > 0 {
+		acct = strings.ToLower(strings.TrimSpace(account[0]))
+	}
+	if acct != "" {
+		bucketMu.Lock()
+		delete(accountLoginBuckets, acct)
+		bucketMu.Unlock()
 
+		redisMu.RLock()
+		rdb := globalRedisClient
+		redisMu.RUnlock()
+		if rdb != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			_ = rdb.Del(ctx, "rate:login:acct:"+acct, "rate:blocked:login:acct:"+acct).Err()
+		}
+	}
+}
+
+// CheckAccountLoginAllowed returns false if the target email has exceeded failed login limits.
+func CheckAccountLoginAllowed(account string, maxAttempts int, window time.Duration) bool {
+	acct := strings.ToLower(strings.TrimSpace(account))
+	if acct == "" {
+		return true
+	}
 	redisMu.RLock()
 	rdb := globalRedisClient
 	redisMu.RUnlock()
 	if rdb != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
-		_ = rdb.Del(ctx, "rate:login:"+ip, "rate:blocked:login:"+ip).Err()
+		if exists, _ := rdb.Exists(ctx, "rate:blocked:login:acct:"+acct).Result(); exists > 0 {
+			return false
+		}
+		return true
+	}
+	bucketMu.Lock()
+	defer bucketMu.Unlock()
+	if b, ok := accountLoginBuckets[acct]; ok {
+		if time.Since(b.lastSeen) <= window && b.attempts >= maxAttempts {
+			return false
+		}
+	}
+	return true
+}
+
+// RecordAccountLoginFailure increments failed login counter for a specific email account.
+func RecordAccountLoginFailure(c *gin.Context, account string, maxAttempts int, window time.Duration) {
+	acct := strings.ToLower(strings.TrimSpace(account))
+	if acct == "" {
+		return
+	}
+	redisMu.RLock()
+	rdb := globalRedisClient
+	redisMu.RUnlock()
+	if rdb != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		key := "rate:login:acct:" + acct
+		count, err := rdb.Incr(ctx, key).Result()
+		if err == nil {
+			if count == 1 {
+				rdb.Expire(ctx, key, window)
+			}
+			if count >= int64(maxAttempts) {
+				rdb.Set(ctx, "rate:blocked:login:acct:"+acct, "1", window)
+				RecordSecurityEvent(c, "BRUTE_FORCE_LOGIN", fmt.Sprintf("Akun %s gagal login %d kali dalam %v", acct, count, window), int(count), "BLOCKED (429)")
+			}
+			return
+		}
+	}
+	bucketMu.Lock()
+	now := time.Now()
+	b, exists := accountLoginBuckets[acct]
+	if !exists || now.Sub(b.lastSeen) > window {
+		accountLoginBuckets[acct] = &ipRateBucket{attempts: 1, lastSeen: now}
+		bucketMu.Unlock()
+		return
+	}
+	b.attempts++
+	b.lastSeen = now
+	attempts := b.attempts
+	bucketMu.Unlock()
+	if attempts >= maxAttempts {
+		RecordSecurityEvent(c, "BRUTE_FORCE_LOGIN", fmt.Sprintf("Akun %s gagal login %d kali dalam %v", acct, attempts, window), attempts, "BLOCKED (429)")
+	}
+}
+
+// PublicRateLimiter applies a dedicated rate limit to unauthenticated /api/public/* endpoints.
+func PublicRateLimiter(maxReq int, window time.Duration) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if !strings.HasPrefix(p, "/api/public/") {
+			c.Next()
+			return
+		}
+		ip := c.ClientIP()
+		key := ip + ":" + c.Request.Method
+
+		redisMu.RLock()
+		rdb := globalRedisClient
+		redisMu.RUnlock()
+		if rdb != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			rKey := "rate:public:" + key
+			count, err := rdb.Incr(ctx, rKey).Result()
+			if err == nil {
+				if count == 1 {
+					rdb.Expire(ctx, rKey, window)
+				}
+				cancel()
+				if count > int64(maxReq) {
+					c.JSON(http.StatusTooManyRequests, gin.H{
+						"error": "Terlalu banyak permintaan publik. Silakan coba lagi beberapa saat.",
+					})
+					c.Abort()
+					return
+				}
+				c.Next()
+				return
+			}
+			cancel()
+		}
+
+		publicMu.Lock()
+		now := time.Now()
+		b, exists := publicBuckets[key]
+		if !exists || now.Sub(b.lastSeen) > window {
+			publicBuckets[key] = &ipRateBucket{attempts: 1, lastSeen: now}
+			publicMu.Unlock()
+			c.Next()
+			return
+		}
+		b.lastSeen = now
+		if b.attempts >= maxReq {
+			publicMu.Unlock()
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": "Terlalu banyak permintaan publik. Silakan coba lagi beberapa saat.",
+			})
+			c.Abort()
+			return
+		}
+		b.attempts++
+		publicMu.Unlock()
+		c.Next()
 	}
 }
 

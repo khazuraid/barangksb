@@ -31,7 +31,7 @@ func (h *ReportHandler) ItemsXLSX(c *gin.Context) {
 	}
 	rows, err := h.pool.Query(c, `SELECT sku, name, category, location, current_stock, unit, condition_status FROM inventory_items ORDER BY name`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca data barang: " + err.Error()})
+		internalError(c, "gagal membaca data barang", err)
 		return
 	}
 	defer rows.Close()
@@ -40,7 +40,15 @@ func (h *ReportHandler) ItemsXLSX(c *gin.Context) {
 		var sku, name, cat, loc, unit, cond string
 		var stock int32
 		if err := rows.Scan(&sku, &name, &cat, &loc, &stock, &unit, &cond); err == nil {
-			vals := []any{sku, name, cat, loc, stock, unit, cond}
+			vals := []any{
+				SanitizeSpreadsheetCell(sku),
+				SanitizeSpreadsheetCell(name),
+				SanitizeSpreadsheetCell(cat),
+				SanitizeSpreadsheetCell(loc),
+				stock,
+				SanitizeSpreadsheetCell(unit),
+				SanitizeSpreadsheetCell(cond),
+			}
 			for i, v := range vals {
 				cell, _ := excelize.CoordinatesToCellName(i+1, r)
 				f.SetCellValue(sheet, cell, v)
@@ -72,7 +80,7 @@ func (h *ReportHandler) PDF(c *gin.Context) {
 	pdf.SetFont("Arial", "", 8)
 	rows, err := h.pool.Query(c, `SELECT sku, name, COALESCE(category, ''), COALESCE(location, ''), current_stock, COALESCE(unit, '') FROM inventory_items ORDER BY name`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca data barang: " + err.Error()})
+		internalError(c, "gagal membaca data barang", err)
 		return
 	}
 	defer rows.Close()

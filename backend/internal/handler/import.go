@@ -490,9 +490,12 @@ func (h *ImportHandler) Import(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca file: " + err.Error()})
 			return
 		}
-		xlFile, err := excelize.OpenReader(bytes.NewReader(buf))
+		xlFile, err := excelize.OpenReader(bytes.NewReader(buf), excelize.Options{
+			UnzipSizeLimit:    32 << 20,
+			UnzipXMLSizeLimit: 16 << 20,
+		})
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "format file Excel tidak valid: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "format file Excel tidak valid atau melebihi batas ukuran"})
 			return
 		}
 		defer xlFile.Close()
@@ -512,7 +515,7 @@ func (h *ImportHandler) Import(c *gin.Context) {
 		}
 		records, err := xlFile.GetRows(dataSheet)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca baris sheet: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca baris sheet"})
 			return
 		}
 		rows = records
@@ -520,6 +523,10 @@ func (h *ImportHandler) Import(c *gin.Context) {
 
 	if len(rows) <= 1 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file tidak berisi baris data"})
+		return
+	}
+	if len(rows) > 10000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "jumlah baris melebihi batas maksimal 10.000 baris per impor"})
 		return
 	}
 

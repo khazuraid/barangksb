@@ -39,6 +39,10 @@ func seedAdminUser(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) 
 	}
 	adminPw := os.Getenv("ADMIN_PASSWORD")
 	if adminPw == "" {
+		if cfg.IsProd() {
+			slog.Warn("ADMIN_PASSWORD not set in production — skipping default admin seed")
+			return
+		}
 		adminPw = "admin12345"
 	}
 
@@ -47,7 +51,7 @@ func seedAdminUser(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) 
 	if exists {
 		if os.Getenv("RESET_ADMIN") == "true" {
 			hash, _ := bcrypt.GenerateFromPassword([]byte(adminPw), bcrypt.DefaultCost)
-			_, _ = pool.Exec(ctx, `UPDATE users SET password_hash = $1, role = 'admin' WHERE email = $2`, string(hash), adminEmail)
+			_, _ = pool.Exec(ctx, `UPDATE users SET password_hash = $1, role = 'admin', token_version = COALESCE(token_version, 1) + 1 WHERE email = $2`, string(hash), adminEmail)
 			slog.Info("admin user password reset", "email", adminEmail)
 		}
 		return
@@ -162,7 +166,7 @@ func main() {
 	itemH := handler.NewItemHandler(pool)
 	mvH := handler.NewMovementHandler(pool, queuedTg)
 	userH := handler.NewUserHandler(pool)
-	bcH := handler.NewBarcodeHandler(pool)
+	bcH := handler.NewBarcodeHandler(pool, cfg)
 	expH := handler.NewExportHandler(pool)
 	upH := handler.NewUploadHandler(pool, cfg.MinIOEndp, cfg.MinIOUser, cfg.MinIOPass, cfg.MinIOBucket)
 	rptH := handler.NewReportHandler(pool)
@@ -174,23 +178,26 @@ func main() {
 
 	middleware.SetDBPool(pool)
 	r := gin.New()
-	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		slog.Warn("invalid TRUSTED_PROXIES configuration", "err", err)
+	}
 	allowedOrigins := strings.Split(cfg.CORSOrigins, ",")
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeadersMiddleware())
 	r.Use(middleware.GzipMiddleware())
 	r.Use(middleware.LoginRateLimiter(5, time.Minute))
+	r.Use(middleware.PublicRateLimiter(20, time.Minute))
 	r.Use(middleware.BurstAttackLimiter(35, 5*time.Second, 30*time.Second))
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
-		ExposeHeaders:    []string{"Content-Length"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Disposition"},
 		AllowCredentials: true,
 	}))
 
 	api := r.Group("/api")
-	api.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	api.Use(middleware.AuthMiddleware(cfg.JWTSecret, pool))
 	api.Use(middleware.RBACMiddleware(enforcer))
 
 	api.POST("/auth/login", authH.Login)
@@ -337,8 +344,27 @@ func main() {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
 	})
 
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	sigCtx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSig()
+	go func() {
+		<-sigCtx.Done()
+		slog.Info("shutting down HTTP server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
 	slog.Info("server starting", "port", cfg.Port)
-	if err := r.Run(":" + cfg.Port); err != nil {
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server failed", "err", err)
 		os.Exit(1)
 	}

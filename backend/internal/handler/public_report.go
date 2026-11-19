@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,12 +44,24 @@ type UpdateReportStatusInput struct {
 	UpdateItemCondition *string `json:"update_item_condition"`
 }
 
-// generateReportNumber creates sequential-like daily ticket ID: LAP-YYYYMMDD-XXXX
+// generateReportNumber creates unpredictable daily ticket ID: LAP-YYYYMMDD-XXXXXXXXXXXX (48 bits entropy)
 func generateReportNumber() string {
-	b := make([]byte, 2)
-	rand.Read(b)
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
 	randHex := strings.ToUpper(hex.EncodeToString(b))
 	return fmt.Sprintf("LAP-%s-%s", time.Now().Format("20060102"), randHex)
+}
+
+func maskContact(contact string) string {
+	s := strings.TrimSpace(contact)
+	if s == "" || s == "-" {
+		return "-"
+	}
+	runes := []rune(s)
+	if len(runes) <= 4 {
+		return strings.Repeat("*", len(runes))
+	}
+	return string(runes[:2]) + strings.Repeat("*", len(runes)-4) + string(runes[len(runes)-2:])
 }
 
 // POST /api/public/reports - Submit report from public website (no auth required)
@@ -93,8 +105,15 @@ func (h *PublicReportHandler) PublicCreate(c *gin.Context) {
 		}
 	}
 
+	safePhotoURL, err := SanitizePhotoURL(in.PhotoURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	in.PhotoURL = safePhotoURL
+
 	var newID string
-	err := h.pool.QueryRow(c, `
+	err = h.pool.QueryRow(c, `
 		INSERT INTO item_reports (
 			report_number, item_id, item_sku, item_name,
 			reporter_name, reporter_contact, report_type, description,
@@ -104,7 +123,7 @@ func (h *PublicReportHandler) PublicCreate(c *gin.Context) {
 	`, reportNum, itemID, itemSKU, itemName, in.ReporterName, in.ReporterContact, in.ReportType, in.Description, in.Location, in.PhotoURL).Scan(&newID)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan laporan: " + err.Error()})
+		internalError(c, "Gagal menyimpan laporan", err)
 		return
 	}
 
@@ -116,9 +135,13 @@ func (h *PublicReportHandler) PublicCreate(c *gin.Context) {
 	})
 }
 
-// GET /api/public/reports/:num - Track status by report_number or ID (no auth required)
+// GET /api/public/reports/:num - Track status by exact report_number or UUID (no auth required)
 func (h *PublicReportHandler) PublicGet(c *gin.Context) {
 	num := strings.TrimSpace(c.Param("num"))
+	if num == "" || len(num) > 64 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Nomor laporan tidak valid"})
+		return
+	}
 
 	var r struct {
 		ID              string     `json:"id"`
@@ -134,7 +157,6 @@ func (h *PublicReportHandler) PublicGet(c *gin.Context) {
 		PhotoURL        *string    `json:"photo_url"`
 		Status          string     `json:"status"`
 		AdminNotes      *string    `json:"admin_notes"`
-		HandledBy       *string    `json:"handled_by"`
 		HandledAt       *time.Time `json:"handled_at"`
 		CreatedAt       time.Time  `json:"created_at"`
 		UpdatedAt       time.Time  `json:"updated_at"`
@@ -143,16 +165,16 @@ func (h *PublicReportHandler) PublicGet(c *gin.Context) {
 	query := `
 		SELECT id, report_number, item_id::text, item_sku, item_name,
 		       reporter_name, reporter_contact, report_type, description,
-		       location, photo_url, status, admin_notes, handled_by, handled_at,
+		       location, photo_url, status, admin_notes, handled_at,
 		       created_at, updated_at
 		FROM item_reports
-		WHERE report_number ILIKE $1 OR id::text = $1
+		WHERE UPPER(report_number) = UPPER($1) OR id::text = $1
 		LIMIT 1
 	`
 	err := h.pool.QueryRow(c, query, num).Scan(
 		&r.ID, &r.ReportNumber, &r.ItemID, &r.ItemSKU, &r.ItemName,
 		&r.ReporterName, &r.ReporterContact, &r.ReportType, &r.Description,
-		&r.Location, &r.PhotoURL, &r.Status, &r.AdminNotes, &r.HandledBy, &r.HandledAt,
+		&r.Location, &r.PhotoURL, &r.Status, &r.AdminNotes, &r.HandledAt,
 		&r.CreatedAt, &r.UpdatedAt,
 	)
 
@@ -161,6 +183,7 @@ func (h *PublicReportHandler) PublicGet(c *gin.Context) {
 		return
 	}
 
+	r.ReporterContact = maskContact(r.ReporterContact)
 	c.JSON(http.StatusOK, r)
 }
 
@@ -169,38 +192,53 @@ func (h *PublicReportHandler) PublicUploadPhoto(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
 
 	file, hdr, err := c.Request.FormFile("photo")
-	if err != nil || file == nil || hdr.Size == 0 {
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Ukuran foto melebihi batas maksimal 10 MB"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File foto wajib dilampirkan (maksimal 10 MB)"})
+		return
+	}
+	if file == nil || hdr.Size == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File foto wajib dilampirkan (maksimal 10 MB)"})
 		return
 	}
 	defer file.Close()
 
-	ext := strings.ToLower(filepath.Ext(hdr.Filename))
-	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
-		ext = ".jpg"
-	}
-
-	filename := "report_" + uuid.NewString() + ext
-	dir := getUploadDir()
-	destPath := filepath.Join(dir, filename)
-	out, err := os.Create(destPath)
+	rawBytes, err := io.ReadAll(io.LimitReader(file, (10<<20)+1))
 	if err != nil {
-		// fallback to local uploads
-		_ = os.MkdirAll("uploads", 0755)
-		destPath = filepath.Join("uploads", filename)
-		out, err = os.Create(destPath)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan file foto"})
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Ukuran foto melebihi batas maksimal 10 MB"})
 			return
 		}
-	}
-	defer out.Close()
-
-	var buf bytes.Buffer
-	_, err = io.Copy(out, io.TeeReader(file, &buf))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menulis file foto"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Gagal membaca file foto"})
 		return
+	}
+	if len(rawBytes) > 10<<20 {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Ukuran foto melebihi batas maksimal 10 MB"})
+		return
+	}
+
+	// Validate magic bytes & re-encode to safe JPEG (strips polyglot payloads & EXIF)
+	processed, err := ProcessPhotoBytes(rawBytes, GeoTag{}, "", true)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File bukan gambar valid (hanya JPG, PNG, atau WebP)"})
+		return
+	}
+
+	filename := "report_" + uuid.NewString() + ".jpg"
+	dir := getUploadDir()
+	destPath := filepath.Join(dir, filename)
+	if err := os.WriteFile(destPath, processed, 0644); err != nil {
+		_ = os.MkdirAll("uploads", 0755)
+		destPath = filepath.Join("uploads", filename)
+		if err2 := os.WriteFile(destPath, processed, 0644); err2 != nil {
+			internalError(c, "Gagal menyimpan file foto", err2)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -283,7 +321,7 @@ func (h *PublicReportHandler) ListReports(c *gin.Context) {
 
 	rows, err := h.pool.Query(c, listQuery, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca data laporan: " + err.Error()})
+		internalError(c, "Gagal membaca data laporan", err)
 		return
 	}
 	defer rows.Close()
@@ -418,7 +456,7 @@ func (h *PublicReportHandler) UpdateReportStatus(c *gin.Context) {
 	`, statusUpper, in.AdminNotes, handledBy, now, id)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui laporan: " + err.Error()})
+		internalError(c, "Gagal memperbarui laporan", err)
 		return
 	}
 	if res.RowsAffected() == 0 {
@@ -448,7 +486,7 @@ func (h *PublicReportHandler) DeleteReport(c *gin.Context) {
 	id := c.Param("id")
 	res, err := h.pool.Exec(c, `DELETE FROM item_reports WHERE id::text = $1`, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus laporan: " + err.Error()})
+		internalError(c, "Gagal menghapus laporan", err)
 		return
 	}
 	if res.RowsAffected() == 0 {

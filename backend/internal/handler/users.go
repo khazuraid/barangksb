@@ -25,7 +25,7 @@ func NewUserHandler(pool *pgxpool.Pool) *UserHandler {
 func (h *UserHandler) List(c *gin.Context) {
 	rows, err := h.pool.Query(c, `SELECT id::text, name, email, role, created_at FROM users ORDER BY created_at`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal mengambil daftar user", err)
 		return
 	}
 	defer rows.Close()
@@ -68,12 +68,20 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	_, err := h.pool.Exec(c,
+	if len(req.Password) > 72 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password maksimal 72 karakter"})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		internalError(c, "gagal memproses password", err)
+		return
+	}
+	_, err = h.pool.Exec(c,
 		`INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,$4)`,
 		req.Name, email, string(hash), req.Role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal membuat user", err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "user created"})
@@ -93,21 +101,48 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 		return
 	}
 
-	// Cegah demosi admin terakhir
-	if req.Role != "admin" {
-		var currentRole string
-		_ = h.pool.QueryRow(c, `SELECT role FROM users WHERE email=$1`, email).Scan(&currentRole)
-		if currentRole == "admin" {
-			var adminCount int
-			_ = h.pool.QueryRow(c, `SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&adminCount)
-			if adminCount <= 1 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "tidak dapat mengubah role admin terakhir"})
-				return
-			}
+	tx, err := h.pool.Begin(c)
+	if err != nil {
+		internalError(c, "gagal memulai transaksi update role", err)
+		return
+	}
+	defer tx.Rollback(c)
+
+	var currentRole string
+	if err := tx.QueryRow(c, `SELECT role FROM users WHERE email=$1 FOR UPDATE`, email).Scan(&currentRole); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user tidak ditemukan"})
+		return
+	}
+
+	// Cegah demosi admin terakhir secara atomik
+	if currentRole == "admin" && req.Role != "admin" {
+		rows, err := tx.Query(c, `SELECT id FROM users WHERE role='admin' FOR UPDATE`)
+		if err != nil {
+			internalError(c, "gagal memeriksa jumlah admin", err)
+			return
+		}
+		adminCount := 0
+		for rows.Next() {
+			adminCount++
+		}
+		rows.Close()
+		if adminCount <= 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tidak dapat mengubah role admin terakhir"})
+			return
 		}
 	}
 
-	h.pool.Exec(c, `UPDATE users SET role=$2 WHERE email=$1`, email, req.Role)
+	if _, err := tx.Exec(c,
+		`UPDATE users SET role=$2, token_version=COALESCE(token_version, 1)+1 WHERE email=$1`,
+		email, req.Role,
+	); err != nil {
+		internalError(c, "gagal mengubah role user", err)
+		return
+	}
+	if err := tx.Commit(c); err != nil {
+		internalError(c, "gagal menyimpan perubahan role", err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "role updated"})
 }
 
@@ -119,22 +154,43 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	var role string
-	err := h.pool.QueryRow(c, `SELECT role FROM users WHERE email=$1`, email).Scan(&role)
+	tx, err := h.pool.Begin(c)
 	if err != nil {
+		internalError(c, "gagal memulai transaksi hapus user", err)
+		return
+	}
+	defer tx.Rollback(c)
+
+	var role string
+	if err := tx.QueryRow(c, `SELECT role FROM users WHERE email=$1 FOR UPDATE`, email).Scan(&role); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user tidak ditemukan"})
 		return
 	}
 	if role == "admin" {
-		var adminCount int
-		_ = h.pool.QueryRow(c, `SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&adminCount)
+		rows, err := tx.Query(c, `SELECT id FROM users WHERE role='admin' FOR UPDATE`)
+		if err != nil {
+			internalError(c, "gagal memeriksa jumlah admin", err)
+			return
+		}
+		adminCount := 0
+		for rows.Next() {
+			adminCount++
+		}
+		rows.Close()
 		if adminCount <= 1 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "tidak dapat menghapus admin terakhir"})
 			return
 		}
 	}
 
-	h.pool.Exec(c, `DELETE FROM users WHERE email=$1`, email)
+	if _, err := tx.Exec(c, `DELETE FROM users WHERE email=$1`, email); err != nil {
+		internalError(c, "gagal menghapus user", err)
+		return
+	}
+	if err := tx.Commit(c); err != nil {
+		internalError(c, "gagal menyimpan penghapusan user", err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
@@ -148,13 +204,19 @@ func (h *UserHandler) CreateCategory(c *gin.Context) {
 		return
 	}
 	id := slugify(req.Name)
-	h.pool.Exec(c, `INSERT INTO categories (id, name) VALUES ($1,$2) ON CONFLICT (id) DO UPDATE SET name=$2`, id, req.Name)
+	if _, err := h.pool.Exec(c, `INSERT INTO categories (id, name) VALUES ($1,$2) ON CONFLICT (id) DO UPDATE SET name=$2`, id, req.Name); err != nil {
+		internalError(c, "gagal menyimpan kategori", err)
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
 func (h *UserHandler) DeleteCategory(c *gin.Context) {
 	id := c.Param("id")
-	h.pool.Exec(c, `DELETE FROM categories WHERE id=$1`, id)
+	if _, err := h.pool.Exec(c, `DELETE FROM categories WHERE id=$1`, id); err != nil {
+		internalError(c, "gagal menghapus kategori", err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
@@ -174,13 +236,19 @@ func (h *UserHandler) CreateLocation(c *gin.Context) {
 		id = slugify(req.Name)
 	}
 	code := strings.TrimSpace(req.Code)
-	h.pool.Exec(c, `INSERT INTO locations (id, name, code) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET name=$2, code=$3`, id, req.Name, code)
+	if _, err := h.pool.Exec(c, `INSERT INTO locations (id, name, code) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET name=$2, code=$3`, id, req.Name, code); err != nil {
+		internalError(c, "gagal menyimpan lokasi", err)
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"id": id, "name": req.Name, "code": code})
 }
 
 func (h *UserHandler) DeleteLocation(c *gin.Context) {
 	id := c.Param("id")
-	h.pool.Exec(c, `DELETE FROM locations WHERE id=$1`, id)
+	if _, err := h.pool.Exec(c, `DELETE FROM locations WHERE id=$1`, id); err != nil {
+		internalError(c, "gagal menghapus lokasi", err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
@@ -198,7 +266,7 @@ func (h *UserHandler) AuditLog(c *gin.Context) {
 
 	rows, err := h.pool.Query(c, `SELECT table_name, op, row_id, old_data, new_data, at FROM audit_log ORDER BY at DESC LIMIT $1 OFFSET $2`, perPage, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal mengambil audit log", err)
 		return
 	}
 	defer rows.Close()

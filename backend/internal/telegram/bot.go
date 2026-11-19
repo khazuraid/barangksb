@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"image/png"
+	"io"
 	"log/slog"
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -44,6 +47,7 @@ type Bot struct {
 	chatIDs     map[int64]bool
 	pool        *pgxpool.Pool
 	botInst     *bot.Bot
+	httpClient  *http.Client
 	wizards     map[int64]*wizardState
 	wizardMutex sync.RWMutex
 }
@@ -69,6 +73,121 @@ func NewBot(token, chatIDsCSV string, pool *pgxpool.Pool) *Bot {
 	}
 }
 
+func isBlockedTelegramIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() || ip.IsUnspecified() || ip.IsInterfaceLocalMulticast() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		if (ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127) || ip4[0] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizeTelegramCSVCell(s string) string {
+	if s == "" {
+		return s
+	}
+	trimmed := strings.TrimLeft(s, " \t\r\n")
+	if trimmed == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r', '\n':
+		return "'" + s
+	}
+	switch trimmed[0] {
+	case '=', '+', '-', '@':
+		return "'" + s
+	}
+	return s
+}
+
+func validateTelegramAPIURL(raw string, allowPrivate bool) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" || u.User != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if !allowPrivate && scheme != "https" {
+		return false
+	}
+	if allowPrivate && scheme != "https" && scheme != "http" {
+		return false
+	}
+	if !allowPrivate {
+		host := strings.ToLower(u.Hostname())
+		if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".local") {
+			return false
+		}
+		if ip := net.ParseIP(host); ip != nil && isBlockedTelegramIP(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+func (b *Bot) authMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
+	return func(ctx context.Context, bt *bot.Bot, u *models.Update) {
+		if u == nil {
+			return
+		}
+		if u.Message != nil {
+			text := strings.TrimSpace(u.Message.Text)
+			// Allow /start to reach handleStart so unauthorized users receive their Chat ID safely
+			if text == "/start" || strings.HasPrefix(text, "/start@") {
+				next(ctx, bt, u)
+				return
+			}
+			chatID := u.Message.Chat.ID
+			var fromID int64
+			if u.Message.From != nil {
+				fromID = u.Message.From.ID
+			}
+			if !b.allowed(chatID) && (fromID == 0 || !b.allowed(fromID)) {
+				b.autoRegisterSubscriber(ctx, &u.Message.Chat, u.Message.From)
+				_, _ = bt.SendMessage(ctx, &bot.SendMessageParams{
+					ChatID: chatID,
+					Text: fmt.Sprintf(
+						"🔒 Akses bot ditolak.\n\nChat ID Anda (`%d`) belum diaktifkan oleh Admin.\nKirim `/start` untuk info pendaftaran.",
+						chatID,
+					),
+					ParseMode: models.ParseModeMarkdown,
+				})
+				return
+			}
+			next(ctx, bt, u)
+			return
+		}
+		if u.CallbackQuery != nil {
+			chatID := int64(0)
+			if u.CallbackQuery.Message.Message != nil {
+				chatID = u.CallbackQuery.Message.Message.Chat.ID
+			}
+			fromID := u.CallbackQuery.From.ID
+			if chatID == 0 {
+				chatID = fromID
+			}
+			if !b.allowed(chatID) && (fromID == 0 || !b.allowed(fromID)) {
+				_, _ = bt.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+					CallbackQueryID: u.CallbackQuery.ID,
+					Text:            "🔒 Akses tidak diizinkan.",
+					ShowAlert:       true,
+				})
+				return
+			}
+			next(ctx, bt, u)
+			return
+		}
+		next(ctx, bt, u)
+	}
+}
+
 func (b *Bot) Start(ctx context.Context) {
 	if b.token == "" {
 		var token string
@@ -85,21 +204,50 @@ func (b *Bot) Start(ctx context.Context) {
 		apiURL = os.Getenv("TELEGRAM_API_URL")
 	}
 
+	allowPrivate := strings.EqualFold(os.Getenv("ALLOW_PRIVATE_TELEGRAM_API"), "true")
+	baseDialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
 	httpClient := &http.Client{
 		Timeout: 60 * time.Second,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   10 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
+			DialContext: func(dCtx context.Context, network, addr string) (net.Conn, error) {
+				if allowPrivate {
+					return baseDialer.DialContext(dCtx, network, addr)
+				}
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				ips, err := net.DefaultResolver.LookupIPAddr(dCtx, host)
+				if err != nil || len(ips) == 0 {
+					return nil, errors.New("resolve host failed")
+				}
+				var safeIP net.IP
+				for _, ipAddr := range ips {
+					if isBlockedTelegramIP(ipAddr.IP) {
+						return nil, errors.New("connection to private/internal IP blocked")
+					}
+					if safeIP == nil {
+						safeIP = ipAddr.IP
+					}
+				}
+				return baseDialer.DialContext(dCtx, network, net.JoinHostPort(safeIP.String(), port))
+			},
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
+	b.httpClient = httpClient
 	opts := []bot.Option{
 		bot.WithSkipGetMe(),
 		bot.WithHTTPClient(30*time.Second, httpClient),
+		bot.WithMiddlewares(b.authMiddleware),
 		bot.WithDefaultHandler(b.handleDefault),
 		bot.WithErrorsHandler(func(err error) {
 			if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline") {
@@ -111,7 +259,11 @@ func (b *Bot) Start(ctx context.Context) {
 	}
 	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
 	if apiURL != "" {
-		opts = append(opts, bot.WithServerURL(apiURL))
+		if validateTelegramAPIURL(apiURL, allowPrivate) {
+			opts = append(opts, bot.WithServerURL(apiURL))
+		} else {
+			slog.Warn("ignoring unsafe telegram_api_url", "url", apiURL)
+		}
 	}
 
 	botInst, err := bot.New(b.token, opts...)
@@ -999,8 +1151,26 @@ func (b *Bot) handlePhoto(ctx context.Context, bt *bot.Bot, u *models.Update) {
 	}
 
 	downloadURL := bt.FileDownloadLink(fileInfo)
-	resp, err := http.Get(downloadURL)
+	client := b.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
+		if statusMsg != nil {
+			_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
+				ChatID:    chatID,
+				MessageID: statusMsg.ID,
+				Text:      "⚠️ Gagal mengambil file foto.",
+			})
+		}
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
 		if statusMsg != nil {
 			_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
 				ChatID:    chatID,
@@ -1012,7 +1182,7 @@ func (b *Bot) handlePhoto(ctx context.Context, bt *bot.Bot, u *models.Update) {
 	}
 	defer resp.Body.Close()
 
-	img, _, err := image.Decode(resp.Body)
+	img, _, err := image.Decode(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		if statusMsg != nil {
 			_, _ = bt.EditMessageText(ctx, &bot.EditMessageTextParams{
@@ -1774,7 +1944,16 @@ func (b *Bot) handleRekap(ctx context.Context, bt *bot.Bot, u *models.Update) {
 		var sku, name, cat, loc, unit, cond string
 		var cur, min int32
 		rows.Scan(&sku, &name, &cat, &loc, &cur, &min, &unit, &cond)
-		_ = writer.Write([]string{sku, name, cat, loc, strconv.Itoa(int(cur)), strconv.Itoa(int(min)), unit, cond})
+		_ = writer.Write([]string{
+			sanitizeTelegramCSVCell(sku),
+			sanitizeTelegramCSVCell(name),
+			sanitizeTelegramCSVCell(cat),
+			sanitizeTelegramCSVCell(loc),
+			strconv.Itoa(int(cur)),
+			strconv.Itoa(int(min)),
+			sanitizeTelegramCSVCell(unit),
+			sanitizeTelegramCSVCell(cond),
+		})
 		count++
 	}
 	writer.Flush()
@@ -1819,7 +1998,17 @@ func (b *Bot) handleRekapMutasi(ctx context.Context, bt *bot.Bot, u *models.Upda
 		var ts, mType, sku, name, unit, notes string
 		var qty, prev, next int32
 		rows.Scan(&ts, &mType, &sku, &name, &qty, &unit, &prev, &next, &notes)
-		_ = writer.Write([]string{ts, mType, sku, name, strconv.Itoa(int(qty)), unit, strconv.Itoa(int(prev)), strconv.Itoa(int(next)), notes})
+		_ = writer.Write([]string{
+			sanitizeTelegramCSVCell(ts),
+			sanitizeTelegramCSVCell(mType),
+			sanitizeTelegramCSVCell(sku),
+			sanitizeTelegramCSVCell(name),
+			strconv.Itoa(int(qty)),
+			sanitizeTelegramCSVCell(unit),
+			strconv.Itoa(int(prev)),
+			strconv.Itoa(int(next)),
+			sanitizeTelegramCSVCell(notes),
+		})
 		count++
 	}
 	writer.Flush()

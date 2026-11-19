@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -81,14 +82,35 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 12<<20)
 
 	file, hdr, err := c.Request.FormFile("photo")
-	if err != nil || file == nil || hdr.Size == 0 {
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "ukuran foto melebihi batas maksimal 12 MB"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file photo wajib (maksimal 12 MB)"})
+		return
+	}
+	if file == nil || hdr.Size == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file photo wajib (maksimal 12 MB)"})
 		return
 	}
 	defer file.Close()
 
-	var buf bytes.Buffer
-	buf.ReadFrom(file)
+	rawBytes, err := io.ReadAll(io.LimitReader(file, (12<<20)+1))
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "ukuran foto melebihi batas maksimal 12 MB"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca file foto"})
+		return
+	}
+	if len(rawBytes) > 12<<20 {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "ukuran foto melebihi batas maksimal 12 MB"})
+		return
+	}
 
 	geo := GeoTag{
 		Lat:  parseFloat(c.PostForm("geo_lat")),
@@ -101,7 +123,7 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	petugas := c.GetString("name")
 	clientStamped := c.PostForm("client_stamped") == "true"
 
-	processed, err := ProcessPhotoBytes(buf.Bytes(), geo, petugas, clientStamped)
+	processed, err := ProcessPhotoBytes(rawBytes, geo, petugas, clientStamped)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -203,27 +225,78 @@ func (h *UploadHandler) Serve(c *gin.Context) {
 	reader, err := h.GetObject(c.Request.Context(), name)
 	if err != nil {
 		slog.Error("serve image failed: file not found", "name", name, "err", err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "file not found: " + name})
+		c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
 		return
 	}
 	defer reader.Close()
 
-	c.Header("Content-Type", "image/jpeg")
-	c.Header("Cache-Control", "public, max-age=86400")
-	if c.Query("download") == "true" || c.Query("download") == "1" {
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", name))
+	contentType := "application/octet-stream"
+	forceDownload := false
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	case ".webp":
+		contentType = "image/webp"
+	default:
+		forceDownload = true
 	}
-	io.Copy(c.Writer, reader)
+
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "public, max-age=86400")
+	if forceDownload || c.Query("download") == "true" || c.Query("download") == "1" {
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	}
+	_, _ = io.Copy(c.Writer, reader)
 }
 
-// DeleteUploadedPhoto deletes physical file from storage to keep disk clean
-func DeleteUploadedPhoto(photoURL string) {
-	if photoURL == "" {
+func isLocalUploadURL(photoURL string) (string, bool) {
+	s := strings.TrimSpace(photoURL)
+	if s == "" {
+		return "", false
+	}
+	var name string
+	switch {
+	case strings.HasPrefix(s, "/api/uploads/"):
+		name = strings.TrimPrefix(s, "/api/uploads/")
+	case strings.HasPrefix(s, "/uploads/"):
+		name = strings.TrimPrefix(s, "/uploads/")
+	default:
+		return "", false
+	}
+	if name == "" || strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		return "", false
+	}
+	return name, true
+}
+
+// DeleteUploadedPhoto deletes physical file from storage only if it is a local upload and no DB record still references it.
+func DeleteUploadedPhoto(ctx context.Context, pool *pgxpool.Pool, photoURL string) {
+	name, ok := isLocalUploadURL(photoURL)
+	if !ok {
 		return
 	}
-	name := filepath.Base(photoURL)
-	if name == "" || name == "." || name == "/" {
-		return
+	if pool != nil {
+		apiPath := "/api/uploads/" + name
+		rawPath := "/uploads/" + name
+		var inUse bool
+		err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM inventory_items WHERE photo_url IN ($1, $2)
+				UNION ALL
+				SELECT 1 FROM stock_transactions WHERE photo_url IN ($1, $2)
+				UNION ALL
+				SELECT 1 FROM item_maintenances WHERE photo_url IN ($1, $2)
+				UNION ALL
+				SELECT 1 FROM item_units WHERE photo_url IN ($1, $2)
+				UNION ALL
+				SELECT 1 FROM item_reports WHERE photo_url IN ($1, $2)
+			)
+		`, apiPath, rawPath).Scan(&inUse)
+		if err != nil || inUse {
+			return
+		}
 	}
 	dir := getUploadDir()
 	_ = os.Remove(filepath.Join(dir, name))
@@ -312,7 +385,7 @@ func (h *UploadHandler) getPhysicalFiles(ctx context.Context) map[string]diskFil
 	return result
 }
 
-func (h *UploadHandler) getDBReferences(ctx context.Context) map[string][]PhotoReference {
+func (h *UploadHandler) getDBReferences(ctx context.Context) (map[string][]PhotoReference, error) {
 	refMap := make(map[string][]PhotoReference)
 
 	// 1. inventory_items
@@ -321,20 +394,21 @@ func (h *UploadHandler) getDBReferences(ctx context.Context) map[string][]PhotoR
 		FROM inventory_items
 		WHERE photo_url IS NOT NULL AND photo_url != ''
 	`)
-	if err1 == nil {
-		defer rows1.Close()
-		for rows1.Next() {
-			var id, name, sku, photoURL string
-			if err := rows1.Scan(&id, &name, &sku, &photoURL); err == nil {
-				base := filepath.Base(photoURL)
-				if base != "" && base != "." {
-					refMap[base] = append(refMap[base], PhotoReference{
-						Type:  "item",
-						ID:    id,
-						Title: name,
-						Sub:   "Barang · SKU: " + sku,
-					})
-				}
+	if err1 != nil {
+		return nil, err1
+	}
+	defer rows1.Close()
+	for rows1.Next() {
+		var id, name, sku, photoURL string
+		if err := rows1.Scan(&id, &name, &sku, &photoURL); err == nil {
+			base := filepath.Base(photoURL)
+			if base != "" && base != "." {
+				refMap[base] = append(refMap[base], PhotoReference{
+					Type:  "item",
+					ID:    id,
+					Title: name,
+					Sub:   "Barang · SKU: " + sku,
+				})
 			}
 		}
 	}
@@ -346,20 +420,21 @@ func (h *UploadHandler) getDBReferences(ctx context.Context) map[string][]PhotoR
 		LEFT JOIN inventory_items i ON t.item_id = i.id
 		WHERE t.photo_url IS NOT NULL AND t.photo_url != ''
 	`)
-	if err2 == nil {
-		defer rows2.Close()
-		for rows2.Next() {
-			var id, itemName, txType, photoURL string
-			if err := rows2.Scan(&id, &itemName, &txType, &photoURL); err == nil {
-				base := filepath.Base(photoURL)
-				if base != "" && base != "." {
-					refMap[base] = append(refMap[base], PhotoReference{
-						Type:  "transaction",
-						ID:    id,
-						Title: itemName,
-						Sub:   "Riwayat Stok: " + txType,
-					})
-				}
+	if err2 != nil {
+		return nil, err2
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var id, itemName, txType, photoURL string
+		if err := rows2.Scan(&id, &itemName, &txType, &photoURL); err == nil {
+			base := filepath.Base(photoURL)
+			if base != "" && base != "." {
+				refMap[base] = append(refMap[base], PhotoReference{
+					Type:  "transaction",
+					ID:    id,
+					Title: itemName,
+					Sub:   "Riwayat Stok: " + txType,
+				})
 			}
 		}
 	}
@@ -371,45 +446,47 @@ func (h *UploadHandler) getDBReferences(ctx context.Context) map[string][]PhotoR
 		LEFT JOIN inventory_items i ON m.item_id = i.id
 		WHERE m.photo_url IS NOT NULL AND m.photo_url != ''
 	`)
-	if err3 == nil {
-		defer rows3.Close()
-		for rows3.Next() {
-			var id, itemName, sType, photoURL string
-			if err := rows3.Scan(&id, &itemName, &sType, &photoURL); err == nil {
-				base := filepath.Base(photoURL)
-				if base != "" && base != "." {
-					refMap[base] = append(refMap[base], PhotoReference{
-						Type:  "maintenance",
-						ID:    id,
-						Title: itemName,
-						Sub:   "Pemeliharaan: " + sType,
-					})
-				}
+	if err3 != nil {
+		return nil, err3
+	}
+	defer rows3.Close()
+	for rows3.Next() {
+		var id, itemName, sType, photoURL string
+		if err := rows3.Scan(&id, &itemName, &sType, &photoURL); err == nil {
+			base := filepath.Base(photoURL)
+			if base != "" && base != "." {
+				refMap[base] = append(refMap[base], PhotoReference{
+					Type:  "maintenance",
+					ID:    id,
+					Title: itemName,
+					Sub:   "Pemeliharaan: " + sType,
+				})
 			}
 		}
 	}
 
 	// 4. item_units
 	rows4, err4 := h.pool.Query(ctx, `
-		SELECT u.id::text, COALESCE(i.name, 'Unit'), COALESCE(u.unit_code, ''), u.photo_url
+		SELECT u.id::text, COALESCE(i.name, 'Unit'), COALESCE(NULLIF(u.barcode, ''), NULLIF(u.register_number, ''), 'U' || u.unit_number::text), u.photo_url
 		FROM item_units u
 		LEFT JOIN inventory_items i ON u.item_id = i.id
 		WHERE u.photo_url IS NOT NULL AND u.photo_url != ''
 	`)
-	if err4 == nil {
-		defer rows4.Close()
-		for rows4.Next() {
-			var id, itemName, unitCode, photoURL string
-			if err := rows4.Scan(&id, &itemName, &unitCode, &photoURL); err == nil {
-				base := filepath.Base(photoURL)
-				if base != "" && base != "." {
-					refMap[base] = append(refMap[base], PhotoReference{
-						Type:  "unit",
-						ID:    id,
-						Title: itemName,
-						Sub:   "Unit: " + unitCode,
-					})
-				}
+	if err4 != nil {
+		return nil, err4
+	}
+	defer rows4.Close()
+	for rows4.Next() {
+		var id, itemName, unitCode, photoURL string
+		if err := rows4.Scan(&id, &itemName, &unitCode, &photoURL); err == nil {
+			base := filepath.Base(photoURL)
+			if base != "" && base != "." {
+				refMap[base] = append(refMap[base], PhotoReference{
+					Type:  "unit",
+					ID:    id,
+					Title: itemName,
+					Sub:   "Unit: " + unitCode,
+				})
 			}
 		}
 	}
@@ -421,31 +498,36 @@ func (h *UploadHandler) getDBReferences(ctx context.Context) map[string][]PhotoR
 		LEFT JOIN inventory_items i ON r.item_id = i.id
 		WHERE r.photo_url IS NOT NULL AND r.photo_url != ''
 	`)
-	if err5 == nil {
-		defer rows5.Close()
-		for rows5.Next() {
-			var id, itemName, reporter, photoURL string
-			if err := rows5.Scan(&id, &itemName, &reporter, &photoURL); err == nil {
-				base := filepath.Base(photoURL)
-				if base != "" && base != "." {
-					refMap[base] = append(refMap[base], PhotoReference{
-						Type:  "report",
-						ID:    id,
-						Title: itemName,
-						Sub:   "Laporan: " + reporter,
-					})
-				}
+	if err5 != nil {
+		return nil, err5
+	}
+	defer rows5.Close()
+	for rows5.Next() {
+		var id, itemName, reporter, photoURL string
+		if err := rows5.Scan(&id, &itemName, &reporter, &photoURL); err == nil {
+			base := filepath.Base(photoURL)
+			if base != "" && base != "." {
+				refMap[base] = append(refMap[base], PhotoReference{
+					Type:  "report",
+					ID:    id,
+					Title: itemName,
+					Sub:   "Laporan: " + reporter,
+				})
 			}
 		}
 	}
 
-	return refMap
+	return refMap, nil
 }
 
 func (h *UploadHandler) ListPhotos(c *gin.Context) {
 	ctx := c.Request.Context()
 	files := h.getPhysicalFiles(ctx)
-	refMap := h.getDBReferences(ctx)
+	refMap, err := h.getDBReferences(ctx)
+	if err != nil {
+		internalError(c, "gagal memeriksa referensi foto", err)
+		return
+	}
 
 	var allPhotos []PhotoItem
 	var stats PhotoStats
@@ -561,7 +643,11 @@ func (h *UploadHandler) DeletePhoto(c *gin.Context) {
 func (h *UploadHandler) CleanOrphaned(c *gin.Context) {
 	ctx := c.Request.Context()
 	files := h.getPhysicalFiles(ctx)
-	refMap := h.getDBReferences(ctx)
+	refMap, err := h.getDBReferences(ctx)
+	if err != nil {
+		internalError(c, "gagal memeriksa referensi foto", err)
+		return
+	}
 
 	var deletedCount int
 	var freedBytes int64

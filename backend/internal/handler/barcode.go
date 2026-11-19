@@ -7,6 +7,8 @@ import (
 	"image/png"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,14 +18,67 @@ import (
 	"github.com/boombuler/barcode/qr"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"inventariskantor/internal/auth"
+	"inventariskantor/internal/config"
 )
 
+var validHostRe = regexp.MustCompile(`^[a-zA-Z0-9.\-:]+$`)
+
 type BarcodeHandler struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	publicURL string
+	jwtSecret string
 }
 
-func NewBarcodeHandler(pool *pgxpool.Pool) *BarcodeHandler {
-	return &BarcodeHandler{pool: pool}
+func NewBarcodeHandler(pool *pgxpool.Pool, cfgs ...*config.Config) *BarcodeHandler {
+	h := &BarcodeHandler{pool: pool}
+	if len(cfgs) > 0 && cfgs[0] != nil {
+		h.publicURL = strings.TrimRight(strings.TrimSpace(cfgs[0].PublicURL), "/")
+		h.jwtSecret = cfgs[0].JWTSecret
+	}
+	return h
+}
+
+func (h *BarcodeHandler) buildScanURL(c *gin.Context, id string) string {
+	escapedID := url.PathEscape(id)
+	if h.publicURL != "" {
+		return fmt.Sprintf("%s/scan/%s", h.publicURL, escapedID)
+	}
+	scheme := "http"
+	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	host := strings.TrimSpace(c.Request.Host)
+	if !validHostRe.MatchString(host) {
+		host = "localhost"
+	}
+	return fmt.Sprintf("%s://%s/scan/%s", scheme, host, escapedID)
+}
+
+func (h *BarcodeHandler) isAuthenticatedRequest(c *gin.Context) bool {
+	if h.jwtSecret == "" {
+		return false
+	}
+	hdr := c.GetHeader("Authorization")
+	if !strings.HasPrefix(hdr, "Bearer ") {
+		return false
+	}
+	tok := strings.TrimSpace(strings.TrimPrefix(hdr, "Bearer "))
+	if tok == "" {
+		return false
+	}
+	claims, err := auth.ParseToken(h.jwtSecret, tok)
+	if err != nil {
+		return false
+	}
+	if h.pool != nil {
+		var tv int
+		if err := h.pool.QueryRow(c, `SELECT COALESCE(token_version, 1) FROM users WHERE id::text=$1`, claims.UserID).Scan(&tv); err != nil || tv != claims.TokenVersion {
+			return false
+		}
+	}
+	return true
 }
 
 // GET /api/barcode/:id.png?fmt=qr — public (no auth), renders barcode image
@@ -33,6 +88,9 @@ func (h *BarcodeHandler) PNG(c *gin.Context) {
 	id = strings.TrimSuffix(id, ".png")
 	slog.Info("barcode request", "raw_param", c.Param("id"), "cleaned_id", id)
 	format := c.DefaultQuery("fmt", "qr")
+	if format != "code128" {
+		format = "qr"
+	}
 
 	var sku string
 	err := h.pool.QueryRow(c, `SELECT sku FROM inventory_items WHERE id::text=$1 OR sku=$1`, id).Scan(&sku)
@@ -47,18 +105,12 @@ func (h *BarcodeHandler) PNG(c *gin.Context) {
 	}
 
 	content := sku
-	if format == "qr" || format == "" {
-		scheme := "http"
-		if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
-			scheme = "https"
-		}
-		content = fmt.Sprintf("%s://%s/scan/%s", scheme, c.Request.Host, id)
+	if format == "qr" {
+		content = h.buildScanURL(c, id)
 	}
 
 	var pngBytes []byte
 	switch format {
-	case "qr", "":
-		pngBytes = renderQR(content)
 	case "code128":
 		pngBytes = renderCode128(content)
 	default:
@@ -244,6 +296,7 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 	}
 
 	// 4. Fetch maintenance history for public view
+	isAuth := h.isAuthenticatedRequest(c)
 	mRows, err := h.pool.Query(c, `
 		SELECT service_type, service_date::text,
 		       COALESCE(vendor_or_technician, ''), COALESCE(description, ''),
@@ -260,15 +313,27 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 			var nextDate *string
 			mRows.Scan(&sType, &sDate, &vendor, &desc, &nextDate, &photo)
 			mItem := gin.H{
-				"service_type":          sType,
-				"service_date":          sDate,
-				"vendor_or_technician": vendor,
-				"description":           desc,
-				"next_service_date":     nextDate,
-				"photo_url":             photo,
+				"service_type":      sType,
+				"service_date":      sDate,
+				"description":       desc,
+				"next_service_date": nextDate,
+				"photo_url":         photo,
+			}
+			if isAuth {
+				mItem["vendor_or_technician"] = vendor
 			}
 			resp.Maintenances = append(resp.Maintenances, mItem)
 		}
+	}
+
+	// Redact sensitive procurement/financial/GPS details for unauthenticated public scans
+	if !isAuth {
+		resp.PricePerUnit = 0
+		resp.FundingSource = ""
+		resp.Distributor = ""
+		resp.GeoLat = nil
+		resp.GeoLng = nil
+		resp.GeoAcc = nil
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -287,6 +352,9 @@ func (h *BarcodeHandler) Sheet(c *gin.Context) {
 	ids := c.Query("ids")
 	layout := c.DefaultQuery("layout", "tj_103") // default to Tom & Jerry 103 (popular Indonesian sticker sheet)
 	fmtType := c.DefaultQuery("fmt", "qr")
+	if fmtType != "code128" {
+		fmtType = "qr"
+	}
 	title := c.DefaultQuery("title", "INVENTARIS KANTOR")
 	showName := c.DefaultQuery("show_name", "1") != "0"
 	showSKU := c.DefaultQuery("show_sku", "1") != "0"
@@ -310,6 +378,10 @@ func (h *BarcodeHandler) Sheet(c *gin.Context) {
 	}
 
 	idList := splitComma(ids)
+	const maxSheetIDs = 200
+	if len(idList) > maxSheetIDs {
+		idList = idList[:maxSheetIDs]
+	}
 	var items []LabelItem
 	for _, id := range idList {
 		id = strings.TrimSpace(id)
@@ -369,11 +441,15 @@ func (h *BarcodeHandler) renderSheetHTML(rawItems []LabelItem, layout, fmtType, 
 		layoutLabel = layout
 	}
 
-	// Expand items with copies
+	// Expand items with copies (capped to prevent HTML amplification)
+	const maxExpandedLabels = 1000
 	var expandedItems []LabelItem
 	for _, it := range rawItems {
-		for cIdx := 0; cIdx < copies; cIdx++ {
+		for cIdx := 0; cIdx < copies && len(expandedItems) < maxExpandedLabels; cIdx++ {
 			expandedItems = append(expandedItems, it)
+		}
+		if len(expandedItems) >= maxExpandedLabels {
+			break
 		}
 	}
 
@@ -643,8 +719,11 @@ func (h *BarcodeHandler) renderSingleLabel(it LabelItem, layout, fmtType, title 
 	if it.ID == "" {
 		return `<div class="label-unit is-blank"></div>`
 	}
+	if fmtType != "code128" {
+		fmtType = "qr"
+	}
 
-	codeImgURL := fmt.Sprintf("/api/barcode/%s.png?fmt=%s", it.ID, fmtType)
+	codeImgURL := html.EscapeString(fmt.Sprintf("/api/barcode/%s.png?fmt=%s", url.PathEscape(it.ID), url.QueryEscape(fmtType)))
 
 	// Distinct rendering styles per layout geometry
 	switch layout {

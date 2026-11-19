@@ -123,8 +123,12 @@ func (h *BulkHandler) ExportOpname(c *gin.Context) {
 		cw.Write(opnameHeaders)
 		for _, it := range items {
 			cw.Write([]string{
-				it.sku, it.name, it.cat, it.loc,
-				fmt.Sprintf("%d", it.stock), it.unit,
+				SanitizeSpreadsheetCell(it.sku),
+				SanitizeSpreadsheetCell(it.name),
+				SanitizeSpreadsheetCell(it.cat),
+				SanitizeSpreadsheetCell(it.loc),
+				fmt.Sprintf("%d", it.stock),
+				SanitizeSpreadsheetCell(it.unit),
 				fmt.Sprintf("%d", it.stock), "",
 			})
 		}
@@ -145,8 +149,13 @@ func (h *BulkHandler) ExportOpname(c *gin.Context) {
 	for rIdx, it := range items {
 		rowNum := rIdx + 2
 		vals := []any{
-			it.sku, it.name, it.cat, it.loc,
-			it.stock, it.unit, it.stock, "",
+			SanitizeSpreadsheetCell(it.sku),
+			SanitizeSpreadsheetCell(it.name),
+			SanitizeSpreadsheetCell(it.cat),
+			SanitizeSpreadsheetCell(it.loc),
+			it.stock,
+			SanitizeSpreadsheetCell(it.unit),
+			it.stock, "",
 		}
 		for cIdx, val := range vals {
 			cell, _ := excelize.CoordinatesToCellName(cIdx+1, rowNum)
@@ -226,9 +235,12 @@ func (h *BulkHandler) BulkAdjust(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca berkas: " + err.Error()})
 			return
 		}
-		xlFile, err := excelize.OpenReader(bytes.NewReader(buf))
+		xlFile, err := excelize.OpenReader(bytes.NewReader(buf), excelize.Options{
+			UnzipSizeLimit:    32 << 20,
+			UnzipXMLSizeLimit: 16 << 20,
+		})
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "format berkas Excel tidak valid: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "format berkas Excel tidak valid atau melebihi batas ukuran"})
 			return
 		}
 		defer xlFile.Close()
@@ -240,7 +252,7 @@ func (h *BulkHandler) BulkAdjust(c *gin.Context) {
 		}
 		records, err := xlFile.GetRows(sheets[0])
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca baris sheet: " + err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "gagal membaca baris sheet"})
 			return
 		}
 		rows = records
@@ -248,6 +260,10 @@ func (h *BulkHandler) BulkAdjust(c *gin.Context) {
 
 	if len(rows) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "berkas tidak berisi baris data"})
+		return
+	}
+	if len(rows) > 10000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "jumlah baris melebihi batas maksimal 10.000 baris per unggahan"})
 		return
 	}
 

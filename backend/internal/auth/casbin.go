@@ -46,10 +46,11 @@ p, petugas, /api/movement/*, POST
 p, petugas, /api/transactions, GET
 p, petugas, /api/barcode/*, *
 p, petugas, /api/upload, POST
-p, petugas, /api/photos*, *
 p, petugas, /api/export/*, GET
 p, petugas, /api/report*, GET
-p, petugas, /api/reports*, *
+p, petugas, /api/reports, GET
+p, petugas, /api/reports/:id, GET
+p, petugas, /api/reports/:id/status, PUT
 p, petugas, /api/adjust/*, *
 `
 

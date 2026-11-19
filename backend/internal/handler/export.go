@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/csv"
 	"fmt"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,21 +18,15 @@ func NewExportHandler(pool *pgxpool.Pool) *ExportHandler {
 
 var masterHeaders = []string{"SKU", "Nama", "Kategori", "Lokasi", "Stok", "Satuan", "Kondisi", "Merk"}
 
-// sanitizeCSVCell neutralizes CSV formula injection characters (=, +, -, @, \t, \r)
+// sanitizeCSVCell neutralizes CSV formula injection characters (=, +, -, @, \t, \r, \n)
 func sanitizeCSVCell(s string) string {
-	if len(s) > 0 {
-		switch s[0] {
-		case '=', '+', '-', '@', '\t', '\r':
-			return "'" + s
-		}
-	}
-	return s
+	return SanitizeSpreadsheetCell(s)
 }
 
 func (h *ExportHandler) ItemsCSV(c *gin.Context) {
 	rows, err := h.pool.Query(c, `SELECT sku, name, COALESCE(category, ''), COALESCE(location, ''), current_stock, COALESCE(unit, ''), COALESCE(condition_status, ''), COALESCE(merk, '') FROM inventory_items ORDER BY name`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca data barang: " + err.Error()})
+		internalError(c, "gagal membaca data barang", err)
 		return
 	}
 	defer rows.Close()
@@ -66,7 +59,7 @@ func (h *ExportHandler) ItemsCSV(c *gin.Context) {
 func (h *ExportHandler) TxCSV(c *gin.Context) {
 	rows, err := h.pool.Query(c, `SELECT timestamp, type, item_sku, item_name, quantity, COALESCE(unit, ''), COALESCE(received_by, '') FROM stock_transactions ORDER BY timestamp DESC`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal membaca log transaksi: " + err.Error()})
+		internalError(c, "gagal membaca log transaksi", err)
 		return
 	}
 	defer rows.Close()

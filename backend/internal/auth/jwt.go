@@ -8,21 +8,26 @@ import (
 )
 
 type Claims struct {
-	UserID string `json:"uid"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
-	Name   string `json:"name"`
+	UserID       string `json:"uid"`
+	Email        string `json:"email"`
+	Role         string `json:"role"`
+	Name         string `json:"name"`
+	TokenVersion int    `json:"tv"`
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(secret, userID, email, role, name string) (string, error) {
+func GenerateToken(secret, userID, email, role, name string, tokenVersion int, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
 	claims := Claims{
-		UserID: userID,
-		Email:  email,
-		Role:   role,
-		Name:   name,
+		UserID:       userID,
+		Email:        email,
+		Role:         role,
+		Name:         name,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * 7 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}

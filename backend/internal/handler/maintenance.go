@@ -58,7 +58,7 @@ func (h *MaintenanceHandler) ListByItem(c *gin.Context) {
 		ORDER BY service_date DESC, created_at DESC
 	`, itemID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal mengambil data perawatan", err)
 		return
 	}
 	defer rows.Close()
@@ -82,9 +82,16 @@ func (h *MaintenanceHandler) Create(c *gin.Context) {
 	itemID := c.Param("id")
 	var req maintenanceReq
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "data riwayat servis tidak lengkap"})
+		return
+	}
+
+	safePhotoURL, err := SanitizePhotoURL(req.PhotoURL)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.PhotoURL = safePhotoURL
 
 	performedBy := c.GetString("name")
 	if performedBy == "" {
@@ -97,7 +104,7 @@ func (h *MaintenanceHandler) Create(c *gin.Context) {
 	}
 
 	var id string
-	err := h.pool.QueryRow(c, `
+	err = h.pool.QueryRow(c, `
 		INSERT INTO item_maintenances (
 			item_id, service_type, service_date, vendor_or_technician,
 			cost, description, next_service_date, photo_url, performed_by
@@ -107,7 +114,7 @@ func (h *MaintenanceHandler) Create(c *gin.Context) {
 		req.Cost, nullable(req.Description), nextDate, nullable(req.PhotoURL), performedBy).
 		Scan(&id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal menyimpan riwayat servis", err)
 		return
 	}
 
@@ -122,13 +129,24 @@ func (h *MaintenanceHandler) Create(c *gin.Context) {
 
 // DELETE /api/items/:id/maintenance/:mId
 func (h *MaintenanceHandler) Delete(c *gin.Context) {
+	itemID := c.Param("id")
 	mID := c.Param("mId")
 	var photo *string
-	_ = h.pool.QueryRow(c, `SELECT photo_url FROM item_maintenances WHERE id::text=$1`, mID).Scan(&photo)
-	if photo != nil && *photo != "" {
-		DeleteUploadedPhoto(*photo)
+	err := h.pool.QueryRow(c,
+		`SELECT photo_url FROM item_maintenances WHERE id::text=$1 AND item_id::text=$2`,
+		mID, itemID,
+	).Scan(&photo)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "riwayat servis tidak ditemukan"})
+		return
 	}
-	h.pool.Exec(c, `DELETE FROM item_maintenances WHERE id::text=$1`, mID)
+	if _, err := h.pool.Exec(c, `DELETE FROM item_maintenances WHERE id::text=$1 AND item_id::text=$2`, mID, itemID); err != nil {
+		internalError(c, "gagal menghapus riwayat servis", err)
+		return
+	}
+	if photo != nil && *photo != "" {
+		DeleteUploadedPhoto(c.Request.Context(), h.pool, *photo)
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "riwayat servis dihapus"})
 }
 
@@ -148,7 +166,7 @@ func (h *MaintenanceHandler) Upcoming(c *gin.Context) {
 		LIMIT 20
 	`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal mengambil data perawatan", err)
 		return
 	}
 	defer rows.Close()

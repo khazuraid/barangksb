@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
-	"net"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -15,6 +15,26 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func allowPrivateTelegramAPI() bool {
+	return strings.EqualFold(os.Getenv("ALLOW_PRIVATE_TELEGRAM_API"), "true")
+}
+
+func maskSecretValue(v string) string {
+	s := strings.TrimSpace(v)
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 8 {
+		return "••••••••"
+	}
+	return s[:4] + "••••••••" + s[len(s)-4:]
+}
+
+func isMaskedSecret(v string) bool {
+	s := strings.TrimSpace(v)
+	return s == "" || strings.Contains(s, "••") || s == "********"
+}
 
 type TelegramNotifier interface {
 	NotifyMovement(ctx context.Context, txType, sku, name string, qty int32, unit string, prev, next int32, person, notes string)
@@ -34,23 +54,18 @@ func newTelegramBot(token, apiURL string) (*bot.Bot, error) {
 	if apiURL == "" {
 		apiURL = os.Getenv("TELEGRAM_API_URL")
 	}
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   10 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
+	allowPriv := allowPrivateTelegramAPI()
+	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
+	if apiURL != "" {
+		if _, err := ValidateSafeExternalURL(apiURL, allowPriv); err != nil {
+			return nil, fmt.Errorf("telegram_api_url tidak valid: %w", err)
+		}
 	}
+	httpClient := NewSafeHTTPClient(30*time.Second, allowPriv)
 	opts := []bot.Option{
 		bot.WithSkipGetMe(),
 		bot.WithHTTPClient(20*time.Second, httpClient),
 	}
-	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
 	if apiURL != "" {
 		opts = append(opts, bot.WithServerURL(apiURL))
 	}
@@ -84,7 +99,8 @@ func (h *SettingHandler) GetBotInfo(c *gin.Context) {
 
 	botInst, err := newTelegramBot(token, apiURL)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"configured": true, "error": err.Error()})
+		slog.Warn("GetBotInfo init bot failed", "err", err)
+		c.JSON(http.StatusOK, gin.H{"configured": true, "error": "Konfigurasi Telegram API tidak valid atau tidak dapat digunakan."})
 		return
 	}
 
@@ -92,6 +108,7 @@ func (h *SettingHandler) GetBotInfo(c *gin.Context) {
 	defer cancel()
 	me, err := botInst.GetMe(ctx)
 	if err != nil {
+		slog.Warn("GetBotInfo GetMe failed", "err", err)
 		// Fallback to cached bot info if live call fails (due to timeout or restricted network)
 		cachedID := h.getSetting(c, "telegram_bot_id")
 		cachedUser := h.getSetting(c, "telegram_bot_username")
@@ -112,7 +129,7 @@ func (h *SettingHandler) GetBotInfo(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"configured": true,
-			"error":      fmt.Sprintf("Gagal menghubungi Telegram API (%v). Periksa koneksi internet atau gunakan Telegram API URL proxy.", err),
+			"error":      "Gagal menghubungi Telegram API. Periksa koneksi internet, token bot, atau konfigurasi Telegram API URL.",
 		})
 		return
 	}
@@ -143,7 +160,7 @@ func (h *SettingHandler) GetBotInfo(c *gin.Context) {
 func (h *SettingHandler) GetTelegram(c *gin.Context) {
 	rows, err := h.pool.Query(c, `SELECT key, value FROM app_settings WHERE key LIKE 'telegram_%' ORDER BY key`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal membaca pengaturan telegram", err)
 		return
 	}
 	defer rows.Close()
@@ -151,7 +168,26 @@ func (h *SettingHandler) GetTelegram(c *gin.Context) {
 	for rows.Next() {
 		var k, v string
 		rows.Scan(&k, &v)
-		settings[k] = v
+		switch k {
+		case "telegram_bot_token":
+			if strings.TrimSpace(v) != "" {
+				settings["telegram_bot_token_configured"] = "true"
+				settings["telegram_bot_token_masked"] = maskSecretValue(v)
+			} else {
+				settings["telegram_bot_token_configured"] = "false"
+			}
+			settings[k] = ""
+		case "telegram_webhook_secret":
+			if strings.TrimSpace(v) != "" {
+				settings["telegram_webhook_secret_configured"] = "true"
+				settings["telegram_webhook_secret_masked"] = maskSecretValue(v)
+			} else {
+				settings["telegram_webhook_secret_configured"] = "false"
+			}
+			settings[k] = ""
+		default:
+			settings[k] = v
+		}
 	}
 	c.JSON(http.StatusOK, settings)
 }
@@ -160,7 +196,7 @@ func (h *SettingHandler) GetTelegram(c *gin.Context) {
 func (h *SettingHandler) UpdateTelegram(c *gin.Context) {
 	var req map[string]string
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "payload pengaturan tidak valid"})
 		return
 	}
 	allowed := map[string]bool{
@@ -173,11 +209,31 @@ func (h *SettingHandler) UpdateTelegram(c *gin.Context) {
 		"telegram_webhook_secret":   true,
 		"telegram_mode":             true,
 	}
+	allowPriv := allowPrivateTelegramAPI()
+	// Validate external URLs before writing to DB
+	for _, urlKey := range []string{"telegram_api_url", "telegram_webhook_url", "telegram_webapp_url"} {
+		if v, ok := req[urlKey]; ok && strings.TrimSpace(v) != "" {
+			if _, err := ValidateSafeExternalURL(v, allowPriv); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s tidak valid: %s", urlKey, err.Error())})
+				return
+			}
+		}
+	}
 	for k, v := range req {
 		if !allowed[k] {
 			continue
 		}
-		h.pool.Exec(c, `INSERT INTO app_settings (key, value, updated_at) VALUES ($1,$2,now()) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=now()`, k, v)
+		// Keep existing secrets untouched when form submits empty or masked placeholder
+		if (k == "telegram_bot_token" || k == "telegram_webhook_secret") && isMaskedSecret(v) {
+			continue
+		}
+		if _, err := h.pool.Exec(c,
+			`INSERT INTO app_settings (key, value, updated_at) VALUES ($1,$2,now()) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=now()`,
+			k, strings.TrimSpace(v),
+		); err != nil {
+			internalError(c, "gagal menyimpan pengaturan telegram", err)
+			return
+		}
 	}
 
 	if h.tg != nil {
@@ -195,7 +251,7 @@ func (h *SettingHandler) UpdateTelegram(c *gin.Context) {
 func (h *SettingHandler) ListSubscribers(c *gin.Context) {
 	rows, err := h.pool.Query(c, `SELECT chat_id, type, title, username, notify_in, notify_out, notify_adjust, notify_low_stock, active, created_at FROM telegram_subscribers ORDER BY created_at DESC`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal membaca daftar subscriber telegram", err)
 		return
 	}
 	defer rows.Close()
@@ -262,7 +318,7 @@ func (h *SettingHandler) AddSubscriber(c *gin.Context) {
 		 ON CONFLICT (chat_id) DO UPDATE SET type=$2, title=$3, username=$4, active=TRUE, updated_at=now()`,
 		req.ChatID, chatType, chatTitle, chatUsername)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		internalError(c, "gagal menyimpan subscriber telegram", err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"chat_id": req.ChatID, "type": chatType, "title": chatTitle, "username": chatUsername})
@@ -358,7 +414,8 @@ func (h *SettingHandler) TestTelegram(c *gin.Context) {
 
 	botInst, err := newTelegramBot(token, apiURL)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "bot init gagal: " + err.Error()})
+		slog.Warn("TestTelegram bot init failed", "err", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "konfigurasi Telegram API tidak valid"})
 		return
 	}
 
@@ -422,8 +479,9 @@ func (h *SettingHandler) TestTelegram(c *gin.Context) {
 		status := "ok"
 		errMsg := ""
 		if err != nil {
+			slog.Warn("TestTelegram send failed", "chat_id", t.chatID, "err", err)
 			status = "fail"
-			errMsg = err.Error()
+			errMsg = "gagal mengirim pesan ke Telegram"
 		}
 
 		// Log to DB
