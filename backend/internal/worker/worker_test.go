@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"inventariskantor/internal/config"
 )
 
 type mockTgNotifier struct {
@@ -43,4 +44,14 @@ func TestQueue_EnqueueNoRedis(t *testing.T) {
 	q := NewQueue(nil)
 	err := q.Enqueue(context.Background(), "test", map[string]string{"foo": "bar"})
 	assert.NoError(t, err)
+}
+
+func TestNewRedisClient_URLValidation(t *testing.T) {
+	// Invalid URL should return error
+	cfg := &config.Config{
+		RedisURL: "://invalid-url",
+	}
+	client, err := NewRedisClient(cfg)
+	assert.Error(t, err)
+	assert.Nil(t, client)
 }

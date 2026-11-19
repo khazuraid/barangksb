@@ -66,6 +66,7 @@ services:
       - no-new-privileges:true
     environment:
       DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-inventaris}?sslmode=disable
+      REDIS_URL: ${REDIS_URL:-redis://default:${REDIS_PASSWORD:-dev-redis-secure-password-2024}@redis:6379/0}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-dev-redis-secure-password-2024}
@@ -103,6 +104,7 @@ services:
     environment:
       APP_ROLE: worker
       DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-inventaris}?sslmode=disable
+      REDIS_URL: ${REDIS_URL:-redis://default:${REDIS_PASSWORD:-dev-redis-secure-password-2024}@redis:6379/0}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-dev-redis-secure-password-2024}
