@@ -19,6 +19,17 @@ func NewExportHandler(pool *pgxpool.Pool) *ExportHandler {
 
 var masterHeaders = []string{"SKU", "Nama", "Kategori", "Lokasi", "Stok", "Satuan", "Kondisi", "Merk"}
 
+// sanitizeCSVCell neutralizes CSV formula injection characters (=, +, -, @, \t, \r)
+func sanitizeCSVCell(s string) string {
+	if len(s) > 0 {
+		switch s[0] {
+		case '=', '+', '-', '@', '\t', '\r':
+			return "'" + s
+		}
+	}
+	return s
+}
+
 func (h *ExportHandler) ItemsCSV(c *gin.Context) {
 	rows, err := h.pool.Query(c, `SELECT sku, name, COALESCE(category, ''), COALESCE(location, ''), current_stock, COALESCE(unit, ''), COALESCE(condition_status, ''), COALESCE(merk, '') FROM inventory_items ORDER BY name`)
 	if err != nil {
@@ -37,7 +48,16 @@ func (h *ExportHandler) ItemsCSV(c *gin.Context) {
 		var sku, name, cat, loc, unit, cond, merk string
 		var stock int32
 		if err := rows.Scan(&sku, &name, &cat, &loc, &stock, &unit, &cond, &merk); err == nil {
-			cw.Write([]string{sku, name, cat, loc, fmt.Sprintf("%d", stock), unit, cond, merk})
+			cw.Write([]string{
+				sanitizeCSVCell(sku),
+				sanitizeCSVCell(name),
+				sanitizeCSVCell(cat),
+				sanitizeCSVCell(loc),
+				fmt.Sprintf("%d", stock),
+				sanitizeCSVCell(unit),
+				sanitizeCSVCell(cond),
+				sanitizeCSVCell(merk),
+			})
 		}
 	}
 	cw.Flush()
@@ -62,7 +82,15 @@ func (h *ExportHandler) TxCSV(c *gin.Context) {
 		var tType, sku, name, unit, by string
 		var qty int32
 		if err := rows.Scan(&ts, &tType, &sku, &name, &qty, &unit, &by); err == nil {
-			cw.Write([]string{fmt.Sprintf("%v", ts), tType, sku, name, fmt.Sprintf("%d", qty), unit, by})
+			cw.Write([]string{
+				fmt.Sprintf("%v", ts),
+				sanitizeCSVCell(tType),
+				sanitizeCSVCell(sku),
+				sanitizeCSVCell(name),
+				fmt.Sprintf("%d", qty),
+				sanitizeCSVCell(unit),
+				sanitizeCSVCell(by),
+			})
 		}
 	}
 	cw.Flush()

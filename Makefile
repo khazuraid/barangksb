@@ -1,7 +1,10 @@
-.PHONY: dev-backend dev-frontend build test up down logs create-user
+.PHONY: dev-backend dev-frontend dev-worker build test up down logs create-user
 
 dev-backend:
 	cd backend && go run ./cmd/server
+
+dev-worker:
+	cd backend && go run ./cmd/server -worker
 
 dev-frontend:
 	cd frontend && npm run dev

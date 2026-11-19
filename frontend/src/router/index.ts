@@ -39,17 +39,28 @@ const router = createRouter({
 
 router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore()
-  if (to.meta.auth && !auth.isLoggedIn) {
-    next('/login')
-    return
-  }
+
   if (auth.isLoggedIn && !auth.user) {
     await auth.fetchMe()
   }
-  if (to.meta.admin && !auth.isAdmin) {
+
+  const isAuthRequired = to.matched.some((record) => record.meta.auth)
+  if (isAuthRequired && !auth.isLoggedIn) {
+    next({ path: '/login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : undefined })
+    return
+  }
+
+  if (to.name === 'login' && auth.isLoggedIn) {
     next('/')
     return
   }
+
+  const isAdminRequired = to.matched.some((record) => record.meta.admin)
+  if (isAdminRequired && !auth.isAdmin) {
+    next('/')
+    return
+  }
+
   next()
 })
 

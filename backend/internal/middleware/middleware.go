@@ -11,14 +11,24 @@ import (
 	"inventariskantor/internal/auth"
 )
 
+// isPublicRoute checks whether a path bypasses authentication and RBAC.
+// Barcode template management requires authentication and RBAC.
+func isPublicRoute(p string) bool {
+	if p == "/api/auth/login" ||
+		strings.HasPrefix(p, "/api/scan/") ||
+		strings.HasPrefix(p, "/api/public/") {
+		return true
+	}
+	if strings.HasPrefix(p, "/api/barcode/") && !strings.HasPrefix(p, "/api/barcode/templates") {
+		return true
+	}
+	return false
+}
+
 func AuthMiddleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// public routes: login, scan landing, barcode images, barcode sheet, public reporting
 		p := path.Clean(c.Request.URL.Path)
-		if p == "/api/auth/login" ||
-			strings.HasPrefix(p, "/api/scan/") ||
-			strings.HasPrefix(p, "/api/barcode/") ||
-			strings.HasPrefix(p, "/api/public/") {
+		if isPublicRoute(p) {
 			c.Next()
 			return
 		}
@@ -52,12 +62,8 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 
 func RBACMiddleware(enforcer *casbin.Enforcer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// skip public routes (same set as AuthMiddleware)
 		p := path.Clean(c.Request.URL.Path)
-		if p == "/api/auth/login" ||
-			strings.HasPrefix(p, "/api/scan/") ||
-			strings.HasPrefix(p, "/api/barcode/") ||
-			strings.HasPrefix(p, "/api/public/") {
+		if isPublicRoute(p) {
 			c.Next()
 			return
 		}

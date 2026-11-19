@@ -12,6 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+
+	"inventariskantor/internal/worker"
 )
 
 // SecurityHeadersMiddleware adds defensive HTTP headers
@@ -49,11 +52,14 @@ type BlockedIPInfo struct {
 }
 
 var (
-	recentEvents    []SecurityEvent
-	eventsMu        sync.RWMutex
-	eventSeq        int64
-	globalDBPool    *pgxpool.Pool
-	poolMu          sync.RWMutex
+	recentEvents      []SecurityEvent
+	eventsMu          sync.RWMutex
+	eventSeq          int64
+	globalDBPool      *pgxpool.Pool
+	poolMu            sync.RWMutex
+	globalRedisClient *redis.Client
+	globalWorkerQueue *worker.Queue
+	redisMu           sync.RWMutex
 
 	// In-memory rate limiter for login brute-force prevention
 	loginBuckets = make(map[string]*ipRateBucket)
@@ -89,11 +95,34 @@ func init() {
 	}()
 }
 
+// SetRedisClient registers a Redis client for distributed rate limiting & blacklist
+func SetRedisClient(r *redis.Client) {
+	redisMu.Lock()
+	globalRedisClient = r
+	redisMu.Unlock()
+}
+
+// SetWorkerQueue registers a background worker queue for asynchronous security event logging
+func SetWorkerQueue(q *worker.Queue) {
+	redisMu.Lock()
+	globalWorkerQueue = q
+	redisMu.Unlock()
+}
+
 // ResetLoginAttempts clears failed login attempts for an IP upon successful authentication
 func ResetLoginAttempts(ip string) {
 	bucketMu.Lock()
 	delete(loginBuckets, ip)
 	bucketMu.Unlock()
+
+	redisMu.RLock()
+	rdb := globalRedisClient
+	redisMu.RUnlock()
+	if rdb != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		_ = rdb.Del(ctx, "rate:login:"+ip, "rate:blocked:login:"+ip).Err()
+	}
 }
 
 type ipRateBucket struct {
@@ -145,19 +174,37 @@ func RecordSecurityEvent(c *gin.Context, eventType, details string, count int, s
 	}
 	eventsMu.Unlock()
 
-	// Asynchronously record into DB table if available
-	poolMu.RLock()
-	p := globalDBPool
-	poolMu.RUnlock()
+	// Asynchronously record into DB table via worker queue or fallback goroutine
+	redisMu.RLock()
+	q := globalWorkerQueue
+	redisMu.RUnlock()
 
-	if p != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			_, _ = p.Exec(ctx, `INSERT INTO security_events (event_type, ip, endpoint, method, attempt_count, status, user_agent, details, created_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-				eventType, ip, ep, meth, count, status, ua, details, now)
-		}()
+	if q != nil {
+		_ = q.Enqueue(context.Background(), worker.TaskTypeSecurityEvent, worker.SecurityEventPayload{
+			EventType:    eventType,
+			IP:           ip,
+			Endpoint:     ep,
+			Method:       meth,
+			AttemptCount: count,
+			Status:       status,
+			UserAgent:    ua,
+			Details:      details,
+			CreatedAt:    now,
+		})
+	} else {
+		poolMu.RLock()
+		p := globalDBPool
+		poolMu.RUnlock()
+
+		if p != nil {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				_, _ = p.Exec(ctx, `INSERT INTO security_events (event_type, ip, endpoint, method, attempt_count, status, user_agent, details, created_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+					eventType, ip, ep, meth, count, status, ua, details, now)
+			}()
+		}
 	}
 }
 
@@ -270,6 +317,16 @@ func UnblockSecurityIP(targetIP string) bool {
 	}
 	burstMu.Unlock()
 
+	redisMu.RLock()
+	rdb := globalRedisClient
+	redisMu.RUnlock()
+	if rdb != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		_ = rdb.Del(ctx, "rate:login:"+targetIP, "rate:blocked:login:"+targetIP, "rate:burst:"+targetIP, "rate:blocked:burst:"+targetIP).Err()
+		unblocked = true
+	}
+
 	return unblocked
 }
 
@@ -300,6 +357,46 @@ func LoginRateLimiter(maxAttempts int, window time.Duration) gin.HandlerFunc {
 		}
 
 		ip := c.ClientIP()
+
+		redisMu.RLock()
+		rdb := globalRedisClient
+		redisMu.RUnlock()
+
+		if rdb != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			blockedKey := "rate:blocked:login:" + ip
+			if exists, _ := rdb.Exists(ctx, blockedKey).Result(); exists > 0 {
+				cancel()
+				c.JSON(http.StatusTooManyRequests, gin.H{
+					"error": "Terlalu banyak percobaan login gagal. Silakan tunggu 1 menit sebelum mencoba lagi.",
+				})
+				c.Abort()
+				return
+			}
+
+			loginKey := "rate:login:" + ip
+			count, err := rdb.Incr(ctx, loginKey).Result()
+			if err == nil {
+				if count == 1 {
+					rdb.Expire(ctx, loginKey, window)
+				}
+				if count > int64(maxAttempts) {
+					rdb.Set(ctx, blockedKey, "1", window)
+					cancel()
+					RecordSecurityEvent(c, "BRUTE_FORCE_LOGIN", fmt.Sprintf("Terdeteksi %d percobaan login dalam %v", count, window), int(count), "BLOCKED (429)")
+					c.JSON(http.StatusTooManyRequests, gin.H{
+						"error": "Terlalu banyak percobaan login gagal. Silakan tunggu 1 menit sebelum mencoba lagi.",
+					})
+					c.Abort()
+					return
+				}
+				cancel()
+				c.Next()
+				return
+			}
+			cancel()
+		}
+
 		bucketMu.Lock()
 		b, exists := loginBuckets[ip]
 		now := time.Now()
@@ -339,6 +436,45 @@ func BurstAttackLimiter(maxBurst int, window time.Duration, blockDuration time.D
 
 		ip := c.ClientIP()
 		now := time.Now()
+
+		redisMu.RLock()
+		rdb := globalRedisClient
+		redisMu.RUnlock()
+
+		if rdb != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			blockedKey := "rate:blocked:burst:" + ip
+			if exists, _ := rdb.Exists(ctx, blockedKey).Result(); exists > 0 {
+				cancel()
+				c.JSON(http.StatusTooManyRequests, gin.H{
+					"error": "Akses ditahan sementara karena terdeteksi lonjakan permintaan berlebih (burst attack). Coba lagi beberapa saat.",
+				})
+				c.Abort()
+				return
+			}
+
+			burstKey := "rate:burst:" + ip
+			count, err := rdb.Incr(ctx, burstKey).Result()
+			if err == nil {
+				if count == 1 {
+					rdb.Expire(ctx, burstKey, window)
+				}
+				if count > int64(maxBurst) {
+					rdb.Set(ctx, blockedKey, "1", blockDuration)
+					cancel()
+					RecordSecurityEvent(c, "BURST_ATTACK", fmt.Sprintf("Lonjakan %d request dalam %v (ambang batas %d)", count, window, maxBurst), int(count), "BLOCKED (429)")
+					c.JSON(http.StatusTooManyRequests, gin.H{
+						"error": "Peringatan Keamanan: Lonjakan permintaan berlebih terdeteksi (burst attack). Akses dibatasi sementara.",
+					})
+					c.Abort()
+					return
+				}
+				cancel()
+				c.Next()
+				return
+			}
+			cancel()
+		}
 
 		burstMu.Lock()
 		b, exists := burstBuckets[ip]

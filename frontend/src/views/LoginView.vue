@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
@@ -10,6 +10,7 @@ import AppLogo from '@/components/AppLogo.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 const email = ref('')
 const password = ref('')
@@ -20,7 +21,8 @@ async function login() {
   loading.value = true
   try {
     await auth.login(email.value, password.value)
-    router.push('/')
+    const redirect = (route.query.redirect as string) || '/'
+    router.push(redirect)
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Login gagal', detail: e.response?.data?.error || 'Periksa email dan password', life: 3500 })
   } finally {

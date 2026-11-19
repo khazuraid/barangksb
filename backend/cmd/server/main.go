@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -23,6 +25,7 @@ import (
 	"inventariskantor/internal/handler"
 	"inventariskantor/internal/middleware"
 	"inventariskantor/internal/telegram"
+	"inventariskantor/internal/worker"
 )
 
 func dbMigrate(ctx context.Context, pool *pgxpool.Pool) error {
@@ -56,6 +59,7 @@ func seedAdminUser(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) 
 
 func main() {
 	createUser := flag.String("create-user", "", "email untuk membuat user (password di-prompt)")
+	workerMode := flag.Bool("worker", false, "jalankan sebagai dedicated background worker")
 	flag.Parse()
 
 	cfg := config.Load()
@@ -72,6 +76,34 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+
+	// Initialize Redis
+	rdb, err := worker.NewRedisClient(cfg)
+	if err != nil {
+		slog.Warn("redis connection skipped or failed, using in-memory rate limiting and sync fallback", "err", err)
+	} else {
+		defer rdb.Close()
+		middleware.SetRedisClient(rdb)
+		slog.Info("redis connected successfully")
+	}
+
+	taskQueue := worker.NewQueue(rdb)
+	middleware.SetWorkerQueue(taskQueue)
+
+	// Telegram bot
+	tgBot := telegram.NewBot(cfg.TgToken, cfg.TgChats, pool)
+
+	// Dedicated background worker mode
+	if *workerMode || os.Getenv("APP_ROLE") == "worker" {
+		slog.Info("starting application in dedicated worker role")
+		w := worker.NewWorker(rdb, pool, tgBot)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		w.Start(ctx, 5)
+		<-ctx.Done()
+		w.Stop()
+		return
+	}
 
 	if *createUser != "" {
 		name := readLine("Nama lengkap: ")
@@ -105,29 +137,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// RBAC middleware applied after AuthMiddleware for all authenticated routes.
-	// Public routes (login, scan, barcode) skip auth entirely so never reach RBAC.
-
-	// Telegram bot (loads from env or DB app_settings)
-	tgBot := telegram.NewBot(cfg.TgToken, cfg.TgChats, pool)
+	// Start Telegram bot listener
 	tgBot.Start(context.Background())
+
+	// If redis is active, start background worker in app server too
+	if rdb != nil {
+		bgWorker := worker.NewWorker(rdb, pool, tgBot)
+		workerCtx, stopWorker := context.WithCancel(context.Background())
+		defer stopWorker()
+		bgWorker.Start(workerCtx, 2)
+	}
+
+	queuedTg := worker.NewQueuedTelegramNotifier(tgBot, taskQueue)
 
 	authH := handler.NewAuthHandler(pool, cfg)
 	itemH := handler.NewItemHandler(pool)
-	mvH := handler.NewMovementHandler(pool, tgBot)
+	mvH := handler.NewMovementHandler(pool, queuedTg)
 	userH := handler.NewUserHandler(pool)
 	bcH := handler.NewBarcodeHandler(pool)
 	expH := handler.NewExportHandler(pool)
 	upH := handler.NewUploadHandler(pool, cfg.MinIOEndp, cfg.MinIOUser, cfg.MinIOPass, cfg.MinIOBucket)
 	rptH := handler.NewReportHandler(pool)
-	bulkH := handler.NewBulkHandler(pool, tgBot)
-	setH := handler.NewSettingHandler(pool, tgBot)
+	bulkH := handler.NewBulkHandler(pool, queuedTg)
+	setH := handler.NewSettingHandler(pool, queuedTg)
 	importH := handler.NewImportHandler(pool, itemH)
 	maintH := handler.NewMaintenanceHandler(pool)
 	pubReportH := handler.NewPublicReportHandler(pool)
 
 	middleware.SetDBPool(pool)
 	r := gin.New()
+	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
 	allowedOrigins := strings.Split(cfg.CORSOrigins, ",")
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeadersMiddleware())

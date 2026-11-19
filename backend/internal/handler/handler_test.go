@@ -62,3 +62,12 @@ func perPageLogic(s string) int {
 }
 
 var _ = http.StatusOK
+
+func TestSanitizeCSVCell(t *testing.T) {
+	assert.Equal(t, "'=cmd|' /C calc'!A0", sanitizeCSVCell("=cmd|' /C calc'!A0"))
+	assert.Equal(t, "'+12345", sanitizeCSVCell("+12345"))
+	assert.Equal(t, "'-minus", sanitizeCSVCell("-minus"))
+	assert.Equal(t, "'@mention", sanitizeCSVCell("@mention"))
+	assert.Equal(t, "normal text", sanitizeCSVCell("normal text"))
+	assert.Equal(t, "", sanitizeCSVCell(""))
+}

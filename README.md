@@ -9,6 +9,8 @@ Aplikasi inventaris kantor dengan barcode scanning dan pemantauan stok real-time
 | Backend | Go + Gin + pgx + JWT + Casbin RBAC |
 | Frontend | Vue 3 + TypeScript + Vite + Pinia + Vue Router + PrimeVue 4 |
 | Database | PostgreSQL 16 |
+| Cache & Queue | Redis 7 (Hardened, AOF, Password Protected) |
+| Async Worker | Go Background Task Worker (Telegram, Audit, Cleanup) |
 | Storage | MinIO (foto) |
 | Proxy | Caddy (reverse proxy + auto TLS) |
 
