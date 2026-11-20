@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 
 	"inventariskantor/internal/auth"
@@ -209,3 +212,72 @@ func TestCasbinPetugasReportPermissions(t *testing.T) {
 	ok, _ = e.Enforce("admin", "/api/reports/123", "DELETE")
 	assert.True(t, ok)
 }
+
+func TestFixedAssetUnitHelpers(t *testing.T) {
+	u, err := resolveFixedAssetUnits(0, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, u)
+
+	u, err = resolveFixedAssetUnits(0, 5)
+	assert.NoError(t, err)
+	assert.Equal(t, 5, u)
+
+	u, err = resolveFixedAssetUnits(3, 1)
+	assert.NoError(t, err)
+	assert.Equal(t, 3, u)
+
+	_, err = resolveFixedAssetUnits(0, 501)
+	assert.Error(t, err)
+
+	assert.Equal(t, "REG-2026-001", unitRegisterFor("REG-2026-001", 1, 1))
+	assert.Equal(t, "0015", unitRegisterFor("0015", 1, 3))
+	assert.Equal(t, "0016", unitRegisterFor("0015", 2, 3))
+	assert.Equal(t, "0002", unitRegisterFor("REG-X", 2, 3))
+
+	assert.Equal(t, "SKU-1", unitBarcodeFor("SKU-1", 1, 1))
+	assert.Equal(t, "SKU-1-U2", unitBarcodeFor("SKU-1", 2, 3))
+}
+
+type fakeRow struct {
+	val string
+	err error
+}
+
+func (r fakeRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	if len(dest) > 0 {
+		if p, ok := dest[0].(*string); ok {
+			*p = r.val
+		}
+	}
+	return nil
+}
+
+type fakeQuerier struct {
+	codes map[string]string
+}
+
+func (q fakeQuerier) QueryRow(_ context.Context, _ string, args ...any) pgx.Row {
+	if len(args) > 0 {
+		if name, ok := args[0].(string); ok {
+			if code, exists := q.codes[name]; exists {
+				return fakeRow{val: code}
+			}
+		}
+	}
+	return fakeRow{err: errors.New("not found")}
+}
+
+func TestResolveLocationCode(t *testing.T) {
+	q := fakeQuerier{codes: map[string]string{
+		"Ruang Poli": " 11.02.01 ",
+		"Gudang":     "",
+	}}
+	assert.Equal(t, "11.02.01", resolveLocationCode(context.Background(), q, "Ruang Poli", "99.99"))
+	assert.Equal(t, "MANUAL-01", resolveLocationCode(context.Background(), q, "Gudang", " MANUAL-01 "))
+	assert.Equal(t, "MANUAL-02", resolveLocationCode(context.Background(), q, "Ruang Baru", "MANUAL-02"))
+	assert.Equal(t, "", resolveLocationCode(context.Background(), q, "", ""))
+}
+

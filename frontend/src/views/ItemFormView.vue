@@ -26,7 +26,6 @@ const photoUploaderRef = ref<any>(null)
 const enableKIR = ref(false)
 const enableProcurement = ref(false)
 const enablePrice = ref(false)
-const initialUnits = ref(1)
 const copiedFromSource = ref<any>(null)
 
 function resetToEmptyForm() {
@@ -64,7 +63,6 @@ function resetToEmptyForm() {
   enableKIR.value = false
   enableProcurement.value = false
   enablePrice.value = false
-  initialUnits.value = 1
   router.replace({ path: '/items/new' })
   toast.add({
     severity: 'info',
@@ -117,12 +115,21 @@ const conditionOptions = [
   'Perlu Kalibrasi',
 ]
 
+const selectedLocationCode = computed(() => {
+  const found = locations.value.find((l: any) => l.name === form.value.location)
+  return found?.code || ''
+})
+
+function syncLocationCodeFromRoom(locName: string) {
+  const found = locations.value.find((l: any) => l.name === locName)
+  if (found) {
+    form.value.location_code = found.code || ''
+  }
+}
+
 function onLocationSelect(locName: string) {
   form.value.location = locName
-  const found = locations.value.find((l: any) => l.name === locName)
-  if (found && found.code) {
-    form.value.location_code = found.code
-  }
+  syncLocationCodeFromRoom(locName)
 }
 
 onMounted(async () => {
@@ -135,6 +142,12 @@ onMounted(async () => {
       Object.assign(form.value, res.data)
       form.value.sku = res.data.sku ?? ''
       form.value.track_stock = res.data.track_stock !== false
+      if (!form.value.track_stock && (Number(form.value.current_stock) || 0) < 1) {
+        form.value.current_stock = 1
+      }
+      if (selectedLocationCode.value) {
+        form.value.location_code = selectedLocationCode.value
+      }
 
       // Auto-aktifkan opsi KIR / KIB jika data aset memiliki atribut KIR
       if (
@@ -177,6 +190,9 @@ onMounted(async () => {
         form.value.category = src.category ?? ''
         form.value.location = src.location ?? ''
         form.value.location_code = src.location_code ?? ''
+        if (selectedLocationCode.value) {
+          form.value.location_code = selectedLocationCode.value
+        }
         form.value.track_stock = false // Selalu unit mandiri / aset tetap
         form.value.unit = src.unit || 'unit'
         form.value.current_stock = 1
@@ -263,13 +279,18 @@ async function submit() {
   if (!enableKIR.value) {
     form.value.item_code = ''
     form.value.register_number = ''
-    form.value.location_code = ''
+    if (!selectedLocationCode.value) {
+      form.value.location_code = ''
+    }
     form.value.merk = ''
     form.value.type_model = ''
     form.value.serial_number = ''
     form.value.size = ''
     form.value.material = ''
     form.value.procurement_year = ''
+  }
+  if (selectedLocationCode.value) {
+    form.value.location_code = selectedLocationCode.value
   }
   if (!enableProcurement.value) {
     form.value.funding_source = ''
@@ -292,13 +313,19 @@ async function submit() {
     }
 
     if (isEdit) {
-      await api.put(`/items/${route.params.id}`, form.value)
+      const payload: any = { ...form.value }
+      if (!form.value.track_stock) {
+        payload.current_stock = Math.max(1, Number(form.value.current_stock) || 1)
+      }
+      await api.put(`/items/${route.params.id}`, payload)
       toast.add({ severity: 'success', summary: 'Perubahan disimpan', detail: form.value.name, life: 2500 })
       router.push('/items/' + route.params.id)
     } else {
       const payload: any = { ...form.value }
       if (!form.value.track_stock) {
-        payload.initial_units = initialUnits.value || 1
+        const qty = Math.max(1, Number(form.value.current_stock) || 1)
+        payload.initial_units = qty
+        payload.current_stock = qty
       }
       const res = await api.post('/items', payload)
       toast.add({ severity: 'success', summary: 'Barang berhasil didaftarkan', detail: `SKU ${res.data.sku}`, life: 3000 })
@@ -479,9 +506,13 @@ async function submit() {
             <div v-if="form.location" class="flex items-center justify-between">
               <span class="text-txt-dim">Ruangan:</span>
               <span class="font-semibold truncate max-w-[170px] text-txt">
-                <span v-if="enableKIR && form.location_code" class="text-acc-500 t-mono mr-1">[{{ form.location_code }}]</span>
+                <span v-if="form.location_code" class="text-acc-500 t-mono mr-1">[{{ form.location_code }}]</span>
                 {{ form.location }}
               </span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-txt-dim">Jumlah Barang:</span>
+              <span class="font-semibold text-txt t-num">{{ form.current_stock }} {{ form.track_stock ? form.unit : 'unit' }}</span>
             </div>
             <div v-if="form.track_stock" class="flex items-center justify-between">
               <span class="text-txt-dim">Satuan:</span>
@@ -550,7 +581,7 @@ async function submit() {
                 :class="!form.track_stock
                   ? 'border-acc-500 bg-[var(--acc-wash)] ring-1 ring-acc-500'
                   : 'border-line bg-panel-2 hover:border-[var(--acc-border)]'"
-                @click="form.track_stock = false; form.unit = 'unit'"
+                @click="form.track_stock = false; form.unit = 'unit'; if ((Number(form.current_stock) || 0) < 1) form.current_stock = 1"
               >
                 <div class="w-8 h-8 rounded-[8px] grid place-items-center shrink-0 border mt-0.5"
                      :class="!form.track_stock
@@ -577,64 +608,19 @@ async function submit() {
             >
               <i class="pi pi-info-circle text-sm text-acc-500 shrink-0" aria-hidden="true" />
               <span class="text-txt-dim">
-                Barang stok akan didaftarkan dengan stok awal 0. Penambahan stok dapat dicatat langsung setelah disimpan pada halaman detail melalui tombol <strong class="text-txt">+ Tambah Stok Masuk</strong> berbukti foto geotag.
+                Isi jumlah stok awal pada kolom <strong class="text-txt">Jumlah Barang</strong> di bawah (default 0). Penambahan atau pengurangan stok selanjutnya juga dapat dicatat pada halaman detail melalui tombol <strong class="text-txt">+ Tambah Stok Masuk</strong> berbukti foto geotag.
               </span>
             </div>
 
-            <!-- Opsi Unit Fisik Aset Tetap / BMD (Selaras dengan Tab Daftar Unit Fisik) -->
+            <!-- Info Unit Fisik Aset Tetap / BMD -->
             <div
-              v-if="!form.track_stock && !isEdit"
-              class="p-3.5 rounded-[10px] border border-[var(--acc-border)] bg-[var(--acc-wash)] flex flex-col gap-3"
+              v-if="!form.track_stock"
+              class="p-3 rounded-[8px] border border-[var(--acc-border)] bg-[var(--acc-wash)] text-[11.5px] flex items-start gap-2.5 text-txt"
             >
-              <div class="flex items-start gap-2.5 text-[12px]">
-                <i class="pi pi-clone text-acc-500 text-sm mt-0.5 shrink-0" aria-hidden="true" />
-                <div class="flex flex-col gap-0.5">
-                  <span class="font-bold text-txt">Pencatatan Multi-Unit Fisik (Aset Tetap / BMD)</span>
-                  <span class="text-[11.5px] leading-relaxed text-txt-dim">
-                    Untuk barang sejenis dalam satu ruangan (contoh: <strong class="text-txt">5 unit Meja / Kursi</strong> dengan No. Kode Barang sama), tentukan jumlah unit di bawah. Sistem akan mendaftarkan unit-unit tersebut, dan setiap unit dapat dilengkapi nomor seri, barcode, serta foto fisik masing-masing di tab <strong class="text-txt">Daftar Unit Fisik</strong> setelah disimpan.
-                  </span>
-                </div>
-              </div>
-
-              <div class="grid sm:grid-cols-2 gap-3 pt-2.5 border-t border-[var(--acc-border)]">
-                <div class="flex flex-col gap-1">
-                  <label class="text-[11.5px] font-semibold text-txt-dim">
-                    Jumlah Unit Fisik Awal
-                  </label>
-                  <InputNumber
-                    v-model="initialUnits"
-                    :min="1"
-                    :max="500"
-                    showButtons
-                    buttonLayout="horizontal"
-                    decrementButtonClass="p-button-secondary"
-                    incrementButtonClass="p-button-secondary"
-                    incrementButtonIcon="pi pi-plus"
-                    decrementButtonIcon="pi pi-minus"
-                    class="w-full !text-[12.5px]"
-                    fluid
-                  />
-                  <span class="text-[10.5px] text-txt-dim">
-                    Unit 1 s/d {{ initialUnits }} otomatis dibuat berurutan.
-                  </span>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-[11.5px] font-semibold text-txt-dim">
-                    No. Register Awal (Opsional)
-                  </label>
-                  <InputText
-                    v-model="form.register_number"
-                    placeholder="mis. 0001"
-                    class="w-full t-mono !text-[12.5px]"
-                    fluid
-                    @input="enableKIR = true"
-                  />
-                  <span class="text-[10.5px] text-txt-dim">
-                    Urutan register berikutnya otomatis diteruskan (0001, 0002, dst.).
-                  </span>
-                </div>
-              </div>
+              <i class="pi pi-clone text-sm text-acc-500 mt-0.5 shrink-0" aria-hidden="true" />
+              <span class="text-txt-dim leading-relaxed">
+                Jumlah unit fisik aset tetap diatur pada kolom <strong class="text-txt">Jumlah Barang</strong> di bawah (1–500), sedangkan <strong class="text-txt">No. Register</strong> diisi terpisah pada bagian <strong class="text-txt">Buku Inventaris (KIR / KIB)</strong>. Setiap unit dapat dilengkapi nomor seri, barcode, dan foto di tab <strong class="text-txt">Daftar Unit Fisik</strong>.
+              </span>
             </div>
           </div>
         </Panel>
@@ -660,7 +646,11 @@ async function submit() {
               />
             </Field>
 
-            <Field label="Ruangan / Lokasi Penempatan" required>
+            <Field
+              label="Ruangan / Lokasi Penempatan"
+              required
+              :hint="form.location_code ? `Kode Lokasi otomatis: ${form.location_code}` : 'Pilih ruangan penempatan barang'"
+            >
               <Select
                 v-model="form.location"
                 :options="locations"
@@ -672,6 +662,35 @@ async function submit() {
                 fluid
                 filter
                 @change="onLocationSelect($event.value)"
+              >
+                <template #option="{ option }">
+                  <div class="flex items-center justify-between gap-2 w-full">
+                    <span>{{ option.name }}</span>
+                    <span v-if="option.code" class="t-mono text-[11px] text-acc-500">[{{ option.code }}]</span>
+                  </div>
+                </template>
+              </Select>
+            </Field>
+
+            <Field
+              :label="form.track_stock ? 'Jumlah Barang (Stok)' : 'Jumlah Barang (Unit)'"
+              required
+              :hint="form.track_stock
+                ? (isEdit ? 'Jumlah stok barang saat ini' : 'Jumlah stok awal barang (default 0)')
+                : (isEdit ? 'Jumlah unit fisik aset tetap (minimal 1)' : 'Jumlah unit fisik awal yang didaftarkan (1–500)')"
+            >
+              <InputNumber
+                v-model="form.current_stock"
+                :min="form.track_stock ? 0 : 1"
+                :max="form.track_stock ? undefined : 500"
+                showButtons
+                buttonLayout="horizontal"
+                decrementButtonClass="p-button-secondary"
+                incrementButtonClass="p-button-secondary"
+                incrementButtonIcon="pi pi-plus"
+                decrementButtonIcon="pi pi-minus"
+                class="w-full !text-[12.5px]"
+                fluid
               />
             </Field>
 
@@ -745,12 +764,21 @@ async function submit() {
               <InputText v-model="form.item_code" placeholder="mis. 02.03.01.02.05" class="w-full t-mono !text-[12.5px]" fluid />
             </Field>
 
-            <Field label="Jumlah Barang / Register" hint="Nomor urut register pencatatan aset (cth: 0001, 0015)">
+            <Field label="No. Register" hint="Nomor urut register pencatatan aset (cth: 0001, REG-2026-001)">
               <InputText v-model="form.register_number" placeholder="mis. 0001 / REG-2026-001" class="w-full t-mono !text-[12.5px]" fluid />
             </Field>
 
-            <Field label="NO. KODE LOKASI" hint="Nomor kode lokasi / ruangan penempatan aset">
-              <InputText v-model="form.location_code" placeholder="mis. 11.02.01" class="w-full t-mono !text-[12.5px]" fluid />
+            <Field
+              label="NO. KODE LOKASI"
+              :hint="selectedLocationCode ? 'Otomatis diambil dari kode ruangan yang dipilih' : 'Ruangan belum memiliki kode di menu Lokasi (bisa diisi manual)'"
+            >
+              <InputText
+                v-model="form.location_code"
+                :readonly="!!selectedLocationCode"
+                :placeholder="selectedLocationCode || 'mis. 11.02.01'"
+                :class="['w-full t-mono !text-[12.5px]', selectedLocationCode ? 'opacity-85 cursor-not-allowed' : '']"
+                fluid
+              />
             </Field>
 
             <Field label="Keadaan Barang" hint="Kondisi fisik aset inventaris saat didaftarkan">

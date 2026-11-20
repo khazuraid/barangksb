@@ -1026,7 +1026,14 @@ async function deleteMaintRecord(mId: string) {
             </div>
 
             <div class="p-3.5 rounded-[8px] border border-line bg-panel-2 flex flex-col gap-1">
-              <span class="t-label">Jumlah / No. Register</span>
+              <span class="t-label">Jumlah Barang</span>
+              <span class="t-num font-bold text-[13px] text-txt">
+                {{ item.track_stock !== false ? `${item.current_stock} ${item.unit}` : `${unitsList.length || item.current_stock || 1} unit` }}
+              </span>
+            </div>
+
+            <div class="p-3.5 rounded-[8px] border border-line bg-panel-2 flex flex-col gap-1">
+              <span class="t-label">No. Register</span>
               <span class="t-mono font-bold text-[13px] text-txt">{{ item.register_number || '—' }}</span>
             </div>
 

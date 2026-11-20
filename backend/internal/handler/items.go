@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -8,8 +10,60 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type rowQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func resolveLocationCode(ctx context.Context, q rowQuerier, locationName, fallback string) string {
+	loc := strings.TrimSpace(locationName)
+	if loc != "" {
+		var code string
+		if err := q.QueryRow(ctx, `SELECT COALESCE(code, '') FROM locations WHERE name=$1 LIMIT 1`, loc).Scan(&code); err == nil && strings.TrimSpace(code) != "" {
+			return strings.TrimSpace(code)
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func resolveFixedAssetUnits(initialUnits, currentStock int32) (int, error) {
+	units := int(initialUnits)
+	if units <= 0 {
+		units = int(currentStock)
+	}
+	if units < 1 {
+		units = 1
+	}
+	if units > 500 {
+		return 0, errors.New("jumlah unit maksimal 500 per permintaan")
+	}
+	return units, nil
+}
+
+func unitRegisterFor(baseReg string, unitNum, totalUnits int) string {
+	baseReg = strings.TrimSpace(baseReg)
+	if totalUnits == 1 && baseReg != "" {
+		return baseReg
+	}
+	startReg := 1
+	if baseReg != "" {
+		if parsed, err := strconv.Atoi(strings.TrimLeft(baseReg, "0")); err == nil && parsed > 0 {
+			startReg = parsed
+		}
+	}
+	return fmt.Sprintf("%04d", startReg+unitNum-1)
+}
+
+func unitBarcodeFor(sku string, unitNum, totalUnits int) string {
+	sku = strings.TrimSpace(sku)
+	if totalUnits == 1 && sku != "" {
+		return sku
+	}
+	return fmt.Sprintf("%s-U%d", sku, unitNum)
+}
 
 type ItemHandler struct {
 	pool *pgxpool.Pool
@@ -237,10 +291,6 @@ func (h *ItemHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "stok, stok minimum, harga, dan jumlah unit tidak boleh negatif"})
 		return
 	}
-	if req.InitialUnits > 500 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "jumlah unit awal maksimal 500 per permintaan"})
-		return
-	}
 	sku := strings.TrimSpace(req.SKU)
 	if sku == "" {
 		sku = generateSKU(h, c, req.Category)
@@ -249,13 +299,16 @@ func (h *ItemHandler) Create(c *gin.Context) {
 	if req.TrackStock != nil {
 		trackStock = *req.TrackStock
 	}
+	req.LocationCode = resolveLocationCode(c, h.pool, req.Location, req.LocationCode)
 	initialStock := req.CurrentStock
+	unitsCount := 0
 	if !trackStock {
-		if req.InitialUnits > 1 {
-			initialStock = req.InitialUnits
-		} else {
-			initialStock = 1
+		unitsCount, err = resolveFixedAssetUnits(req.InitialUnits, req.CurrentStock)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
+		initialStock = int32(unitsCount)
 	}
 	var id string
 	err = h.pool.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, location_code, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, size, material, item_code, register_number, geo_lat, geo_lng, geo_acc, geo_name, track_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id::text`,
@@ -272,26 +325,10 @@ func (h *ItemHandler) Create(c *gin.Context) {
 
 	// If fixed asset, automatically seed initial physical units
 	if !trackStock {
-		unitsCount := int(req.InitialUnits)
-		if unitsCount < 1 {
-			unitsCount = 1
-		}
-		startReg := 1
-		if req.RegisterNumber != "" {
-			if parsed, e := strconv.Atoi(strings.TrimLeft(req.RegisterNumber, "0")); e == nil && parsed > 0 {
-				startReg = parsed
-			}
-		}
 		for i := 1; i <= unitsCount; i++ {
 			unitNum := i
-			regStr := fmt.Sprintf("%04d", startReg+i-1)
-			if unitsCount == 1 && req.RegisterNumber != "" {
-				regStr = req.RegisterNumber
-			}
-			unitBarcode := fmt.Sprintf("%s-U%d", sku, unitNum)
-			if unitsCount == 1 && sku != "" {
-				unitBarcode = sku
-			}
+			regStr := unitRegisterFor(req.RegisterNumber, unitNum, unitsCount)
+			unitBarcode := unitBarcodeFor(sku, unitNum, unitsCount)
 			var unitPhoto any
 			var uLat, uLng, uAcc *float64
 			var uGeoName any
@@ -327,22 +364,110 @@ func (h *ItemHandler) Update(c *gin.Context) {
 		return
 	}
 	req.PhotoURL = safePhoto
-	if req.CurrentStock < 0 || req.MinStock < 0 || req.PricePerUnit < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "stok, stok minimum, dan harga tidak boleh negatif"})
+	if req.CurrentStock < 0 || req.MinStock < 0 || req.PricePerUnit < 0 || req.InitialUnits < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "stok, stok minimum, harga, dan jumlah unit tidak boleh negatif"})
 		return
 	}
 	trackStock := true
 	if req.TrackStock != nil {
 		trackStock = *req.TrackStock
 	}
-	_, err = h.pool.Exec(c, `UPDATE inventory_items SET sku=$2, name=$3, category=$4, location=$5, location_code=$6, current_stock=CASE WHEN $29 THEN $7 ELSE GREATEST((SELECT COUNT(*) FROM item_units WHERE item_id=$1), 1) END, min_stock=$8, unit=$9, price_per_unit=$10, description=$11, photo_url=$12, merk=$13, type_model=$14, serial_number=$15, procurement_year=$16, condition_status=$17, funding_source=$18, distributor=$19, akl_akd=$20, size=$21, material=$22, item_code=$23, register_number=$24, geo_lat=$25, geo_lng=$26, geo_acc=$27, geo_name=$28, track_stock=$29, updated_at=now() WHERE id=$1`,
-		id, req.SKU, req.Name, req.Category, req.Location, nullable(req.LocationCode), req.CurrentStock, req.MinStock, req.Unit, req.PricePerUnit,
+
+	tx, err := h.pool.Begin(c)
+	if err != nil {
+		internalError(c, "gagal memulai transaksi pembaruan barang", err)
+		return
+	}
+	defer tx.Rollback(c)
+
+	var existingSKU string
+	if err := tx.QueryRow(c, `SELECT COALESCE(sku, '') FROM inventory_items WHERE id::text=$1`, id).Scan(&existingSKU); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "barang tidak ditemukan"})
+			return
+		}
+		internalError(c, "gagal memuat data barang", err)
+		return
+	}
+	sku := strings.TrimSpace(req.SKU)
+	if sku == "" {
+		sku = existingSKU
+	}
+	req.LocationCode = resolveLocationCode(c, tx, req.Location, req.LocationCode)
+
+	targetStock := req.CurrentStock
+	if !trackStock {
+		targetUnits, err := resolveFixedAssetUnits(req.InitialUnits, req.CurrentStock)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		var existingUnits, maxUnitNum int
+		if err := tx.QueryRow(c, `SELECT COUNT(*), COALESCE(MAX(unit_number), 0) FROM item_units WHERE item_id::text=$1`, id).Scan(&existingUnits, &maxUnitNum); err != nil {
+			internalError(c, "gagal memeriksa unit fisik barang", err)
+			return
+		}
+		if targetUnits > existingUnits {
+			for k := 1; k <= targetUnits-existingUnits; k++ {
+				unitNum := maxUnitNum + k
+				regStr := unitRegisterFor(req.RegisterNumber, unitNum, targetUnits)
+				unitBarcode := unitBarcodeFor(sku, unitNum, targetUnits)
+				var unitPhoto any
+				var uLat, uLng, uAcc *float64
+				var uGeoName, uSerial any
+				if existingUnits == 0 && k == 1 {
+					if req.PhotoURL != "" {
+						unitPhoto = nullable(req.PhotoURL)
+						uLat = req.GeoLat
+						uLng = req.GeoLng
+						uAcc = req.GeoAcc
+						uGeoName = nullable(req.GeoName)
+					}
+					if req.SerialNumber != "" {
+						uSerial = nullable(req.SerialNumber)
+					}
+				}
+				if _, err := tx.Exec(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code, photo_url, geo_lat, geo_lng, geo_acc, geo_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+					id, unitNum, regStr, unitBarcode, uSerial, nullable(req.ConditionStatus), req.Location, nullable(req.LocationCode), unitPhoto, uLat, uLng, uAcc, uGeoName); err != nil {
+					internalError(c, "gagal menambah unit fisik barang", err)
+					return
+				}
+			}
+		} else if targetUnits < existingUnits {
+			toRemove := existingUnits - targetUnits
+			tag, err := tx.Exec(c, `WITH victims AS (
+				SELECT id FROM item_units
+				WHERE item_id::text=$1
+				  AND COALESCE(photo_url, '') = ''
+				  AND COALESCE(serial_number, '') = ''
+				  AND COALESCE(notes, '') = ''
+				ORDER BY unit_number DESC, created_at DESC
+				LIMIT $2
+			) DELETE FROM item_units WHERE id IN (SELECT id FROM victims)`, id, toRemove)
+			if err != nil {
+				internalError(c, "gagal mengurangi unit fisik barang", err)
+				return
+			}
+			if tag.RowsAffected() < int64(toRemove) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("tidak dapat mengurangi jumlah barang menjadi %d karena masih ada unit fisik yang memiliki foto, nomor seri, atau catatan; hapus unit spesifik di tab Daftar Unit Fisik", targetUnits)})
+				return
+			}
+		}
+		targetStock = int32(targetUnits)
+	}
+
+	_, err = tx.Exec(c, `UPDATE inventory_items SET sku=$2, name=$3, category=$4, location=$5, location_code=$6, current_stock=$7, min_stock=$8, unit=$9, price_per_unit=$10, description=$11, photo_url=$12, merk=$13, type_model=$14, serial_number=$15, procurement_year=$16, condition_status=$17, funding_source=$18, distributor=$19, akl_akd=$20, size=$21, material=$22, item_code=$23, register_number=$24, geo_lat=$25, geo_lng=$26, geo_acc=$27, geo_name=$28, track_stock=$29, updated_at=now() WHERE id::text=$1`,
+		id, sku, req.Name, req.Category, req.Location, nullable(req.LocationCode), targetStock, req.MinStock, req.Unit, req.PricePerUnit,
 		nullable(req.Description), nullable(req.PhotoURL), nullable(req.Merk), nullable(req.TypeModel), nullable(req.SerialNumber),
 		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd),
 		nullable(req.Size), nullable(req.Material), nullable(req.ItemCode), nullable(req.RegisterNumber),
 		req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), trackStock)
 	if err != nil {
 		internalError(c, "gagal memperbarui barang", err)
+		return
+	}
+	if err := tx.Commit(c); err != nil {
+		internalError(c, "gagal menyimpan pembaruan barang", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
@@ -596,6 +721,7 @@ func (h *ItemHandler) CreateUnit(c *gin.Context) {
 	if strings.TrimSpace(req.Location) == "" {
 		req.Location = itemLoc
 	}
+	req.LocationCode = resolveLocationCode(c, h.pool, req.Location, req.LocationCode)
 	if strings.TrimSpace(req.LocationCode) == "" {
 		req.LocationCode = itemLocCode
 	}
@@ -634,6 +760,7 @@ func (h *ItemHandler) UpdateUnit(c *gin.Context) {
 		return
 	}
 	req.PhotoURL = safePhoto
+	req.LocationCode = resolveLocationCode(c, h.pool, req.Location, req.LocationCode)
 
 	_, err = h.pool.Exec(c, `UPDATE item_units SET register_number=$3, barcode=$4, serial_number=$5, condition_status=$6, location=$7, location_code=$8, photo_url=$9, geo_lat=$10, geo_lng=$11, geo_acc=$12, geo_name=$13, notes=$14, updated_at=now() WHERE id::text=$1 AND item_id::text=$2`,
 		unitID, id, req.RegisterNumber, req.Barcode, nullable(req.SerialNumber), req.ConditionStatus, req.Location, nullable(req.LocationCode), nullable(req.PhotoURL), req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), nullable(req.Notes))
