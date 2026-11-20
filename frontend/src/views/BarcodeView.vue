@@ -287,8 +287,8 @@ async function confirmSaveLayoutAsTemplate() {
         id: 'r_sku',
         type: 'cells',
         field: 'sku',
-        label: 'SKU',
-        cells: [{ id: 'c_sku', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5, align: 'left', bgColor: 'white' }],
+        label: '',
+        cells: [{ id: 'c_sku', field: 'sku', label: '', bold: true, fontSize: 6.5, align: 'left', bgColor: 'white' }],
       })
     }
     if (showLoc.value) {
@@ -296,8 +296,8 @@ async function confirmSaveLayoutAsTemplate() {
         id: 'r_loc',
         type: 'cells',
         field: 'location',
-        label: 'Ruang',
-        cells: [{ id: 'c_loc', field: 'location', label: 'Ruang', bold: false, fontSize: 6, align: 'left', bgColor: 'white' }],
+        label: '',
+        cells: [{ id: 'c_loc', field: 'location', label: '', bold: false, fontSize: 6, align: 'left', bgColor: 'white' }],
       })
     }
     if (rows.length === 0) {
@@ -331,15 +331,15 @@ async function confirmSaveLayoutAsTemplate() {
       tableConfig: {
         borderWidth: 1,
         borderStyle: 'solid',
-        borderColor: '#000000',
+        borderColor: '#cbd5e1',
         showOuterBorder: showBorder.value,
-        showGridLines: showBorder.value,
-        showColBorder: showBorder.value,
-        showLabelColBorder: showBorder.value,
+        showGridLines: false,
+        showColBorder: false,
+        showLabelColBorder: false,
         showHeaderBorder: true,
         showFooterBorder: false,
         cellPaddingMm: 0.7,
-        labelColWidthPercent: 28,
+        labelColWidthPercent: 0,
         showHeader: true,
         headerText: labelTitle.value || 'INVENTARIS KANTOR',
         headerSubText: '',
@@ -1004,7 +1004,7 @@ const sampleItem = computed(() => {
           size="small"
           severity="secondary"
           outlined
-          @click="showCustomDesigner = true"
+          @click="openCustomDesignerWithTemplate()"
         />
         <Button
           label="Cetak"
@@ -1296,18 +1296,66 @@ const sampleItem = computed(() => {
               </div>
 
               <div
-                class="rounded-[10px] shadow-sm border p-3 flex flex-col items-center gap-2 max-w-full"
-                :class="customSheetSpec?.isYellowBacking ? 'border-amber-300' : 'border-line bg-panel'"
-                :style="customSheetSpec?.isYellowBacking ? { background: '#fef08a' } : {}"
+                v-if="customSheetSpec?.isSheet"
+                class="rounded-[10px] shadow-sm border p-4 max-w-full"
+                :class="customSheetSpec.isYellowBacking ? 'border-amber-300' : 'border-line bg-panel'"
+                :style="customSheetSpec.isYellowBacking ? { background: '#fef08a', width: '560px' } : { width: '560px' }"
               >
                 <div
-                  v-if="customSheetSpec?.isSheet"
-                  class="w-full flex items-center justify-between gap-4 text-[10.5px] font-bold uppercase tracking-wider pb-1.5 border-b"
-                  :class="customSheetSpec.isYellowBacking ? 'text-amber-950 border-amber-300/80' : 'text-txt-dim border-line'"
+                  class="flex items-center justify-between pb-2.5 mb-2.5 border-b text-[11px] font-extrabold uppercase tracking-wider"
+                  :class="customSheetSpec.isYellowBacking ? 'border-amber-300/80 text-amber-950' : 'border-line text-txt'"
                 >
-                  <span>{{ customSheetSpec.shortLabel }}</span>
-                  <span>{{ customSheetSpec.perSheet }} Label / Lembar · Offset {{ offset }}</span>
+                  <span>{{ customSheetSpec.shortLabel }} ({{ selectedCustomTemplate.widthMm }} &times; {{ selectedCustomTemplate.heightMm }} mm)</span>
+                  <span class="font-normal text-[10px] opacity-85">{{ customSheetSpec.perSheet }} Label / Lembar</span>
                 </div>
+                <div
+                  class="grid gap-2"
+                  :style="{ gridTemplateColumns: `repeat(${customSheetSpec.cols}, minmax(0, 1fr))` }"
+                >
+                  <div
+                    v-for="idx in Math.min(customSheetSpec.perSheet, 12)"
+                    :key="idx"
+                    class="rounded-[5px] overflow-hidden flex items-center justify-center"
+                    :style="{
+                      aspectRatio: `${selectedCustomTemplate.widthMm || 64} / ${selectedCustomTemplate.heightMm || 32}`,
+                    }"
+                    :class="
+                      idx - 1 < offset
+                        ? 'border-2 border-dashed border-amber-400/70 bg-amber-100/50 flex-col text-amber-800'
+                        : idx - 1 - offset < totalLabelsToPrint
+                          ? 'bg-white shadow-sm border border-slate-300 text-black'
+                          : 'border border-dashed border-amber-400/40 bg-amber-100/20 text-amber-900/50'
+                    "
+                  >
+                    <template v-if="idx - 1 < offset">
+                      <span class="text-[9px] font-bold">Slot #{{ idx }}</span>
+                      <span class="text-[8px] opacity-80">(Dilewati)</span>
+                    </template>
+                    <template v-else-if="idx - 1 - offset < totalLabelsToPrint">
+                      <div
+                        class="w-full h-full flex items-center justify-center overflow-hidden"
+                        :style="{
+                          zoom: String(
+                            Math.min(
+                              1,
+                              ((528 - (customSheetSpec.cols - 1) * 8) / customSheetSpec.cols) /
+                                ((selectedCustomTemplate.widthMm || 64) * 3.7795)
+                            )
+                          ),
+                        }"
+                        v-html="customPreviewHtml"
+                      />
+                    </template>
+                    <template v-else>
+                      <span class="text-[8px]">Kosong</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-else
+                class="rounded-[10px] shadow-sm border border-line bg-panel p-3 flex flex-col items-center gap-2 max-w-full"
+              >
                 <div
                   class="bg-white text-black shadow-sm overflow-hidden"
                   style="display: inline-block; line-height: 1;"

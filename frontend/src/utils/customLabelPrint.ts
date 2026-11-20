@@ -820,7 +820,7 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
           <strong>${cleanTitle}</strong>
           <span style="opacity:0.75;margin-left:8px;">${escapeHtml(spec.shortLabel)} · ${totalLabels} label</span>
         </div>
-        <button id="btn-print-sheet" type="button" onclick="window.__triggerCustomPrint && window.__triggerCustomPrint()">Cetak Sekarang</button>
+        <button id="btn-print-sheet" type="button">Cetak Sekarang</button>
       </div>`
     : ''
 
@@ -847,33 +847,6 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
       body { background: #fff; margin: 0; padding: 0; }
     `
 
-  const printScript = opts.showToolbar
-    ? `<script>
-      window.__waitImages = function() {
-        var imgs = Array.prototype.slice.call(document.images || []);
-        return Promise.all(imgs.map(function(img) {
-          if (img.complete) return Promise.resolve();
-          return new Promise(function(res) {
-            var done = function() { res(); };
-            img.addEventListener('load', done, { once: true });
-            img.addEventListener('error', done, { once: true });
-            setTimeout(done, 8000);
-          });
-        }));
-      };
-      window.__triggerCustomPrint = function() {
-        var btn = document.getElementById('btn-print-sheet');
-        if (btn) { btn.disabled = true; btn.textContent = 'Menyiapkan gambar...'; }
-        window.__waitImages().then(function() {
-          if (btn) { btn.disabled = false; btn.textContent = 'Cetak Sekarang'; }
-          window.focus();
-          window.print();
-        });
-      };
-      ${opts.autoPrint ? "window.addEventListener('load', function() { window.__triggerCustomPrint(); });" : ''}
-    </script>`
-    : ''
-
   return `<!doctype html>
 <html lang="id">
 <head>
@@ -896,7 +869,6 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
 <body>
   ${toolbarHtml}
   ${bodyHtml}
-  ${printScript}
 </body>
 </html>`
 }
@@ -1020,8 +992,32 @@ export function openCustomPrintTab(
   win.document.open()
   win.document.write(html)
   win.document.close()
-  try {
-    win.opener = null
-  } catch {}
+
+  // Bind toolbar print handler from parent module so inherited strict CSP (script-src 'self') never blocks it
+  const btn = win.document.getElementById('btn-print-sheet') as HTMLButtonElement | null
+  const triggerPrint = async () => {
+    if (btn) {
+      btn.disabled = true
+      btn.textContent = 'Menyiapkan gambar...'
+    }
+    try {
+      await waitForDocumentImages(win.document)
+    } finally {
+      if (btn) {
+        btn.disabled = false
+        btn.textContent = 'Cetak Sekarang'
+      }
+    }
+    win.focus()
+    win.print()
+  }
+  if (btn) {
+    btn.addEventListener('click', () => {
+      void triggerPrint()
+    })
+  }
+  if (opts.autoPrint) {
+    void triggerPrint()
+  }
   return true
 }
