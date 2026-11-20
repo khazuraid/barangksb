@@ -23,6 +23,7 @@ import {
   getPrintMode,
   getShowCutBorder,
   ensureTableConfig,
+  fitTemplateToSheetSpec,
   renderCustomLabelHtml,
   printCustomLabels,
   openCustomPrintTab,
@@ -502,6 +503,11 @@ const isSheetLayout = computed(() => {
   return ['tj_103', 'tj_107', 'tj_108', 'tj_121', 'a4_3x7', 'a4_4x10'].includes(layout.value)
 })
 
+const builtInSheetSpec = computed(() => {
+  if (selectedCustomTemplate.value || !isSheetLayout.value) return null
+  return getSheetSpec(layout.value as SheetFormatId)
+})
+
 const labelsPerSheet = computed(() => {
   if (selectedCustomTemplate.value && customSheetSpec.value) {
     return customSheetSpec.value.perSheet
@@ -749,6 +755,65 @@ function openPrintDialog() {
   printModalVisible.value = true
 }
 
+function printSheetInHiddenFrame(url: string) {
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    try { iframe.remove() } catch {}
+  }
+  iframe.addEventListener(
+    'load',
+    () => {
+      const win = iframe.contentWindow
+      if (!win) {
+        cleanup()
+        return
+      }
+      const imgs = Array.from(win.document.images || [])
+      const runPrint = () => {
+        const fallback = window.setTimeout(cleanup, 60000)
+        win.addEventListener(
+          'afterprint',
+          () => {
+            window.clearTimeout(fallback)
+            setTimeout(cleanup, 200)
+          },
+          { once: true }
+        )
+        win.focus()
+        win.print()
+      }
+      if (!imgs.length) {
+        setTimeout(runPrint, 100)
+        return
+      }
+      Promise.race([
+        Promise.all(
+          imgs.map(
+            (img) =>
+              new Promise<void>((resolve) => {
+                if (img.complete) {
+                  resolve()
+                  return
+                }
+                img.addEventListener('load', () => resolve(), { once: true })
+                img.addEventListener('error', () => resolve(), { once: true })
+              })
+          )
+        ),
+        new Promise<void>((resolve) => setTimeout(resolve, 6000)),
+      ]).then(() => setTimeout(runPrint, 100))
+    },
+    { once: true }
+  )
+  iframe.src = url
+  document.body.appendChild(iframe)
+}
+
 async function printNow() {
   if (layout.value.startsWith('custom_')) {
     const tpl = selectedCustomTemplate.value
@@ -796,8 +861,10 @@ async function printNow() {
     }
     return
   }
-  const url = getPrintUrl(true)
-  window.open(url, '_blank', 'noopener,noreferrer')
+  const win = window.open(getPrintUrl(true), '_blank')
+  if (!win) {
+    printSheetInHiddenFrame(getPrintUrl(false))
+  }
 }
 
 async function openSheetTab() {
@@ -846,12 +913,21 @@ async function openSheetTab() {
     return
   }
   const url = getPrintUrl(false)
-  window.open(url, '_blank', 'noopener,noreferrer')
+  const win = window.open(url, '_blank')
+  if (!win) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Popup Diblokir Browser',
+      detail: 'Izinkan popup untuk membuka lembar cetak di tab baru, atau klik Cetak Sekarang.',
+      life: 3500,
+    })
+  }
 }
 
 const customPreviewHtml = computed(() => {
   if (!selectedCustomTemplate.value) return ''
-  return renderCustomLabelHtml(selectedCustomTemplate.value, sampleItem.value, '')
+  const fitted = fitTemplateToSheetSpec(selectedCustomTemplate.value, customSheetFormat.value)
+  return renderCustomLabelHtml(fitted, sampleItem.value, '')
 })
 
 function downloadOne(item: any) {
@@ -1366,8 +1442,8 @@ const sampleItem = computed(() => {
               {{
                 selectedCustomTemplate
                   ? `Pratinjau Desain Kustom · ${customSheetSpec?.shortLabel || '1 Label / Halaman'}`
-                  : layout === 'tj_103'
-                    ? 'Pratinjau Lembar Tom & Jerry No. 103 (3 Kolom × 4 Baris)'
+                  : builtInSheetSpec
+                    ? `Pratinjau Lembar ${builtInSheetSpec.shortLabel} (${builtInSheetSpec.cols} Kolom × ${builtInSheetSpec.rows} Baris)`
                     : 'Pratinjau Nyata Label'
               }}
             </span>
@@ -1389,7 +1465,7 @@ const sampleItem = computed(() => {
                 </span>
                 <div class="flex items-center gap-1.5 shrink-0">
                   <span class="t-mono !text-[11px] text-acc-500 bg-panel px-2 py-0.5 rounded border border-line">
-                    {{ selectedCustomTemplate.widthMm }} &times; {{ selectedCustomTemplate.heightMm }} mm
+                    {{ customSheetSpec?.labelW || selectedCustomTemplate.widthMm }} &times; {{ customSheetSpec?.labelH || selectedCustomTemplate.heightMm }} mm
                   </span>
                   <Button
                     label="Edit Template"
@@ -1406,33 +1482,40 @@ const sampleItem = computed(() => {
               <div
                 v-if="customSheetSpec?.isSheet"
                 class="rounded-[10px] shadow-sm border p-4 max-w-full"
-                :class="customSheetSpec.isYellowBacking ? 'border-amber-300' : 'border-line bg-panel'"
-                :style="customSheetSpec.isYellowBacking ? { background: '#fef08a', width: '560px' } : { width: '560px' }"
+                :class="customSheetSpec.isYellowBacking ? 'border-amber-300' : 'border-slate-300'"
+                :style="{ background: customSheetSpec.isYellowBacking ? '#fef08a' : '#ffffff', width: '560px' }"
               >
                 <div
                   class="flex items-center justify-between pb-2.5 mb-2.5 border-b text-[11px] font-extrabold uppercase tracking-wider"
-                  :class="customSheetSpec.isYellowBacking ? 'border-amber-300/80 text-amber-950' : 'border-line text-txt'"
+                  :class="customSheetSpec.isYellowBacking ? 'border-amber-300/80 text-amber-950' : 'border-slate-200 text-slate-800'"
                 >
-                  <span>{{ customSheetSpec.shortLabel }} ({{ selectedCustomTemplate.widthMm }} &times; {{ selectedCustomTemplate.heightMm }} mm)</span>
+                  <span>{{ customSheetSpec.shortLabel }} ({{ customSheetSpec.labelW }} &times; {{ customSheetSpec.labelH }} mm)</span>
                   <span class="font-normal text-[10px] opacity-85">{{ customSheetSpec.perSheet }} Label / Lembar</span>
                 </div>
                 <div
                   class="grid gap-2"
+                  :class="customSheetSpec.rows > 4 ? 'max-h-[420px] overflow-y-auto pr-1' : ''"
                   :style="{ gridTemplateColumns: `repeat(${customSheetSpec.cols}, minmax(0, 1fr))` }"
                 >
                   <div
-                    v-for="idx in Math.min(customSheetSpec.perSheet, 12)"
+                    v-for="idx in customSheetSpec.perSheet"
                     :key="idx"
                     class="rounded-[5px] overflow-hidden flex items-center justify-center"
                     :style="{
-                      aspectRatio: `${selectedCustomTemplate.widthMm || 64} / ${selectedCustomTemplate.heightMm || 32}`,
+                      aspectRatio: `${customSheetSpec.labelW || 64} / ${customSheetSpec.labelH || 32}`,
                     }"
                     :class="
                       idx - 1 < offset
-                        ? 'border-2 border-dashed border-amber-400/70 bg-amber-100/50 flex-col text-amber-800'
+                        ? customSheetSpec.isYellowBacking
+                          ? 'border-2 border-dashed border-amber-400/70 bg-amber-100/50 flex-col text-amber-800'
+                          : 'border-2 border-dashed border-slate-300 bg-slate-100 flex-col text-slate-600'
                         : idx - 1 - offset < totalLabelsToPrint
-                          ? 'bg-white shadow-sm border border-slate-300 text-black'
-                          : 'border border-dashed border-amber-400/40 bg-amber-100/20 text-amber-900/50'
+                          ? customShowCutBorder
+                            ? 'bg-white shadow-sm border border-dashed border-slate-400 text-black'
+                            : 'bg-white shadow-sm border border-slate-300 text-black'
+                          : customSheetSpec.isYellowBacking
+                            ? 'border border-dashed border-amber-400/40 bg-amber-100/20 text-amber-900/50'
+                            : 'border border-dashed border-slate-300 bg-slate-50 text-slate-400'
                     "
                   >
                     <template v-if="idx - 1 < offset">
@@ -1446,8 +1529,8 @@ const sampleItem = computed(() => {
                           zoom: String(
                             Math.min(
                               1,
-                              ((528 - (customSheetSpec.cols - 1) * 8) / customSheetSpec.cols) /
-                                ((selectedCustomTemplate.widthMm || 64) * 3.7795)
+                              ((516 - (customSheetSpec.cols - 1) * 8) / customSheetSpec.cols) /
+                                ((customSheetSpec.labelW || 64) * 3.7795)
                             )
                           ),
                         }"
@@ -1476,46 +1559,126 @@ const sampleItem = computed(() => {
               </div>
             </div>
 
-            <!-- 1. Simulasi Lembar Tom & Jerry No. 103 (Yellow Backing Paper 3x4 Grid) -->
+            <!-- 1. Simulasi Lembar Tom & Jerry & Stiker A4 (Yellow Backing Paper untuk TJ, Putih untuk A4) -->
             <div
-              v-else-if="layout === 'tj_103'"
-              class="rounded-[10px] shadow-sm border border-amber-300 p-4 max-w-full"
-              style="background: #fef08a; width: 560px;"
+              v-else-if="builtInSheetSpec"
+              class="rounded-[10px] shadow-sm border p-4 max-w-full"
+              :class="builtInSheetSpec.isYellowBacking ? 'border-amber-300' : 'border-slate-300'"
+              :style="{ background: builtInSheetSpec.isYellowBacking ? '#fef08a' : '#ffffff', width: '560px' }"
             >
-              <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-amber-300/80 text-[11px] font-extrabold text-amber-950 uppercase tracking-wider">
-                <span>Tom &amp; Jerry No. 103 (64 &times; 32 mm)</span>
-                <span class="font-normal text-[10px] text-amber-900">12 Label / Lembar</span>
+              <div
+                class="flex items-center justify-between pb-2.5 mb-2.5 border-b text-[11px] font-extrabold uppercase tracking-wider"
+                :class="builtInSheetSpec.isYellowBacking ? 'border-amber-300/80 text-amber-950' : 'border-slate-200 text-slate-800'"
+              >
+                <span>{{ builtInSheetSpec.shortLabel }} ({{ builtInSheetSpec.labelW }} &times; {{ builtInSheetSpec.labelH }} mm)</span>
+                <span class="font-normal text-[10px] opacity-85">{{ builtInSheetSpec.perSheet }} Label / Lembar</span>
               </div>
-              <div class="grid grid-cols-3 gap-2">
+              <div
+                class="grid gap-2"
+                :class="builtInSheetSpec.rows > 4 ? 'max-h-[420px] overflow-y-auto pr-1' : ''"
+                :style="{ gridTemplateColumns: `repeat(${builtInSheetSpec.cols}, minmax(0, 1fr))` }"
+              >
                 <div
-                  v-for="idx in 12"
+                  v-for="idx in builtInSheetSpec.perSheet"
                   :key="idx"
-                  class="h-[76px] rounded-[5px] transition-all overflow-hidden"
-                  :class="idx - 1 < offset ? 'border-2 border-dashed border-amber-400/70 bg-amber-100/50 flex flex-col items-center justify-center text-amber-800' : 'bg-white shadow-sm border border-slate-300 p-1.5 flex items-center justify-between text-black'"
+                  class="rounded-[5px] transition-all overflow-hidden"
+                  :style="{ aspectRatio: `${builtInSheetSpec.labelW} / ${builtInSheetSpec.labelH}` }"
+                  :class="
+                    idx - 1 < offset
+                      ? builtInSheetSpec.isYellowBacking
+                        ? 'border-2 border-dashed border-amber-400/70 bg-amber-100/50 flex flex-col items-center justify-center text-amber-800'
+                        : 'border-2 border-dashed border-slate-300 bg-slate-100 flex flex-col items-center justify-center text-slate-600'
+                      : idx - 1 - offset < totalLabelsToPrint
+                        ? 'bg-white shadow-sm border border-slate-300 p-1 flex items-center justify-between text-black'
+                        : builtInSheetSpec.isYellowBacking
+                          ? 'border border-dashed border-amber-400/40 bg-amber-100/20 flex flex-col items-center justify-center text-amber-900/50'
+                          : 'border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-slate-400'
+                  "
                 >
                   <!-- Skipped / Offset Slot -->
                   <template v-if="idx - 1 < offset">
-                    <span class="text-[9px] font-bold">Slot #{{ idx }}</span>
-                    <span class="text-[8px] opacity-80">(Dilewati)</span>
+                    <span class="text-[8.5px] font-bold">Slot #{{ idx }}</span>
+                    <span class="text-[7.5px] opacity-80">(Dilewati)</span>
                   </template>
                   <!-- Printed Slot -->
                   <template v-else-if="idx - 1 - offset < totalLabelsToPrint">
-                    <div class="w-[38%] flex items-center justify-center p-0.5">
-                      <img :src="`/api/barcode/${sampleItem.id}.png?fmt=${fmt}`" class="max-w-full max-h-[60px] object-contain" alt="code" />
+                    <div v-if="fmt === 'code128'" class="w-full h-full flex flex-col items-center justify-center text-center px-0.5">
+                      <div
+                        v-if="builtInSheetSpec.labelH >= 30"
+                        class="text-[6.5px] font-extrabold uppercase tracking-tight truncate max-w-full"
+                      >
+                        {{ labelTitle }}
+                      </div>
+                      <img
+                        :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`"
+                        class="max-w-[92%] object-contain my-0.5"
+                        :class="builtInSheetSpec.labelH < 26 ? 'max-h-[18px]' : 'max-h-[28px]'"
+                        alt="code"
+                      />
+                      <div
+                        v-if="showName"
+                        class="font-bold leading-tight truncate max-w-full"
+                        :class="builtInSheetSpec.cols >= 4 ? 'text-[6px]' : 'text-[7.5px]'"
+                      >
+                        {{ sampleItem.name }}
+                      </div>
+                      <div
+                        v-if="showSKU"
+                        class="font-mono font-bold leading-tight truncate max-w-full"
+                        :class="builtInSheetSpec.cols >= 4 ? 'text-[5.5px]' : 'text-[6.5px]'"
+                      >
+                        {{ sampleItem.sku }}
+                      </div>
                     </div>
-                    <div class="w-[62%] flex flex-col justify-center pl-1.5 border-l border-slate-200">
-                      <div class="text-[7.5px] font-extrabold uppercase border-b border-black pb-0.5 leading-tight truncate">{{ labelTitle }}</div>
-                      <div v-if="showName" class="text-[8.5px] font-bold mt-0.5 line-clamp-1 leading-tight">{{ sampleItem.name }}</div>
-                      <div v-if="showSKU" class="text-[7.5px] font-mono font-bold mt-0.5">{{ sampleItem.sku }}</div>
-                      <div v-if="showLoc && sampleItem.location" class="text-[7px] text-slate-700 truncate">{{ sampleItem.location }}</div>
-                    </div>
+                    <template v-else>
+                      <div
+                        class="flex items-center justify-center p-0.5 shrink-0"
+                        :class="builtInSheetSpec.cols >= 4 ? 'w-[40%]' : 'w-[38%]'"
+                      >
+                        <img
+                          :src="`/api/barcode/${sampleItem.id}.png?fmt=${fmt}`"
+                          class="max-w-full object-contain"
+                          :class="builtInSheetSpec.labelH < 26 ? 'max-h-[34px]' : 'max-h-[58px]'"
+                          alt="code"
+                        />
+                      </div>
+                      <div
+                        class="flex-1 min-w-0 flex flex-col justify-center pl-1 border-l border-slate-200"
+                      >
+                        <div
+                          v-if="builtInSheetSpec.labelH >= 30"
+                          class="text-[7px] font-extrabold uppercase border-b border-black pb-0.5 leading-tight truncate"
+                        >
+                          {{ labelTitle }}
+                        </div>
+                        <div
+                          v-if="showName"
+                          class="font-bold leading-tight truncate"
+                          :class="builtInSheetSpec.cols >= 4 ? 'text-[6.5px]' : 'text-[8px] mt-0.5'"
+                        >
+                          {{ sampleItem.name }}
+                        </div>
+                        <div
+                          v-if="showSKU"
+                          class="font-mono font-bold leading-tight truncate"
+                          :class="builtInSheetSpec.cols >= 4 ? 'text-[6px]' : 'text-[7px] mt-0.5'"
+                        >
+                          {{ sampleItem.sku }}
+                        </div>
+                        <div
+                          v-if="showLoc && sampleItem.location && builtInSheetSpec.cols < 5"
+                          class="text-slate-700 truncate leading-tight"
+                          :class="builtInSheetSpec.labelH < 26 ? 'text-[5.5px]' : 'text-[6.5px]'"
+                        >
+                          {{ sampleItem.location }}
+                        </div>
+                      </div>
+                    </template>
                   </template>
                   <!-- Unused Slot on sheet -->
                   <template v-else>
-                    <div class="w-full h-full flex flex-col items-center justify-center text-[8.5px] text-slate-400">
-                      <span>Slot #{{ idx }}</span>
-                      <span class="text-[7.5px] opacity-70">(Kosong)</span>
-                    </div>
+                    <span class="text-[8px]">Slot #{{ idx }}</span>
+                    <span class="text-[7px] opacity-70">(Kosong)</span>
                   </template>
                 </div>
               </div>

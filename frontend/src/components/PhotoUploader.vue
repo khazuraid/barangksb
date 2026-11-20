@@ -211,43 +211,45 @@ function latLngToFractionalTile(lat: number, lng: number, zoom: number) {
   return { x, y, n }
 }
 
-async function fetchSingleTileImage(z: number, x: number, y: number): Promise<HTMLImageElement | null> {
-  const providers = [
-    `https://basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`,
-    `https://tile.openstreetmap.org/${z}/${x}/${y}.png`,
-  ]
-  for (const tileUrl of providers) {
-    try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 3500)
-      const res = await fetch(tileUrl, { signal: controller.signal, mode: 'cors' })
-      clearTimeout(timer)
-      if (!res.ok) continue
-      const blob = await res.blob()
-      const blobUrl = URL.createObjectURL(blob)
-      const loaded = await new Promise<HTMLImageElement | null>((resolve) => {
-        const img = new Image()
-        img.onload = () => {
-          URL.revokeObjectURL(blobUrl)
-          resolve(img)
-        }
-        img.onerror = () => {
-          URL.revokeObjectURL(blobUrl)
-          resolve(null)
-        }
-        img.src = blobUrl
-      })
-      if (loaded) return loaded
-    } catch {
-      // Try next tile provider
-    }
+async function fetchTileUrl(url: string, minBytes = 100): Promise<HTMLImageElement | null> {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 4000)
+    const res = await fetch(url, {
+      signal: controller.signal,
+      mode: 'cors',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+    })
+    clearTimeout(timer)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    if (blob.size < minBytes) return null
+    const blobUrl = URL.createObjectURL(blob)
+    return await new Promise<HTMLImageElement | null>((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        URL.revokeObjectURL(blobUrl)
+        resolve(img)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(blobUrl)
+        resolve(null)
+      }
+      img.src = blobUrl
+    })
+  } catch {
+    return null
   }
-  return null
 }
 
 // Stitch a 2×2 tile patch cropped cleanly around the exact GPS coordinate (256×256)
-async function loadTileBlobImage(lat: number, lng: number): Promise<HTMLCanvasElement | null> {
-  const zoom = 16
+// Primary: Esri World Imagery + World Transportation (hybrid satellite, matching GPS Map Camera)
+// Fallbacks: Esri World Street Map, then OpenStreetMap (rejects OSM's ~6.7KB 418-blocked PNG)
+async function loadTileBlobImage(
+  lat: number,
+  lng: number
+): Promise<{ canvas: HTMLCanvasElement; attribution: string } | null> {
+  const zoom = 17
   const { x: fx, y: fy, n } = latLngToFractionalTile(lat, lng, zoom)
   const tileX = Math.floor(fx)
   const tileY = Math.floor(fy)
@@ -264,29 +266,67 @@ async function loadTileBlobImage(lat: number, lng: number): Promise<HTMLCanvasEl
     { dx: 1, dy: 1, tx: (((startX + 1) % n) + n) % n, ty: Math.max(0, Math.min(n - 1, startY + 1)) },
   ]
 
-  const tiles = await Promise.all(coords.map((c) => fetchSingleTileImage(zoom, c.tx, c.ty)))
-  if (!tiles.some(Boolean)) return null
+  const providers: Array<{
+    attribution: string
+    baseUrl: (tx: number, ty: number) => string
+    overlayUrl?: (tx: number, ty: number) => string
+    minBytes?: number
+  }> = [
+    {
+      attribution: 'Esri',
+      baseUrl: (tx, ty) =>
+        `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${tx}`,
+      overlayUrl: (tx, ty) =>
+        `https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/${zoom}/${ty}/${tx}`,
+    },
+    {
+      attribution: 'Esri',
+      baseUrl: (tx, ty) =>
+        `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${zoom}/${ty}/${tx}`,
+    },
+    {
+      attribution: '© OSM',
+      baseUrl: (tx, ty) => `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`,
+      minBytes: 7500, // OSM returns a 6.7KB HTTP-200 "418 Access blocked" PNG if Referer is stripped
+    },
+  ]
 
-  const patch = document.createElement('canvas')
-  patch.width = 512
-  patch.height = 512
-  const pCtx = patch.getContext('2d')
-  if (!pCtx) return null
-  pCtx.fillStyle = '#e5e7eb'
-  pCtx.fillRect(0, 0, 512, 512)
-  tiles.forEach((img, idx) => {
-    if (img) pCtx.drawImage(img, coords[idx].dx * 256, coords[idx].dy * 256, 256, 256)
-  })
+  for (const provider of providers) {
+    const baseTiles = await Promise.all(
+      coords.map((c) => fetchTileUrl(provider.baseUrl(c.tx, c.ty), provider.minBytes ?? 100))
+    )
+    if (!baseTiles.some(Boolean)) continue
 
-  const centerX = (fx - startX) * 256
-  const centerY = (fy - startY) * 256
-  const out = document.createElement('canvas')
-  out.width = 256
-  out.height = 256
-  const oCtx = out.getContext('2d')
-  if (!oCtx) return null
-  oCtx.drawImage(patch, centerX - 128, centerY - 128, 256, 256, 0, 0, 256, 256)
-  return out
+    const overlayTiles = provider.overlayUrl
+      ? await Promise.all(coords.map((c) => fetchTileUrl(provider.overlayUrl!(c.tx, c.ty))))
+      : []
+
+    const patch = document.createElement('canvas')
+    patch.width = 512
+    patch.height = 512
+    const pCtx = patch.getContext('2d')
+    if (!pCtx) return null
+    pCtx.fillStyle = '#1e293b'
+    pCtx.fillRect(0, 0, 512, 512)
+    baseTiles.forEach((img, idx) => {
+      if (img) pCtx.drawImage(img, coords[idx].dx * 256, coords[idx].dy * 256, 256, 256)
+    })
+    overlayTiles.forEach((img, idx) => {
+      if (img) pCtx.drawImage(img, coords[idx].dx * 256, coords[idx].dy * 256, 256, 256)
+    })
+
+    const centerX = (fx - startX) * 256
+    const centerY = (fy - startY) * 256
+    const out = document.createElement('canvas')
+    out.width = 256
+    out.height = 256
+    const oCtx = out.getContext('2d')
+    if (!oCtx) return null
+    oCtx.drawImage(patch, centerX - 128, centerY - 128, 256, 256, 0, 0, 256, 256)
+    return { canvas: out, attribution: provider.attribution }
+  }
+
+  return null
 }
 
 function formatGpsDate(d: Date): string {
@@ -341,11 +381,14 @@ function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: nu
   ctx.fill()
 
   ctx.fillStyle = '#ea4335'
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = Math.max(1.5, size * 0.08)
   ctx.beginPath()
   ctx.arc(cx, cy - size * 0.65, size * 0.45, Math.PI * 0.8, Math.PI * 0.2, false)
   ctx.lineTo(cx, cy)
   ctx.closePath()
   ctx.fill()
+  ctx.stroke()
 
   ctx.fillStyle = '#ffffff'
   ctx.beginPath()
@@ -471,7 +514,7 @@ async function stampGpsMapCamera(
 
         // Prepare map tile
         currentStepText.value = 'Menyiapkan thumbnail peta koordinat...'
-        const tileImg = await loadTileBlobImage(geoCoords.lat, geoCoords.lng)
+        const tileResult = await loadTileBlobImage(geoCoords.lat, geoCoords.lng)
 
         // Large, bold, highly legible GPS Map Camera fonts (matches real GPS Map Camera overlay)
         currentStepText.value = 'Mengecap banner GPS Map Camera...'
@@ -622,25 +665,27 @@ async function stampGpsMapCamera(
         ctx.closePath()
         ctx.clip()
 
-        if (tileImg) {
-          ctx.drawImage(tileImg, mapX, mapY, mapSize, mapSize)
+        if (tileResult) {
+          ctx.drawImage(tileResult.canvas, mapX, mapY, mapSize, mapSize)
         } else {
           drawProceduralMap(ctx, mapX, mapY, mapSize, mapSize)
         }
 
         // Draw Red Map Pin at exact center
-        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2, Math.round(mapSize * 0.22))
+        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2, Math.round(mapSize * 0.24))
 
         // Subtle attribution pill at bottom-left of map
-        const attrFont = Math.max(10, Math.round(11 * scale))
-        ctx.font = `600 ${attrFont}px system-ui, sans-serif`
-        ctx.textBaseline = 'bottom'
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.65)'
-        const attrText = '© OSM'
-        const attrW = ctx.measureText(attrText).width + 10
-        ctx.fillRect(mapX + 4, mapY + mapSize - attrFont - 8, attrW, attrFont + 4)
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(attrText, mapX + 9, mapY + mapSize - 5)
+        if (tileResult) {
+          const attrFont = Math.max(10, Math.round(11 * scale))
+          ctx.font = `600 ${attrFont}px system-ui, sans-serif`
+          ctx.textBaseline = 'bottom'
+          const attrText = tileResult.attribution
+          const attrW = ctx.measureText(attrText).width + 10
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.72)'
+          ctx.fillRect(mapX + 4, mapY + mapSize - attrFont - 8, attrW, attrFont + 4)
+          ctx.fillStyle = '#ffffff'
+          ctx.fillText(attrText, mapX + 9, mapY + mapSize - 5)
+        }
         ctx.restore()
 
         // Crisp border around map thumbnail

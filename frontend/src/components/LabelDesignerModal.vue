@@ -2510,8 +2510,8 @@ async function printLabels() {
             <div
               class="p-2 rounded border grid place-items-center"
               :style="{
-                background: activeSheetSpec.isYellowBacking ? '#fefce8' : '#ffffff',
-                borderColor: activeSheetSpec.isYellowBacking ? '#fde047' : '#cbd5e1',
+                background: activeSheetSpec.isYellowBacking ? '#fef08a' : '#ffffff',
+                borderColor: activeSheetSpec.isYellowBacking ? '#facc15' : '#cbd5e1',
               }"
             >
               <div
@@ -2594,15 +2594,30 @@ async function printLabels() {
             </template>
           </div>
 
-          <!-- THE PHYSICAL STICKER -->
+          <!-- THE PHYSICAL STICKER (wrapped in Tom & Jerry yellow backing pad when active) -->
           <div
-            class="relative bg-white shadow-xl rounded-[4px] text-black select-none overflow-hidden transition-all flex flex-col"
-            :style="{
-              width: `${activeTemplate.widthMm * MM_TO_PX * zoom}px`,
-              height: `${activeTemplate.heightMm * MM_TO_PX * zoom}px`,
-            }"
-            @click.self="activeElementId = null; selectedTableRowIndex = null; selectedTableCellIndex = null"
+            :class="
+              activeSheetSpec.isYellowBacking
+                ? 'p-4 rounded-[10px] border border-amber-300 shadow-md flex flex-col items-center gap-2'
+                : 'contents'
+            "
+            :style="activeSheetSpec.isYellowBacking ? { background: '#fef08a' } : undefined"
           >
+            <div
+              v-if="activeSheetSpec.isYellowBacking"
+              class="w-full flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-amber-950 border-b border-amber-300/80 pb-1.5"
+            >
+              <span>{{ activeSheetSpec.shortLabel }}</span>
+              <span class="font-mono font-semibold opacity-80">{{ activeSheetSpec.perSheet }} Label / Lembar</span>
+            </div>
+            <div
+              class="relative bg-white shadow-xl rounded-[4px] text-black select-none overflow-hidden transition-all flex flex-col"
+              :style="{
+                width: `${activeTemplate.widthMm * MM_TO_PX * zoom}px`,
+                height: `${activeTemplate.heightMm * MM_TO_PX * zoom}px`,
+              }"
+              @click.self="activeElementId = null; selectedTableRowIndex = null; selectedTableCellIndex = null"
+            >
             <!-- 1. MODE TABEL BERGARIS KUSTOM PENUH -->
             <div
               v-if="isTableMode"
@@ -3061,6 +3076,7 @@ async function printLabels() {
                 />
               </div>
             </template>
+            </div>
           </div>
 
           <!-- Tombol Tambah Baris Cepat (di Luar Stiker) -->

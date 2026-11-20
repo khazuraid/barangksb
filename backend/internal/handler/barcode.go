@@ -461,6 +461,13 @@ func (h *BarcodeHandler) renderSheetHTML(rawItems []LabelItem, layout, fmtType, 
 	fullItems = append(fullItems, expandedItems...)
 
 	isSheet := layout == "tj_103" || layout == "tj_107" || layout == "tj_108" || layout == "tj_121" || layout == "a4_3x7" || layout == "a4_4x10"
+	isYellowTJ := layout == "tj_103" || layout == "tj_107" || layout == "tj_108" || layout == "tj_121"
+	sheetBg := "#ffffff"
+	sheetBorder := "#e2e8f0"
+	if isYellowTJ {
+		sheetBg = "#fef08a"
+		sheetBorder = "#facc15"
+	}
 
 	perSheet := 12
 	switch layout {
@@ -645,12 +652,15 @@ body {
   }
   .screen-toolbar button:hover { background: #4f46e5; }
   .sheet-page {
-    background: #fefce8; /* Characteristic Tom & Jerry backing paper yellow */
-    border: 1px solid #fef08a;
+    background: %s;
+    border: 1px solid %s;
     box-shadow: 0 4px 14px rgba(0,0,0,0.08);
     margin: 20px auto;
     border-radius: 6px;
     padding: 8mm 6mm;
+  }
+  .sheet-page .label-unit {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
   }
   .print-page-wrapper {
     background: #fff;
@@ -670,6 +680,7 @@ body {
     page-break-after: always;
     break-after: page;
   }
+  .sheet-page .label-unit { box-shadow: none !important; }
   .print-page-wrapper { box-shadow: none !important; margin: 0 !important; }
 }
 %s
@@ -689,22 +700,55 @@ body {
 }
 </style>
 </head>
-<body onload="if(window.location.search.indexOf('noprint=1')===-1){window.print();}">
+<body>
 <div class="screen-toolbar">
   <div style="display:flex;align-items:center;gap:12px">
     <strong>🏷️ Lembar Cetak Label Stiker</strong>
     <span style="opacity:0.8;font-size:12px">%s · %d Stiker Dicetak</span>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
-    <button onclick="window.print()">🖨️ Cetak Sekarang</button>
+    <button id="btn-print-sheet" type="button">🖨️ Cetak Sekarang</button>
   </div>
 </div>
 %s
+<script data-cfasync="false">
+(function(){
+  var btn = document.getElementById('btn-print-sheet');
+  function waitImages(cb) {
+    var imgs = Array.prototype.slice.call(document.images || []);
+    if (!imgs.length) { cb(); return; }
+    var left = imgs.length, done = false;
+    function tick() {
+      if (done) return;
+      if (--left <= 0) { done = true; cb(); }
+    }
+    imgs.forEach(function(img) {
+      if (img.complete) { tick(); return; }
+      img.addEventListener('load', tick, { once: true });
+      img.addEventListener('error', tick, { once: true });
+    });
+    setTimeout(function(){ if (!done) { done = true; cb(); } }, 6000);
+  }
+  function doPrint() {
+    waitImages(function() {
+      window.focus();
+      window.print();
+    });
+  }
+  if (btn) btn.addEventListener('click', doPrint);
+  if (window.location.search.indexOf('noprint=1') === -1) {
+    if (document.readyState === 'complete') { setTimeout(doPrint, 150); }
+    else { window.addEventListener('load', function(){ setTimeout(doPrint, 150); }, { once: true }); }
+  }
+})();
+</script>
 </body>
 </html>`,
 		html.EscapeString(title),
 		html.EscapeString(layoutLabel),
 		len(expandedItems),
+		sheetBg,
+		sheetBorder,
 		cssPage,
 		cssContainer,
 		cssContainer,
@@ -765,6 +809,18 @@ func (h *BarcodeHandler) renderSingleLabel(it LabelItem, layout, fmtType, title 
 
 	case "tj_107":
 		// Tom & Jerry No. 107 (50x18 mm, 3 cols x 8 rows)
+		if fmtType == "code128" {
+			return fmt.Sprintf(`
+<div class="label-unit" style="flex-direction:column;align-items:center;justify-content:center;text-align:center">
+  <img src="%s" style="height:8mm;max-width:46mm" alt="%s"/>
+  %s
+  %s
+</div>`,
+				codeImgURL, html.EscapeString(it.SKU),
+				ternaryStr(showName, fmt.Sprintf(`<div style="font-size:6.5px;font-weight:700;line-height:1;max-width:46mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">%s</div>`, html.EscapeString(it.Name)), ""),
+				ternaryStr(showSKU, fmt.Sprintf(`<div style="font-family:monospace;font-size:6px;font-weight:700">%s</div>`, html.EscapeString(it.SKU)), ""),
+			)
+		}
 		return fmt.Sprintf(`
 <div class="label-unit">
   <div style="flex:0 0 15mm;display:flex;align-items:center;justify-content:center">
@@ -784,6 +840,18 @@ func (h *BarcodeHandler) renderSingleLabel(it LabelItem, layout, fmtType, title 
 
 	case "tj_108":
 		// Tom & Jerry No. 108 (38x18 mm, 5 cols x 8 rows)
+		if fmtType == "code128" {
+			return fmt.Sprintf(`
+<div class="label-unit" style="flex-direction:column;align-items:center;justify-content:center;text-align:center">
+  <img src="%s" style="height:8mm;max-width:34mm" alt="%s"/>
+  %s
+  %s
+</div>`,
+				codeImgURL, html.EscapeString(it.SKU),
+				ternaryStr(showName, fmt.Sprintf(`<div style="font-size:6px;font-weight:700;line-height:1;max-width:34mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">%s</div>`, html.EscapeString(it.Name)), ""),
+				ternaryStr(showSKU, fmt.Sprintf(`<div style="font-family:monospace;font-size:5.5px;font-weight:700">%s</div>`, html.EscapeString(it.SKU)), ""),
+			)
+		}
 		return fmt.Sprintf(`
 <div class="label-unit">
   <div style="flex:0 0 14mm;display:flex;align-items:center;justify-content:center">
@@ -801,6 +869,21 @@ func (h *BarcodeHandler) renderSingleLabel(it LabelItem, layout, fmtType, title 
 
 	case "tj_121":
 		// Tom & Jerry No. 121 (75x38 mm, 2 cols x 5 rows)
+		if fmtType == "code128" {
+			return fmt.Sprintf(`
+<div class="label-unit" style="flex-direction:column;align-items:center;justify-content:center;text-align:center">
+  <div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">%s</div>
+  <img src="%s" style="height:14mm;max-width:66mm;margin:1mm 0" alt="%s"/>
+  %s
+  %s
+  %s
+</div>`,
+				html.EscapeString(title), codeImgURL, html.EscapeString(it.SKU),
+				ternaryStr(showName, fmt.Sprintf(`<div style="font-size:9.5px;font-weight:700;line-height:1.15;max-width:68mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">%s</div>`, html.EscapeString(it.Name)), ""),
+				ternaryStr(showSKU, fmt.Sprintf(`<div style="font-family:monospace;font-size:8.5px;font-weight:700">%s</div>`, html.EscapeString(it.SKU)), ""),
+				ternaryStr(showLoc && it.Location != "", fmt.Sprintf(`<div style="font-size:7.5px;opacity:0.85">📍 %s</div>`, html.EscapeString(it.Location)), ""),
+			)
+		}
 		return fmt.Sprintf(`
 <div class="label-unit">
   <div style="flex:0 0 30mm;display:flex;align-items:center;justify-content:center">

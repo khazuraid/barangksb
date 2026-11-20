@@ -136,6 +136,33 @@ func TestRenderSingleLabelPreventsXSS(t *testing.T) {
 	assert.Contains(t, htmlOut, `/api/barcode/abc-123.png?fmt=qr`)
 }
 
+func TestRenderSheetHTMLAvoidsRocketLoaderHijack(t *testing.T) {
+	h := NewBarcodeHandler(nil)
+	sheet := h.renderSheetHTML(
+		[]LabelItem{{ID: "abc-123", Name: "Laptop", SKU: "SKU-1", Location: "Lab"}},
+		"tj_103", "qr", "INVENTARIS", true, true, true, 1, 0, true,
+	)
+	assert.Contains(t, sheet, `<script data-cfasync="false">`)
+	assert.Contains(t, sheet, `id="btn-print-sheet"`)
+	assert.Contains(t, sheet, `background: #fef08a;`)
+	assert.NotContains(t, sheet, `onclick=`)
+	assert.NotContains(t, sheet, `onload=`)
+
+	a4Sheet := h.renderSheetHTML(
+		[]LabelItem{{ID: "abc-123", Name: "Laptop", SKU: "SKU-1", Location: "Lab"}},
+		"a4_3x7", "qr", "INVENTARIS", true, true, true, 1, 0, true,
+	)
+	assert.Contains(t, a4Sheet, `background: #ffffff;`)
+
+	for _, tj := range []string{"tj_107", "tj_108", "tj_121"} {
+		out := h.renderSingleLabel(
+			LabelItem{ID: "abc-123", Name: "Laptop", SKU: "SKU-1", Location: "Lab"},
+			tj, "code128", "INVENTARIS", true, true, true,
+		)
+		assert.Contains(t, out, `flex-direction:column`, "expected vertical code128 layout for %s", tj)
+	}
+}
+
 func TestReportNumberAndMasking(t *testing.T) {
 	num := generateReportNumber()
 	assert.True(t, len(num) == len("LAP-20260101-AABBCCDDEEFF"))

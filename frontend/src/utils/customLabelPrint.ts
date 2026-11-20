@@ -734,18 +734,68 @@ export function expandItemsForPrint(items: any[], copies = 1, offset = 0, isShee
   return expanded
 }
 
-export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], opts: CustomPrintOptions = {}): string {
+export function fitTemplateToSheetSpec(rawTpl: LabelTemplate, format?: SheetFormatId): LabelTemplate {
   const tpl: LabelTemplate = JSON.parse(JSON.stringify(rawTpl))
   ensureTableConfig(tpl)
-  const format = opts.sheetFormat || inferSheetFormat(tpl)
+  const fmt = format || inferSheetFormat(tpl)
+  const spec = getSheetSpec(fmt, tpl.widthMm, tpl.heightMm)
+  if (!spec.isSheet || fmt === 'auto_a4') return tpl
+
+  const origW = Number(tpl.widthMm) || spec.labelW
+  const origH = Number(tpl.heightMm) || spec.labelH
+  const sx = spec.labelW / origW
+  const sy = spec.labelH / origH
+  const sMin = Math.min(sx, sy)
+
+  if (Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
+    const scaleFont = (pt?: number, fallback = 7) =>
+      Math.max(4.5, Number(((Number(pt) || fallback) * sMin).toFixed(1)))
+
+    if (Array.isArray(tpl.elements)) {
+      tpl.elements = tpl.elements.map((el) => ({
+        ...el,
+        x: Number(((Number(el.x) || 0) * sx).toFixed(2)),
+        y: Number(((Number(el.y) || 0) * sy).toFixed(2)),
+        w: Number(((Number(el.w) || 10) * sx).toFixed(2)),
+        h: Number(((Number(el.h) || 5) * sy).toFixed(2)),
+        ...(el.fontSize ? { fontSize: scaleFont(el.fontSize, 7) } : {}),
+      }))
+    }
+
+    if (tpl.tableConfig) {
+      const tc = tpl.tableConfig
+      tc.qrWidthMm = Math.max(8, Number(((Number(tc.qrWidthMm) || 18) * sx).toFixed(1)))
+      tc.logoWidthMm = Math.max(6, Number(((Number(tc.logoWidthMm) || 10) * sMin).toFixed(1)))
+      tc.cellPaddingMm = Math.max(0.3, Number(((Number(tc.cellPaddingMm) || 0.8) * sMin).toFixed(2)))
+      tc.headerFontSize = scaleFont(tc.headerFontSize, 7.5)
+      tc.footerFontSize = scaleFont(tc.footerFontSize, 6)
+      tc.defaultFontSize = scaleFont(tc.defaultFontSize, 6.5)
+      tc.rows = (tc.rows || []).map((r) => ({
+        ...r,
+        ...(r.fontSize ? { fontSize: scaleFont(r.fontSize, tc.defaultFontSize) } : {}),
+        ...(r.cells
+          ? {
+              cells: r.cells.map((c) => ({
+                ...c,
+                ...(c.fontSize ? { fontSize: scaleFont(c.fontSize, tc.defaultFontSize) } : {}),
+              })),
+            }
+          : {}),
+      }))
+    }
+  }
+
+  tpl.widthMm = spec.labelW
+  tpl.heightMm = spec.labelH
+  return tpl
+}
+
+export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], opts: CustomPrintOptions = {}): string {
+  const format = opts.sheetFormat || inferSheetFormat(rawTpl)
+  const tpl = fitTemplateToSheetSpec(rawTpl, format)
   const spec = getSheetSpec(format, tpl.widthMm, tpl.heightMm)
   const slotW = spec.labelW
   const slotH = spec.labelH
-  // Align rendered label box to the chosen sheet slot dimensions (keeps Tom & Jerry grids exact)
-  if (spec.isSheet && format !== 'auto_a4') {
-    tpl.widthMm = slotW
-    tpl.heightMm = slotH
-  }
   const showCutBorder = typeof opts.showCutBorder === 'boolean' ? opts.showCutBorder : getShowCutBorder(tpl)
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const slots = expandItemsForPrint(items, opts.copies ?? 1, opts.offset ?? 0, spec.isSheet)
@@ -765,8 +815,8 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
     }
     if (pages.length === 0) pages.push(Array(perSheet).fill(null))
 
-    const sheetBg = spec.isYellowBacking ? '#fefce8' : '#ffffff'
-    const sheetBorder = spec.isYellowBacking ? '#fef08a' : '#e2e8f0'
+    const sheetBg = spec.isYellowBacking ? '#fef08a' : '#ffffff'
+    const sheetBorder = spec.isYellowBacking ? '#facc15' : '#e2e8f0'
     const slotBorderCss = showCutBorder ? 'border: 1px dashed #cbd5e1; border-radius: 4px;' : ''
     pageCss = `
       @page { size: A4 portrait; margin: ${spec.pageMargin}; }
@@ -789,12 +839,14 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
         box-sizing: border-box;
         overflow: hidden;
         background: #fff;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
         ${slotBorderCss}
       }
       .label-slot.is-blank {
         visibility: hidden;
         background: transparent;
         border: none;
+        box-shadow: none;
       }
       @media print {
         .sheet-page {
@@ -803,6 +855,9 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
           box-shadow: none !important;
           margin: 0 auto !important;
           padding: 0 !important;
+        }
+        .label-slot {
+          box-shadow: none !important;
         }
         .sheet-page:not(:last-child) {
           page-break-after: always;
@@ -1040,6 +1095,9 @@ export function openCustomPrintTab(
     }
     try {
       await waitForDocumentImages(win.document)
+      await new Promise<void>((resolve) =>
+        win.requestAnimationFrame(() => win.requestAnimationFrame(() => resolve()))
+      )
     } finally {
       if (btn) {
         btn.disabled = false
