@@ -82,7 +82,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	pool, err := pgxpool.New(context.Background(), cfg.DBURL)
+	pool, err := db.Open(cfg.DBURL)
 	if err != nil {
 		slog.Error("db open failed", "err", err)
 		os.Exit(1)
@@ -108,9 +108,10 @@ func main() {
 	// Dedicated background worker mode
 	if *workerMode || os.Getenv("APP_ROLE") == "worker" {
 		slog.Info("starting application in dedicated worker role")
-		w := worker.NewWorker(rdb, pool, tgBot)
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		tgBot.InitSender(ctx)
+		w := worker.NewWorker(rdb, pool, tgBot)
 		w.Start(ctx, 5)
 		<-ctx.Done()
 		w.Stop()
@@ -174,7 +175,7 @@ func main() {
 	setH := handler.NewSettingHandler(pool, queuedTg)
 	importH := handler.NewImportHandler(pool, itemH)
 	maintH := handler.NewMaintenanceHandler(pool)
-	pubReportH := handler.NewPublicReportHandler(pool)
+	pubReportH := handler.NewPublicReportHandler(pool, upH)
 
 	middleware.SetDBPool(pool)
 	r := gin.New()
@@ -247,11 +248,12 @@ func main() {
 	api.POST("/audit/security/unblock", userH.UnblockIP)
 	api.DELETE("/audit/security/events", userH.ClearSecurityEvents)
 
-	api.GET("/barcode/:id", bcH.PNG)
+	api.GET("/barcode/units", bcH.ListUnits)
 	api.GET("/barcode/sheet", bcH.Sheet)
 	api.GET("/barcode/templates", bcH.ListTemplates)
 	api.POST("/barcode/templates", bcH.SaveTemplate)
 	api.DELETE("/barcode/templates/:id", bcH.DeleteTemplate)
+	api.GET("/barcode/:id", bcH.PNG)
 
 	// Public scan endpoint — returns item detail for QR scan landing page
 	api.GET("/scan/:id", bcH.ScanItem)

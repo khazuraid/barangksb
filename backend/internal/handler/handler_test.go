@@ -281,3 +281,52 @@ func TestResolveLocationCode(t *testing.T) {
 	assert.Equal(t, "", resolveLocationCode(context.Background(), q, "", ""))
 }
 
+func TestParseStrictNumbers(t *testing.T) {
+	valid64 := map[string]int64{
+		"0":            0,
+		"42":           42,
+		"1.000":        1000,
+		"1.500.000":    1500000,
+		"1.500.000,00": 1500000,
+		"Rp 2.750.000": 2750000,
+		"1,500,000.00": 1500000,
+		"10.0":         10,
+		"10,00":        10,
+		"-5":           -5,
+	}
+	for raw, want := range valid64 {
+		got, err := parseStrictInt64(raw)
+		assert.NoError(t, err, "expected valid int64 for %q", raw)
+		assert.Equal(t, want, got, "mismatch for %q", raw)
+	}
+
+	for _, bad := range []string{"", "abc", "1.5", "1,5", "0.500", "1.2.3", "1,23", "10.25", "12abc"} {
+		_, err := parseStrictInt64(bad)
+		assert.Error(t, err, "expected error for %q", bad)
+	}
+
+	got32, err := parseStrictInt32("1.250")
+	assert.NoError(t, err)
+	assert.Equal(t, int32(1250), got32)
+
+	_, err = parseStrictInt32("999999999999")
+	assert.Error(t, err)
+}
+
+func TestRenderSheetHTMLPrintLayout(t *testing.T) {
+	h := NewBarcodeHandler(nil)
+	sheet := h.renderSheetHTML(
+		[]LabelItem{{ID: "abc-123", Name: "Laptop", SKU: "SKU-1", Location: "Lab"}},
+		"tj_103", "qr", "INVENTARIS", true, true, true, 1, 0, true,
+	)
+	assert.Contains(t, sheet, `@page { size: 210mm 297mm; margin: 0; }`)
+	assert.Contains(t, sheet, `.sheet-page:not(:last-child)`)
+	assert.NotContains(t, sheet, "padding: 0 !important;\n    page-break-after: always;")
+
+	roll := h.renderSheetHTML(
+		[]LabelItem{{ID: "abc-123", Name: "Laptop", SKU: "SKU-1", Location: "Lab"}},
+		"label_50x30", "qr", "INVENTARIS", true, true, true, 1, 0, true,
+	)
+	assert.Contains(t, roll, `@page { size: 50mm 30mm; margin: 0; }`)
+	assert.Contains(t, roll, `.print-page-wrapper .label-unit:not(:last-child)`)
+}

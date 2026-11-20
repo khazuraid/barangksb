@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/api'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
@@ -27,10 +28,15 @@ import {
   renderCustomLabelHtml,
   printCustomLabels,
   openCustomPrintTab,
+  printUrlInHiddenFrame,
 } from '@/utils/customLabelPrint'
+import { buildBuiltInLabelTemplate } from '@/utils/labelPresets'
 
+const route = useRoute()
 const toast = useToast()
 const confirm = useConfirm()
+const sourceMode = ref<'items' | 'units'>('items')
+const itemIdFilter = ref('')
 const items = ref<any[]>([])
 const selectedItemsMap = ref<Record<string, any>>({})
 const total = ref(0)
@@ -228,143 +234,18 @@ async function confirmSaveLayoutAsTemplate() {
   }
   savingTemplate.value = true
   const customId = `custom_${Date.now().toString(36)}`
-
-  let widthMm = 64
-  let heightMm = 32
-  let sheetFormat: SheetFormatId = 'single'
-  if (layout.value === 'tj_103') {
-    widthMm = 64; heightMm = 32; sheetFormat = 'tj_103'
-  } else if (layout.value === 'tj_107') {
-    widthMm = 50; heightMm = 18; sheetFormat = 'tj_107'
-  } else if (layout.value === 'tj_108') {
-    widthMm = 38; heightMm = 18; sheetFormat = 'tj_108'
-  } else if (layout.value === 'tj_121') {
-    widthMm = 75; heightMm = 38; sheetFormat = 'tj_121'
-  } else if (layout.value === 'a4_3x7') {
-    widthMm = 65; heightMm = 38; sheetFormat = 'a4_3x7'
-  } else if (layout.value === 'a4_4x10') {
-    widthMm = 48; heightMm = 25.5; sheetFormat = 'a4_4x10'
-  } else if (layout.value.includes('50x30') || layout.value === 'label_50x30') {
-    widthMm = 50; heightMm = 30
-  } else if (layout.value.includes('40x30') || layout.value === 'label_40x30') {
-    widthMm = 40; heightMm = 30
-  } else if (layout.value.includes('60x40') || layout.value === 'label_60x40') {
-    widthMm = 60; heightMm = 40
-  } else if (layout.value.includes('70x50') || layout.value === 'label_70x50') {
-    widthMm = 70; heightMm = 50
-  } else if (layout.value.includes('100x50') || layout.value === 'label_100x50') {
-    widthMm = 100; heightMm = 50
-  } else if (layout.value === 'thermal_58') {
-    widthMm = 58; heightMm = 40
-  } else if (layout.value === 'thermal_80') {
-    widthMm = 80; heightMm = 50
-  } else if (selectedCustomTemplate.value) {
-    widthMm = selectedCustomTemplate.value.widthMm || 64
-    heightMm = selectedCustomTemplate.value.heightMm || 32
-    sheetFormat = selectedCustomTemplate.value.sheetFormat || inferSheetFormat(selectedCustomTemplate.value)
-  }
-
-  let newTpl: LabelTemplate
-  if (selectedCustomTemplate.value) {
-    const cloned = JSON.parse(JSON.stringify(selectedCustomTemplate.value))
-    newTpl = {
-      ...cloned,
-      id: customId,
-      name: cleanName,
-      widthMm,
-      heightMm,
-      sheetFormat,
-    }
-  } else {
-    const rows: any[] = []
-    if (showName.value) {
-      rows.push({
-        id: 'r_name',
-        type: 'cells',
-        field: 'name',
-        label: '',
-        cells: [{ id: 'c_name', field: 'name', label: '', bold: true, fontSize: 7.5, align: 'left', bgColor: 'white' }],
-      })
-    }
-    if (showSKU.value) {
-      rows.push({
-        id: 'r_sku',
-        type: 'cells',
-        field: 'sku',
-        label: '',
-        cells: [{ id: 'c_sku', field: 'sku', label: '', bold: true, fontSize: 6.5, align: 'left', bgColor: 'white' }],
-      })
-    }
-    if (showLoc.value) {
-      rows.push({
-        id: 'r_loc',
-        type: 'cells',
-        field: 'location',
-        label: '',
-        cells: [{ id: 'c_loc', field: 'location', label: '', bold: false, fontSize: 6, align: 'left', bgColor: 'white' }],
-      })
-    }
-    if (rows.length === 0) {
-      rows.push({
-        id: 'r_name',
-        type: 'cells',
-        field: 'name',
-        label: '',
-        cells: [{ id: 'c_name', field: 'name', label: '', bold: true, fontSize: 7.5, align: 'left', bgColor: 'white' }],
-      })
-    }
-
-    newTpl = {
-      id: customId,
-      name: cleanName,
-      widthMm,
-      heightMm,
-      sheetFormat,
-      layoutMode: 'table',
-      elements: [],
-      config: {
-        baseLayout: layout.value,
-        fmt: fmt.value,
-        labelTitle: labelTitle.value || 'INVENTARIS KANTOR',
-        showName: showName.value,
-        showSKU: showSKU.value,
-        showLoc: showLoc.value,
-        showBorder: showBorder.value,
-        copies: copies.value,
-      },
-      tableConfig: {
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: '#cbd5e1',
-        showOuterBorder: showBorder.value,
-        showGridLines: false,
-        showColBorder: false,
-        showLabelColBorder: false,
-        showHeaderBorder: true,
-        showFooterBorder: false,
-        cellPaddingMm: 0.7,
-        labelColWidthPercent: 0,
-        showHeader: true,
-        headerText: labelTitle.value || 'INVENTARIS KANTOR',
-        headerSubText: '',
-        headerFontSize: 6.5,
-        headerStyle: 'standard',
-        showLogo: false,
-        logoUrl: '',
-        logoWidthMm: 10,
-        logoPosition: 'above_qr',
-        showItemNameUnderLogo: false,
-        qrPosition: 'left',
-        qrType: fmt.value,
-        qrWidthMm: Math.min(20, Math.max(12, Math.round(heightMm * 0.62))),
-        showFooter: false,
-        footerText: '',
-        footerFontSize: 6,
-        defaultFontSize: 6.5,
-        rows,
-      },
-    }
-  }
+  const newTpl = buildBuiltInLabelTemplate({
+    id: customId,
+    name: cleanName,
+    layout: layout.value,
+    fmt: fmt.value,
+    labelTitle: labelTitle.value,
+    showName: showName.value,
+    showSKU: showSKU.value,
+    showLoc: showLoc.value,
+    showBorder: showBorder.value,
+    selectedCustomTemplate: selectedCustomTemplate.value,
+  })
   ensureTableConfig(newTpl)
 
   try {
@@ -563,15 +444,18 @@ async function fetchItems(reset = false) {
   if (reset) page.value = 0
   loading.value = true
   try {
-    const res = await api.get('/items', {
-      params: {
-        q: q.value,
-        cat: categoryFilter.value,
-        loc: locationFilter.value,
-        page: page.value + 1,
-        per_page: perPage.value,
-      },
-    })
+    const endpoint = sourceMode.value === 'units' ? '/barcode/units' : '/items'
+    const params: Record<string, any> = {
+      q: q.value,
+      cat: categoryFilter.value,
+      loc: locationFilter.value,
+      page: page.value + 1,
+      per_page: perPage.value,
+    }
+    if (sourceMode.value === 'units' && itemIdFilter.value) {
+      params.item_id = itemIdFilter.value
+    }
+    const res = await api.get(endpoint, { params })
     items.value = res.data?.data || []
     rememberItems(items.value)
     total.value = res.data?.total || 0
@@ -580,8 +464,30 @@ async function fetchItems(reset = false) {
   }
 }
 
+function switchSourceMode(mode: 'items' | 'units') {
+  if (sourceMode.value === mode) return
+  sourceMode.value = mode
+  if (mode === 'items') {
+    itemIdFilter.value = ''
+  }
+  fetchItems(true)
+}
+
 onMounted(async () => {
+  if (route.query.mode === 'units') {
+    sourceMode.value = 'units'
+  }
+  if (typeof route.query.item_id === 'string' && route.query.item_id.trim()) {
+    itemIdFilter.value = route.query.item_id.trim()
+    sourceMode.value = 'units'
+  }
+  if (typeof route.query.q === 'string' && route.query.q.trim()) {
+    q.value = route.query.q.trim()
+  }
   await Promise.all([fetchItems(), loadCustomTemplates()])
+  if (route.query.auto_select === '1' && items.value.length) {
+    selected.value = Array.from(new Set([...selected.value, ...items.value.map((i) => i.id)]))
+  }
   const [c, l] = await Promise.all([api.get('/categories'), api.get('/locations')])
   categoriesRaw.value = c.data || []
   locationsRaw.value = l.data || []
@@ -600,11 +506,12 @@ watch([categoryFilter, locationFilter, perPage], () => fetchItems(true))
 watch(page, () => fetchItems())
 
 const lastPage = computed(() => Math.max(0, Math.ceil(total.value / perPage.value) - 1))
+const entityUnitWord = computed(() => (sourceMode.value === 'units' ? 'unit fisik' : 'barang'))
 const range = computed(() => {
-  if (!total.value) return '0 barang'
+  if (!total.value) return `0 ${entityUnitWord.value}`
   const from = page.value * perPage.value + 1
   const to = Math.min(total.value, (page.value + 1) * perPage.value)
-  return `${from}–${to} dari ${total.value} barang`
+  return `${from}–${to} dari ${total.value} ${entityUnitWord.value}`
 })
 
 function toggleAllOnPage() {
@@ -627,16 +534,19 @@ async function selectAllGlobal() {
     let currentPage = 1
     let expectedTotal = Infinity
 
+    const endpoint = sourceMode.value === 'units' ? '/barcode/units' : '/items'
     while (collected.length < expectedTotal) {
-      const res = await api.get('/items', {
-        params: {
-          q: q.value,
-          cat: categoryFilter.value,
-          loc: locationFilter.value,
-          page: currentPage,
-          per_page: batchSize,
-        },
-      })
+      const params: Record<string, any> = {
+        q: q.value,
+        cat: categoryFilter.value,
+        loc: locationFilter.value,
+        page: currentPage,
+        per_page: batchSize,
+      }
+      if (sourceMode.value === 'units' && itemIdFilter.value) {
+        params.item_id = itemIdFilter.value
+      }
+      const res = await api.get(endpoint, { params })
       const batch: any[] = res.data?.data || []
       const resTotal = Number(res.data?.total ?? batch.length)
       if (Number.isFinite(resTotal)) expectedTotal = resTotal
@@ -666,22 +576,25 @@ async function ensureSelectedItemsLoaded(): Promise<any[]> {
   if (missingIds.length > 0) {
     try {
       const batchSize = 500
-      let currentPage = 1
-      let expectedTotal = Infinity
-      let fetched = 0
-      while (fetched < expectedTotal) {
-        const res = await api.get('/items', {
-          params: { page: currentPage, per_page: batchSize },
-        })
-        const batch: any[] = res.data?.data || []
-        const resTotal = Number(res.data?.total ?? batch.length)
-        if (Number.isFinite(resTotal)) expectedTotal = resTotal
-        rememberItems(batch)
-        fetched += batch.length
-        if (batch.length < batchSize || selected.value.every((id) => Boolean(selectedItemsMap.value[id]))) {
-          break
+      for (const endpoint of ['/items', '/barcode/units']) {
+        if (selected.value.every((id) => Boolean(selectedItemsMap.value[id]))) break
+        let currentPage = 1
+        let expectedTotal = Infinity
+        let fetched = 0
+        while (fetched < expectedTotal) {
+          const res = await api.get(endpoint, {
+            params: { page: currentPage, per_page: batchSize },
+          })
+          const batch: any[] = res.data?.data || []
+          const resTotal = Number(res.data?.total ?? batch.length)
+          if (Number.isFinite(resTotal)) expectedTotal = resTotal
+          rememberItems(batch)
+          fetched += batch.length
+          if (batch.length < batchSize || selected.value.every((id) => Boolean(selectedItemsMap.value[id]))) {
+            break
+          }
+          currentPage++
         }
-        currentPage++
       }
     } catch (err) {
       console.warn('Gagal melengkapi data barang terpilih:', err)
@@ -755,65 +668,6 @@ function openPrintDialog() {
   printModalVisible.value = true
 }
 
-function printSheetInHiddenFrame(url: string) {
-  const iframe = document.createElement('iframe')
-  iframe.setAttribute('aria-hidden', 'true')
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
-  let cleaned = false
-  const cleanup = () => {
-    if (cleaned) return
-    cleaned = true
-    try { iframe.remove() } catch {}
-  }
-  iframe.addEventListener(
-    'load',
-    () => {
-      const win = iframe.contentWindow
-      if (!win) {
-        cleanup()
-        return
-      }
-      const imgs = Array.from(win.document.images || [])
-      const runPrint = () => {
-        const fallback = window.setTimeout(cleanup, 60000)
-        win.addEventListener(
-          'afterprint',
-          () => {
-            window.clearTimeout(fallback)
-            setTimeout(cleanup, 200)
-          },
-          { once: true }
-        )
-        win.focus()
-        win.print()
-      }
-      if (!imgs.length) {
-        setTimeout(runPrint, 100)
-        return
-      }
-      Promise.race([
-        Promise.all(
-          imgs.map(
-            (img) =>
-              new Promise<void>((resolve) => {
-                if (img.complete) {
-                  resolve()
-                  return
-                }
-                img.addEventListener('load', () => resolve(), { once: true })
-                img.addEventListener('error', () => resolve(), { once: true })
-              })
-          )
-        ),
-        new Promise<void>((resolve) => setTimeout(resolve, 6000)),
-      ]).then(() => setTimeout(runPrint, 100))
-    },
-    { once: true }
-  )
-  iframe.src = url
-  document.body.appendChild(iframe)
-}
-
 async function printNow() {
   if (layout.value.startsWith('custom_')) {
     const tpl = selectedCustomTemplate.value
@@ -863,7 +717,7 @@ async function printNow() {
   }
   const win = window.open(getPrintUrl(true), '_blank')
   if (!win) {
-    printSheetInHiddenFrame(getPrintUrl(false))
+    printUrlInHiddenFrame(getPrintUrl(false))
   }
 }
 
@@ -993,11 +847,11 @@ const sampleItem = computed(() => {
     <!-- KPI Metric Strip -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
       <StatCard
-        label="Total Master Barang"
+        :label="sourceMode === 'units' ? 'Total Unit Fisik Terdaftar' : 'Total Master Barang'"
         :value="total"
-        icon="pi pi-box"
+        :icon="sourceMode === 'units' ? 'pi pi-th-large' : 'pi pi-box'"
         tone="neutral"
-        hint="Barang inventaris tercatat"
+        :hint="sourceMode === 'units' ? 'Unit fisik aset tetap terdaftar' : 'Barang inventaris tercatat'"
       />
       <StatCard
         label="Label Dipilih"
@@ -1014,6 +868,50 @@ const sampleItem = computed(() => {
         tone="info"
         :hint="layoutOptions.find(o => o.value === layout)?.label || layout"
       />
+    </div>
+
+    <!-- Mode Switcher: Master Barang vs Daftar Unit Fisik Terdaftar -->
+    <div class="panel p-2.5 mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <Button
+          label="Master Barang"
+          icon="pi pi-box"
+          size="small"
+          :severity="sourceMode === 'items' ? 'primary' : 'secondary'"
+          :outlined="sourceMode !== 'items'"
+          @click="switchSourceMode('items')"
+        />
+        <Button
+          label="Daftar Unit Fisik Terdaftar"
+          icon="pi pi-th-large"
+          size="small"
+          :severity="sourceMode === 'units' ? 'primary' : 'secondary'"
+          :outlined="sourceMode !== 'units'"
+          @click="switchSourceMode('units')"
+        />
+        <Tag
+          v-if="sourceMode === 'units' && itemIdFilter"
+          severity="info"
+          value="Filter 1 Barang"
+          class="!text-[11px]"
+        />
+        <Button
+          v-if="sourceMode === 'units' && itemIdFilter"
+          label="Tampilkan Semua Unit"
+          icon="pi pi-times"
+          text
+          size="small"
+          severity="secondary"
+          @click="itemIdFilter = ''; fetchItems(true)"
+        />
+      </div>
+      <span class="text-[11.5px] text-txt-dim">
+        {{
+          sourceMode === 'units'
+            ? 'Menampilkan setiap unit fisik terdaftar (No. Reg, SN, & barcode unik) siap dicetak.'
+            : 'Menampilkan daftar master barang inventaris.'
+        }}
+      </span>
     </div>
 
     <!-- Unified Toolbar -->
@@ -1225,7 +1123,13 @@ const sampleItem = computed(() => {
             </div>
             <div class="text-[12.5px] font-semibold truncate text-txt" :title="it.name">{{ it.name }}</div>
             <div class="t-mono text-[11px] mt-0.5 text-txt-dim">{{ it.sku }}</div>
+            <div v-if="it.is_unit && (it.register_number || it.serial_number)" class="t-mono text-[10px] mt-0.5 text-txt-dim truncate">
+              <span v-if="it.register_number">Reg: {{ it.register_number }}</span>
+              <span v-if="it.register_number && it.serial_number"> · </span>
+              <span v-if="it.serial_number">SN: {{ it.serial_number }}</span>
+            </div>
             <div class="mt-2 flex items-center justify-center gap-1 flex-wrap">
+              <Tag v-if="it.is_unit" severity="info" :value="'Unit #' + it.unit_number" class="!text-[10px]" />
               <Tag severity="secondary" :value="it.location || 'Tanpa Lokasi'" class="!text-[10px]" />
             </div>
           </div>

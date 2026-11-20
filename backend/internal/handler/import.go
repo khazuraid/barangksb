@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -594,13 +593,40 @@ func (h *ImportHandler) Import(c *gin.Context) {
 		condition := normalizeCondition(getField(row, "condition", 12))
 
 		// Stok & Satuan
-		stock := parseInt32(getField(row, "stock", 13), 0)
+		var stock int32
+		if rawStock := getField(row, "stock", 13); rawStock != "" {
+			v, parseErr := parseStrictInt32(rawStock)
+			if parseErr != nil || v < 0 {
+				failedCount++
+				errorList = append(errorList, fmt.Sprintf("Baris %d (%s): stok '%s' tidak valid (harus bilangan bulat >= 0)", rowNum, name, rawStock))
+				continue
+			}
+			stock = v
+		}
 		unit := getField(row, "unit", 14)
 		if unit == "" {
 			unit = "buah"
 		}
-		minStock := parseInt32(getField(row, "min_stock", 15), 0)
-		price := parseInt64(getField(row, "price", 16), 0)
+		var minStock int32
+		if rawMin := getField(row, "min_stock", 15); rawMin != "" {
+			v, parseErr := parseStrictInt32(rawMin)
+			if parseErr != nil || v < 0 {
+				failedCount++
+				errorList = append(errorList, fmt.Sprintf("Baris %d (%s): stok minimum '%s' tidak valid (harus bilangan bulat >= 0)", rowNum, name, rawMin))
+				continue
+			}
+			minStock = v
+		}
+		var price int64
+		if rawPrice := getField(row, "price", 16); rawPrice != "" {
+			v, parseErr := parseStrictInt64(rawPrice)
+			if parseErr != nil || v < 0 {
+				failedCount++
+				errorList = append(errorList, fmt.Sprintf("Baris %d (%s): harga '%s' tidak valid (harus bilangan bulat >= 0)", rowNum, name, rawPrice))
+				continue
+			}
+			price = v
+		}
 
 		// Pengadaan & Keterangan
 		fundingSource := getField(row, "funding_source", 17)
@@ -664,40 +690,84 @@ func (h *ImportHandler) Import(c *gin.Context) {
 			}
 		}
 
-		// Tentukan SKU (gunakan custom jika terisi, atau auto-generate)
-		sku := customSKU
-		if sku == "" {
-			sku = generateSKU(h.itemH, c, category)
+		unitsCount := 0
+		initialStock := stock
+		if !trackStock {
+			var uErr error
+			unitsCount, uErr = resolveFixedAssetUnits(0, stock)
+			if uErr != nil {
+				failedCount++
+				errorList = append(errorList, fmt.Sprintf("Baris %d (%s): %s", rowNum, name, uErr.Error()))
+				continue
+			}
+			initialStock = int32(unitsCount)
 		}
 
-		var newItemID string
-		err := h.pool.QueryRow(c, `
-			INSERT INTO inventory_items (
-				sku, name, category, location, location_code, current_stock, min_stock, unit,
-				price_per_unit, condition_status, merk, type_model, serial_number,
-				procurement_year, funding_source, distributor, akl_akd, description,
-				size, material, item_code, register_number, track_stock
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
-			RETURNING id::text
-		`, sku, name, category, location, nullable(locCode), stock, minStock, unit,
-			price, condition, nullable(merk), nullable(typeModel), nullable(serialNumber),
-			nullable(procurementYear), nullable(fundingSource), nullable(distributor),
-			nullable(aklAkd), nullable(description), nullable(size), nullable(material),
-			nullable(itemCode), nullable(registerNumber), trackStock).Scan(&newItemID)
-
-		if err != nil {
-			failedCount++
-			errorList = append(errorList, fmt.Sprintf("Baris %d (%s): %s", rowNum, name, err.Error()))
-		} else {
-			if !trackStock {
-				regStr := "0001"
-				if registerNumber != "" {
-					regStr = registerNumber
-				}
-				unitBarcode := sku
-				_, _ = h.pool.Exec(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-					newItemID, 1, regStr, unitBarcode, nullable(serialNumber), nullable(condition), location, nullable(locCode))
+		maxAttempts := 1
+		if customSKU == "" {
+			maxAttempts = 3
+		}
+		var insertErr error
+		for attempt := 0; attempt < maxAttempts; attempt++ {
+			tx, txErr := h.pool.Begin(c)
+			if txErr != nil {
+				insertErr = txErr
+				break
 			}
+			sku := customSKU
+			if sku == "" {
+				sku = generateSKU(tx, c, category)
+			}
+
+			var newItemID string
+			insertErr = tx.QueryRow(c, `
+				INSERT INTO inventory_items (
+					sku, name, category, location, location_code, current_stock, min_stock, unit,
+					price_per_unit, condition_status, merk, type_model, serial_number,
+					procurement_year, funding_source, distributor, akl_akd, description,
+					size, material, item_code, register_number, track_stock
+				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+				RETURNING id::text
+			`, sku, name, category, location, nullable(locCode), initialStock, minStock, unit,
+				price, condition, nullable(merk), nullable(typeModel), nullable(serialNumber),
+				nullable(procurementYear), nullable(fundingSource), nullable(distributor),
+				nullable(aklAkd), nullable(description), nullable(size), nullable(material),
+				nullable(itemCode), nullable(registerNumber), trackStock).Scan(&newItemID)
+			if insertErr != nil {
+				_ = tx.Rollback(c)
+				if customSKU == "" && isUniqueViolation(insertErr) && attempt+1 < maxAttempts {
+					continue
+				}
+				break
+			}
+
+			if !trackStock {
+				for uIdx := 1; uIdx <= unitsCount; uIdx++ {
+					regStr := unitRegisterFor(registerNumber, uIdx, unitsCount)
+					unitBarcode := unitBarcodeFor(sku, uIdx, unitsCount)
+					var uSerial any
+					if uIdx == 1 && serialNumber != "" {
+						uSerial = nullable(serialNumber)
+					}
+					if _, insertErr = tx.Exec(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+						newItemID, uIdx, regStr, unitBarcode, uSerial, nullable(condition), location, nullable(locCode)); insertErr != nil {
+						_ = tx.Rollback(c)
+						break
+					}
+				}
+				if insertErr != nil {
+					break
+				}
+			}
+
+			insertErr = tx.Commit(c)
+			break
+		}
+
+		if insertErr != nil {
+			failedCount++
+			errorList = append(errorList, fmt.Sprintf("Baris %d (%s): %s", rowNum, name, insertErr.Error()))
+		} else {
 			seenKeys[dedupKey] = true
 			successCount++
 		}
@@ -748,22 +818,4 @@ func (h *ImportHandler) ensureLocation(c *gin.Context, locName string, locCode s
 		return codeFromDB
 	}
 	return locCode
-}
-
-func parseInt32(s string, def int32) int32 {
-	clean := strings.ReplaceAll(strings.TrimSpace(s), ",", "")
-	clean = strings.ReplaceAll(clean, ".", "")
-	if v, err := strconv.ParseInt(clean, 10, 32); err == nil {
-		return int32(v)
-	}
-	return def
-}
-
-func parseInt64(s string, def int64) int64 {
-	clean := strings.ReplaceAll(strings.TrimSpace(s), ",", "")
-	clean = strings.ReplaceAll(clean, ".", "")
-	if v, err := strconv.ParseInt(clean, 10, 64); err == nil {
-		return v
-	}
-	return def
 }

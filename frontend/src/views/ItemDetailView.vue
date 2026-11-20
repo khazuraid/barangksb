@@ -524,7 +524,11 @@ async function deleteMaintRecord(mId: string) {
           size="small"
           severity="secondary"
           outlined
-          @click="router.push('/barcode')"
+          @click="
+            item && item.track_stock === false && unitsList.length
+              ? router.push({ path: '/barcode', query: { mode: 'units', item_id: String(route.params.id), auto_select: '1' } })
+              : router.push({ path: '/barcode', query: item?.sku ? { q: item.sku } : {} })
+          "
         />
         <Button
           label="Hapus"
@@ -935,7 +939,16 @@ async function deleteMaintRecord(mId: string) {
                 Setiap unit fisik memiliki nomor register, barcode, dan foto stempel GPS tersendiri
               </div>
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-wrap">
+              <Button
+                v-if="unitsList.length"
+                label="Generate Barcode Semua Unit"
+                icon="pi pi-qrcode"
+                size="small"
+                severity="secondary"
+                outlined
+                @click="router.push({ path: '/barcode', query: { mode: 'units', item_id: String(route.params.id), auto_select: '1' } })"
+              />
               <Button label="+ Tambah Unit Fisik" icon="pi pi-plus" size="small" severity="primary" @click="openAddUnitModal" />
             </div>
           </div>
@@ -975,7 +988,7 @@ async function deleteMaintRecord(mId: string) {
                 </div>
 
                 <div class="flex items-center gap-1.5 ml-auto">
-                  <a :href="`/api/barcode/${u.barcode}.png?fmt=qr&size=300`" target="_blank" rel="noopener noreferrer" aria-label="Lihat atau cetak QR unit">
+                  <a :href="`/api/barcode/${u.id}.png?fmt=qr&size=300`" target="_blank" rel="noopener noreferrer" aria-label="Lihat atau cetak QR unit">
                     <Button icon="pi pi-qrcode" size="small" text severity="secondary" aria-label="Lihat atau cetak QR unit" v-tooltip.top="'Lihat / Cetak QR'" class="!p-1.5" />
                   </a>
                   <Button icon="pi pi-pencil" size="small" text severity="info" aria-label="Edit unit fisik" v-tooltip.top="'Edit Unit'" class="!p-1.5" @click="openEditUnitModal(u)" />

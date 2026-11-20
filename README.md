@@ -12,7 +12,7 @@ Aplikasi inventaris kantor dengan barcode scanning dan pemantauan stok real-time
 | Cache & Queue | Redis 7 (Hardened, AOF, Password Protected) |
 | Async Worker | Go Background Task Worker (Telegram, Audit, Cleanup) |
 | Storage | MinIO (foto) |
-| Proxy | Caddy (reverse proxy + auto TLS) |
+| Proxy | Nginx / Cloudflare Tunnel (reverse proxy) |
 
 ## Struktur
 
@@ -22,8 +22,7 @@ Aplikasi inventaris kantor dengan barcode scanning dan pemantauan stok real-time
 │   └── internal/       # auth, db, handler, middleware, service, telegram
 ├── frontend/           # Vue 3 SPA
 │   └── src/            # views, components, stores, api
-├── docker-compose.yml  # backend + frontend + postgres + minio + caddy
-└── Caddyfile           # /api/* → backend:8080, lain → frontend:3000
+└── docker-compose.yml  # backend + worker + postgres + redis + minio
 ```
 
 ## Jalankan

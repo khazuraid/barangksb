@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/disintegration/imaging"
@@ -27,6 +28,8 @@ import (
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 )
+
+var activeUploadHandler atomic.Pointer[UploadHandler]
 
 type UploadHandler struct {
 	pool    *pgxpool.Pool
@@ -62,6 +65,7 @@ func NewUploadHandler(pool *pgxpool.Pool, endpoint, accessKey, secretKey, bucket
 	} else {
 		slog.Info("using disk storage for uploads", "dir", getUploadDir())
 	}
+	activeUploadHandler.Store(h)
 	return h
 }
 
@@ -130,30 +134,11 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 	}
 
 	name := uuid.NewString() + ".jpg"
-
-	if !h.useDisk && h.minio != nil {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
-		defer cancel()
-		_, err := h.minio.PutObject(ctx, h.bucket, name, bytes.NewReader(processed), int64(len(processed)), minio.PutObjectOptions{
-			ContentType: "image/jpeg",
-		})
-		if err != nil {
-			// fallback to disk
-			h.saveDisk(name, processed)
-		}
-		resp := gin.H{"url": fmt.Sprintf("/api/uploads/%s", name)}
-		if geo.Valid {
-			resp["geo_lat"] = geo.Lat
-			resp["geo_lng"] = geo.Lng
-			resp["geo_acc"] = geo.Acc
-			resp["geo_name"] = geo.Name
-		}
-		c.JSON(http.StatusOK, resp)
+	url, err := h.SavePhoto(c.Request.Context(), name, processed)
+	if err != nil {
+		internalError(c, "gagal menyimpan file foto", err)
 		return
 	}
-
-	// disk fallback
-	url := h.saveDisk(name, processed)
 	resp := gin.H{"url": url}
 	if geo.Valid {
 		resp["geo_lat"] = geo.Lat
@@ -172,22 +157,37 @@ func getUploadDir() string {
 	return "uploads"
 }
 
-func (h *UploadHandler) saveDisk(name string, data []byte) string {
+// SavePhoto stores a processed JPEG into the configured backend (MinIO when enabled, otherwise local disk)
+// without silently falling back to local disk on MinIO errors.
+func (h *UploadHandler) SavePhoto(ctx context.Context, name string, data []byte) (string, error) {
+	if h != nil && !h.useDisk && h.minio != nil {
+		putCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if _, err := h.minio.PutObject(putCtx, h.bucket, name, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
+			ContentType: "image/jpeg",
+		}); err != nil {
+			return "", fmt.Errorf("minio put %s: %w", name, err)
+		}
+		return "/api/uploads/" + name, nil
+	}
+	return savePhotoDisk(name, data)
+}
+
+func savePhotoDisk(name string, data []byte) (string, error) {
 	dir := getUploadDir()
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		slog.Error("failed writing to primary upload dir", "path", path, "err", err)
+		slog.Warn("failed writing to primary upload dir, trying fallback", "path", path, "err", err)
 		_ = os.MkdirAll("uploads", 0o755)
 		fallbackPath := filepath.Join("uploads", name)
 		if err2 := os.WriteFile(fallbackPath, data, 0o644); err2 != nil {
-			slog.Error("failed writing to fallback upload dir", "path", fallbackPath, "err", err2)
-		} else {
-			slog.Info("saved photo to fallback dir", "path", fallbackPath, "bytes", len(data))
+			return "", fmt.Errorf("write upload %s: %w (fallback: %v)", path, err, err2)
 		}
-	} else {
-		slog.Info("saved photo to primary dir", "path", path, "bytes", len(data))
+		slog.Info("saved photo to fallback dir", "path", fallbackPath, "bytes", len(data))
+		return "/api/uploads/" + name, nil
 	}
-	return "/api/uploads/" + name
+	slog.Info("saved photo to primary dir", "path", path, "bytes", len(data))
+	return "/api/uploads/" + name, nil
 }
 
 // GetObject retrieves a file from MinIO (or nil if using disk)
@@ -301,6 +301,11 @@ func DeleteUploadedPhoto(ctx context.Context, pool *pgxpool.Pool, photoURL strin
 	dir := getUploadDir()
 	_ = os.Remove(filepath.Join(dir, name))
 	_ = os.Remove(filepath.Join("uploads", name))
+	if h := activeUploadHandler.Load(); h != nil && !h.useDisk && h.minio != nil {
+		if err := h.minio.RemoveObject(ctx, h.bucket, name, minio.RemoveObjectOptions{}); err != nil {
+			slog.Warn("failed deleting photo from MinIO", "name", name, "err", err)
+		}
+	}
 	slog.Info("deleted uploaded photo file", "name", name)
 }
 
@@ -387,136 +392,54 @@ func (h *UploadHandler) getPhysicalFiles(ctx context.Context) map[string]diskFil
 
 func (h *UploadHandler) getDBReferences(ctx context.Context) (map[string][]PhotoReference, error) {
 	refMap := make(map[string][]PhotoReference)
-
-	// 1. inventory_items
-	rows1, err1 := h.pool.Query(ctx, `
-		SELECT id::text, name, COALESCE(sku, ''), photo_url
+	rows, err := h.pool.Query(ctx, `
+		SELECT 'item', id::text, name, 'Barang · SKU: ' || COALESCE(sku, ''), photo_url
 		FROM inventory_items
 		WHERE photo_url IS NOT NULL AND photo_url != ''
-	`)
-	if err1 != nil {
-		return nil, err1
-	}
-	defer rows1.Close()
-	for rows1.Next() {
-		var id, name, sku, photoURL string
-		if err := rows1.Scan(&id, &name, &sku, &photoURL); err == nil {
-			base := filepath.Base(photoURL)
-			if base != "" && base != "." {
-				refMap[base] = append(refMap[base], PhotoReference{
-					Type:  "item",
-					ID:    id,
-					Title: name,
-					Sub:   "Barang · SKU: " + sku,
-				})
-			}
-		}
-	}
-
-	// 2. stock_transactions
-	rows2, err2 := h.pool.Query(ctx, `
-		SELECT t.id::text, COALESCE(i.name, 'Barang'), COALESCE(t.type, 'Mutasi'), t.photo_url
+		UNION ALL
+		SELECT 'transaction', t.id::text, COALESCE(i.name, 'Barang'), 'Riwayat Stok: ' || COALESCE(t.type, 'Mutasi'), t.photo_url
 		FROM stock_transactions t
 		LEFT JOIN inventory_items i ON t.item_id = i.id
 		WHERE t.photo_url IS NOT NULL AND t.photo_url != ''
-	`)
-	if err2 != nil {
-		return nil, err2
-	}
-	defer rows2.Close()
-	for rows2.Next() {
-		var id, itemName, txType, photoURL string
-		if err := rows2.Scan(&id, &itemName, &txType, &photoURL); err == nil {
-			base := filepath.Base(photoURL)
-			if base != "" && base != "." {
-				refMap[base] = append(refMap[base], PhotoReference{
-					Type:  "transaction",
-					ID:    id,
-					Title: itemName,
-					Sub:   "Riwayat Stok: " + txType,
-				})
-			}
-		}
-	}
-
-	// 3. item_maintenances
-	rows3, err3 := h.pool.Query(ctx, `
-		SELECT m.id::text, COALESCE(i.name, 'Aset'), m.service_type, m.photo_url
+		UNION ALL
+		SELECT 'maintenance', m.id::text, COALESCE(i.name, 'Aset'), 'Pemeliharaan: ' || COALESCE(m.service_type, ''), m.photo_url
 		FROM item_maintenances m
 		LEFT JOIN inventory_items i ON m.item_id = i.id
 		WHERE m.photo_url IS NOT NULL AND m.photo_url != ''
-	`)
-	if err3 != nil {
-		return nil, err3
-	}
-	defer rows3.Close()
-	for rows3.Next() {
-		var id, itemName, sType, photoURL string
-		if err := rows3.Scan(&id, &itemName, &sType, &photoURL); err == nil {
-			base := filepath.Base(photoURL)
-			if base != "" && base != "." {
-				refMap[base] = append(refMap[base], PhotoReference{
-					Type:  "maintenance",
-					ID:    id,
-					Title: itemName,
-					Sub:   "Pemeliharaan: " + sType,
-				})
-			}
-		}
-	}
-
-	// 4. item_units
-	rows4, err4 := h.pool.Query(ctx, `
-		SELECT u.id::text, COALESCE(i.name, 'Unit'), COALESCE(NULLIF(u.barcode, ''), NULLIF(u.register_number, ''), 'U' || u.unit_number::text), u.photo_url
+		UNION ALL
+		SELECT 'unit', u.id::text, COALESCE(i.name, 'Unit'), 'Unit: ' || COALESCE(NULLIF(u.barcode, ''), NULLIF(u.register_number, ''), 'U' || u.unit_number::text), u.photo_url
 		FROM item_units u
 		LEFT JOIN inventory_items i ON u.item_id = i.id
 		WHERE u.photo_url IS NOT NULL AND u.photo_url != ''
-	`)
-	if err4 != nil {
-		return nil, err4
-	}
-	defer rows4.Close()
-	for rows4.Next() {
-		var id, itemName, unitCode, photoURL string
-		if err := rows4.Scan(&id, &itemName, &unitCode, &photoURL); err == nil {
-			base := filepath.Base(photoURL)
-			if base != "" && base != "." {
-				refMap[base] = append(refMap[base], PhotoReference{
-					Type:  "unit",
-					ID:    id,
-					Title: itemName,
-					Sub:   "Unit: " + unitCode,
-				})
-			}
-		}
-	}
-
-	// 5. item_reports
-	rows5, err5 := h.pool.Query(ctx, `
-		SELECT r.id::text, COALESCE(i.name, 'Laporan'), COALESCE(r.reporter_name, 'Publik'), r.photo_url
+		UNION ALL
+		SELECT 'report', r.id::text, COALESCE(i.name, 'Laporan'), 'Laporan: ' || COALESCE(r.reporter_name, 'Publik'), r.photo_url
 		FROM item_reports r
 		LEFT JOIN inventory_items i ON r.item_id = i.id
 		WHERE r.photo_url IS NOT NULL AND r.photo_url != ''
 	`)
-	if err5 != nil {
-		return nil, err5
+	if err != nil {
+		return nil, err
 	}
-	defer rows5.Close()
-	for rows5.Next() {
-		var id, itemName, reporter, photoURL string
-		if err := rows5.Scan(&id, &itemName, &reporter, &photoURL); err == nil {
-			base := filepath.Base(photoURL)
-			if base != "" && base != "." {
-				refMap[base] = append(refMap[base], PhotoReference{
-					Type:  "report",
-					ID:    id,
-					Title: itemName,
-					Sub:   "Laporan: " + reporter,
-				})
-			}
+	defer rows.Close()
+
+	for rows.Next() {
+		var refType, id, title, sub, photoURL string
+		if err := rows.Scan(&refType, &id, &title, &sub, &photoURL); err != nil {
+			return nil, err
+		}
+		base := filepath.Base(photoURL)
+		if base != "" && base != "." {
+			refMap[base] = append(refMap[base], PhotoReference{
+				Type:  refType,
+				ID:    id,
+				Title: title,
+				Sub:   sub,
+			})
 		}
 	}
-
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return refMap, nil
 }
 

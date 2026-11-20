@@ -20,7 +20,6 @@ const (
 	DefaultQueue = "queue:inventaris:tasks"
 
 	TaskTypeTelegramMovement = "telegram:movement"
-	TaskTypeTelegramLowStock = "telegram:low_stock"
 	TaskTypeSecurityEvent    = "security:event"
 )
 

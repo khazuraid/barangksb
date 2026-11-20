@@ -17,7 +17,7 @@ const loading = ref(true)
 const showMap = ref(false)
 const photoModal = ref(false)
 const selectedPhoto = ref('')
-const activeTab = ref<'detail' | 'maintenance'>('detail')
+const activeTab = ref<'detail' | 'units' | 'maintenance'>('detail')
 const isLoggedIn = ref(false)
 
 onMounted(async () => {
@@ -76,6 +76,14 @@ async function downloadImage(url: string, filename = 'foto_geotag.jpg') {
 }
 
 const maintenances = computed(() => item.value?.maintenances || [])
+const units = computed<any[]>(() => item.value?.units || [])
+const scannedUnitId = computed<string>(() => item.value?.scanned_unit?.id || '')
+
+function openPhoto(url: string) {
+  if (!url) return
+  selectedPhoto.value = url
+  photoModal.value = true
+}
 
 function formatRupiah(val: number) {
   if (!val) return '—'
@@ -232,22 +240,37 @@ function rows() {
         </div>
 
         <!-- Tabs -->
-        <div class="grid grid-cols-2 border-b border-line bg-panel">
+        <div
+          class="grid border-b border-line bg-panel"
+          :class="units.length ? 'grid-cols-3' : 'grid-cols-2'"
+        >
           <button
             type="button"
-            class="py-2.5 text-[12.5px] font-semibold border-b-2 transition-colors cursor-pointer"
+            class="py-2.5 text-[12px] font-semibold border-b-2 transition-colors cursor-pointer"
             :class="activeTab === 'detail' ? 'border-acc-500 text-acc-500' : 'border-transparent text-txt-dim hover:text-txt'"
             @click="activeTab = 'detail'"
           >
-            Spesifikasi Aset
+            Spesifikasi
+          </button>
+          <button
+            v-if="units.length"
+            type="button"
+            class="py-2.5 text-[12px] font-semibold border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            :class="activeTab === 'units' ? 'border-acc-500 text-acc-500' : 'border-transparent text-txt-dim hover:text-txt'"
+            @click="activeTab = 'units'"
+          >
+            <span>Unit Fisik</span>
+            <span class="t-mono !text-[10.5px] px-1.5 py-0.5 rounded bg-panel-2 border border-line text-txt-dim">
+              {{ units.length }}
+            </span>
           </button>
           <button
             type="button"
-            class="py-2.5 text-[12.5px] font-semibold border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            class="py-2.5 text-[12px] font-semibold border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
             :class="activeTab === 'maintenance' ? 'border-acc-500 text-acc-500' : 'border-transparent text-txt-dim hover:text-txt'"
             @click="activeTab = 'maintenance'"
           >
-            <span>Riwayat Servis</span>
+            <span>Servis</span>
             <span class="t-mono !text-[10.5px] px-1.5 py-0.5 rounded bg-panel-2 border border-line text-txt-dim">
               {{ maintenances.length }}
             </span>
@@ -262,6 +285,83 @@ function rows() {
               <dd class="font-medium text-txt text-right break-words">{{ v }}</dd>
             </div>
           </dl>
+
+          <!-- Daftar Unit Fisik Terdaftar (Ringkas + Foto & Detail langsung tampil saat scan) -->
+          <div v-if="units.length" class="space-y-2.5 pt-2 border-t border-line">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5 text-[12.5px] font-bold text-txt">
+                <i class="pi pi-th-large text-acc-500 text-[12px]" aria-hidden="true" />
+                <span>Daftar Unit Fisik Terdaftar ({{ units.length }})</span>
+              </div>
+              <button
+                type="button"
+                class="text-[11px] font-semibold text-acc-500 hover:underline cursor-pointer"
+                @click="activeTab = 'units'"
+              >
+                Lihat Tab Unit
+              </button>
+            </div>
+
+            <div class="space-y-2.5">
+              <div
+                v-for="u in units"
+                :key="u.id"
+                class="p-3 rounded-[9px] border bg-panel-2 flex items-start gap-3"
+                :class="scannedUnitId === u.id ? 'border-acc-500 ring-1 ring-acc-500/30' : 'border-line'"
+              >
+                <button
+                  v-if="u.photo_url"
+                  type="button"
+                  class="w-16 h-16 rounded-[8px] border border-line overflow-hidden shrink-0 bg-panel cursor-pointer"
+                  :aria-label="'Perbesar foto Unit #' + u.unit_number"
+                  @click="openPhoto(u.photo_url)"
+                >
+                  <img :src="u.photo_url" :alt="'Unit #' + u.unit_number" class="w-full h-full object-cover" loading="lazy" />
+                </button>
+                <div
+                  v-else
+                  class="w-16 h-16 rounded-[8px] border border-line bg-panel grid place-items-center shrink-0 text-txt-dim"
+                >
+                  <i class="pi pi-image text-base" aria-hidden="true" />
+                </div>
+
+                <div class="min-w-0 flex-1 space-y-1">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-panel border border-line text-txt">
+                      Unit #{{ u.unit_number }}
+                    </span>
+                    <span
+                      v-if="scannedUnitId === u.id"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-acc-500 text-white"
+                    >
+                      Unit Dipindai
+                    </span>
+                    <StatusChip :kind="u.condition_status || 'Baik (B)'" />
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5 text-[11.5px] text-txt-dim">
+                    <div v-if="u.register_number">
+                      No. Reg: <span class="t-mono text-txt font-medium">{{ u.register_number }}</span>
+                    </div>
+                    <div v-if="u.barcode">
+                      Barcode: <span class="t-mono text-txt font-medium">{{ u.barcode }}</span>
+                    </div>
+                    <div v-if="u.serial_number">
+                      SN: <span class="t-mono text-txt font-medium">{{ u.serial_number }}</span>
+                    </div>
+                    <div v-if="u.location">
+                      Lokasi: <span class="text-txt font-medium">{{ u.location }}</span>
+                      <span v-if="u.location_code" class="t-mono text-[10.5px]"> ({{ u.location_code }})</span>
+                    </div>
+                  </div>
+                  <div v-if="u.geo_name" class="text-[11px] text-txt-dim flex items-center gap-1">
+                    <i class="pi pi-map-marker text-[10px] text-acc-500" aria-hidden="true" />
+                    <span class="truncate">{{ u.geo_name }}</span>
+                  </div>
+                  <p v-if="u.notes" class="text-[11px] text-txt-dim leading-snug break-words">{{ u.notes }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Geotag Location Block -->
           <div v-if="hasCoords" class="p-3 rounded-[8px] border border-line bg-panel-2 space-y-2.5">
@@ -326,6 +426,89 @@ function rows() {
               class="flex-1"
               @click="router.push(`/login?redirect=/items/${item.id}`)"
             />
+          </div>
+        </div>
+
+        <!-- Tab 1B: Daftar Unit Fisik Terdaftar -->
+        <div v-else-if="activeTab === 'units'" class="p-4 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[12.5px] font-bold text-txt">
+              Semua Unit Fisik Terdaftar ({{ units.length }})
+            </div>
+            <span class="text-[11px] text-txt-dim">Ketuk foto untuk memperbesar</span>
+          </div>
+
+          <div v-if="!units.length" class="py-10 text-center">
+            <i class="pi pi-th-large text-2xl text-txt-muted mb-2 block" aria-hidden="true" />
+            <div class="text-[13px] font-semibold text-txt">Belum ada unit fisik terdaftar</div>
+          </div>
+
+          <div v-else class="space-y-3">
+            <div
+              v-for="u in units"
+              :key="u.id"
+              class="rounded-[10px] border bg-panel-2 overflow-hidden"
+              :class="scannedUnitId === u.id ? 'border-acc-500 ring-1 ring-acc-500/30' : 'border-line'"
+            >
+              <button
+                v-if="u.photo_url"
+                type="button"
+                class="w-full h-44 bg-panel border-b border-line overflow-hidden block cursor-pointer relative group"
+                :aria-label="'Perbesar foto Unit #' + u.unit_number"
+                @click="openPhoto(u.photo_url)"
+              >
+                <img :src="u.photo_url" :alt="'Unit #' + u.unit_number" class="w-full h-full object-cover" loading="lazy" />
+                <span class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/65 text-white text-[10.5px] font-medium">
+                  <i class="pi pi-search-plus mr-1 text-[10px]" aria-hidden="true" />Perbesar
+                </span>
+              </button>
+
+              <div class="p-3.5 space-y-2">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-panel border border-line text-txt">
+                      Unit #{{ u.unit_number }}
+                    </span>
+                    <span
+                      v-if="scannedUnitId === u.id"
+                      class="px-2 py-0.5 rounded text-[10.5px] font-semibold bg-acc-500 text-white"
+                    >
+                      Unit Dipindai
+                    </span>
+                  </div>
+                  <StatusChip :kind="u.condition_status || 'Baik (B)'" />
+                </div>
+
+                <dl class="divide-y divide-line-soft text-[12px]">
+                  <div v-if="u.register_number" class="py-1.5 flex items-center justify-between gap-3">
+                    <dt class="text-txt-dim">No. Register / NUP</dt>
+                    <dd class="t-mono font-semibold text-txt">{{ u.register_number }}</dd>
+                  </div>
+                  <div v-if="u.barcode" class="py-1.5 flex items-center justify-between gap-3">
+                    <dt class="text-txt-dim">Barcode Unit</dt>
+                    <dd class="t-mono font-semibold text-txt">{{ u.barcode }}</dd>
+                  </div>
+                  <div v-if="u.serial_number" class="py-1.5 flex items-center justify-between gap-3">
+                    <dt class="text-txt-dim">Nomor Seri (SN)</dt>
+                    <dd class="t-mono font-semibold text-txt">{{ u.serial_number }}</dd>
+                  </div>
+                  <div v-if="u.location" class="py-1.5 flex items-center justify-between gap-3">
+                    <dt class="text-txt-dim">Lokasi / Ruangan</dt>
+                    <dd class="font-medium text-txt text-right">
+                      {{ u.location }}<span v-if="u.location_code" class="t-mono text-[11px] text-txt-dim"> ({{ u.location_code }})</span>
+                    </dd>
+                  </div>
+                  <div v-if="u.geo_name" class="py-1.5 flex items-start justify-between gap-3">
+                    <dt class="text-txt-dim shrink-0">Lokasi Foto</dt>
+                    <dd class="text-txt text-right break-words">{{ u.geo_name }}</dd>
+                  </div>
+                  <div v-if="u.notes" class="py-1.5 flex items-start justify-between gap-3">
+                    <dt class="text-txt-dim shrink-0">Catatan</dt>
+                    <dd class="text-txt text-right break-words">{{ u.notes }}</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
           </div>
         </div>
 

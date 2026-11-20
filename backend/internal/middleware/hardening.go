@@ -444,6 +444,52 @@ func GetSecurityStatus() ([]SecurityEvent, []BlockedIPInfo, map[string]any) {
 	}
 	burstMu.Unlock()
 
+	// Merge Redis-backed blocks using SCAN (KEYS is disabled in Redis config)
+	redisMu.RLock()
+	rdb := globalRedisClient
+	redisMu.RUnlock()
+	if rdb != nil {
+		seen := make(map[string]bool, len(blocked))
+		for _, b := range blocked {
+			seen[b.Type+":"+b.IP] = true
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		scanBlocked := func(prefix, blockType string) {
+			var cursor uint64
+			for {
+				keys, next, err := rdb.Scan(ctx, cursor, prefix+"*", 100).Result()
+				if err != nil {
+					return
+				}
+				for _, key := range keys {
+					ip := strings.TrimPrefix(key, prefix)
+					if ip == "" || strings.HasPrefix(ip, "acct:") || seen[blockType+":"+ip] {
+						continue
+					}
+					ttl, err := rdb.TTL(ctx, key).Result()
+					if err != nil || ttl <= 0 {
+						continue
+					}
+					seen[blockType+":"+ip] = true
+					blocked = append(blocked, BlockedIPInfo{
+						IP:           ip,
+						Type:         blockType,
+						Attempts:     0,
+						LastSeen:     now.In(time.FixedZone("WIB", 7*3600)).Format("15:04:05"),
+						ExpiresInSec: int(ttl.Seconds()),
+					})
+				}
+				cursor = next
+				if cursor == 0 {
+					return
+				}
+			}
+		}
+		scanBlocked("rate:blocked:login:", "Login Brute Force")
+		scanBlocked("rate:blocked:burst:", "Burst Attack Spikes")
+		cancel()
+	}
+
 	bruteCount := 0
 	burstCount := 0
 	for _, ev := range copiedEvents {
@@ -498,22 +544,26 @@ func UnblockSecurityIP(targetIP string) bool {
 	return unblocked
 }
 
-// ClearSecurityEvents empties the recent security event log
-func ClearSecurityEvents() {
-	eventsMu.Lock()
-	recentEvents = []SecurityEvent{}
-	eventsMu.Unlock()
-
+// ClearSecurityEvents empties the recent security event log synchronously.
+func ClearSecurityEvents(ctx context.Context) error {
 	poolMu.RLock()
 	p := globalDBPool
 	poolMu.RUnlock()
 	if p != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			_, _ = p.Exec(ctx, `TRUNCATE TABLE security_events`)
-		}()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		qCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if _, err := p.Exec(qCtx, `TRUNCATE TABLE security_events`); err != nil {
+			return err
+		}
 	}
+
+	eventsMu.Lock()
+	recentEvents = []SecurityEvent{}
+	eventsMu.Unlock()
+	return nil
 }
 
 // LoginRateLimiter limits failed login attempts per client IP

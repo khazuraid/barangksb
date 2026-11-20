@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -431,11 +430,16 @@ func (h *SettingHandler) TestTelegram(c *gin.Context) {
 	var targets []target
 
 	if req.All || req.ChatID == 0 {
-		rows, _ := h.pool.Query(c, `SELECT chat_id, title FROM telegram_subscribers WHERE active=TRUE`)
+		rows, err := h.pool.Query(c, `SELECT chat_id, title FROM telegram_subscribers WHERE active=TRUE`)
+		if err != nil {
+			internalError(c, "gagal membaca daftar subscriber Telegram", err)
+			return
+		}
 		for rows.Next() {
 			var t target
-			rows.Scan(&t.chatID, &t.title)
-			targets = append(targets, t)
+			if scanErr := rows.Scan(&t.chatID, &t.title); scanErr == nil {
+				targets = append(targets, t)
+			}
 		}
 		rows.Close()
 
@@ -572,76 +576,6 @@ func (h *SettingHandler) getSetting(c context.Context, key string) string {
 	var v string
 	h.pool.QueryRow(c, `SELECT value FROM app_settings WHERE key=$1`, key).Scan(&v)
 	return v
-}
-
-// GetActiveSubscribersForType returns subscribers that should receive a given notification type
-func (h *SettingHandler) GetActiveSubscribersForType(ctx context.Context, notifType string) []subscriber {
-	column := "notify_in"
-	switch notifType {
-	case "out":
-		column = "notify_out"
-	case "adjust":
-		column = "notify_adjust"
-	case "low_stock":
-		column = "notify_low_stock"
-	}
-	rows, _ := h.pool.Query(ctx, `SELECT chat_id, type, title, username, notify_in, notify_out, notify_adjust, notify_low_stock, active FROM telegram_subscribers WHERE active=TRUE AND `+column+`=TRUE`)
-	defer rows.Close()
-	subs := []subscriber{}
-	for rows.Next() {
-		var s subscriber
-		rows.Scan(&s.ChatID, &s.Type, &s.Title, &s.Username, &s.NotifyIn, &s.NotifyOut, &s.NotifyAdjust, &s.NotifyLow, &s.Active)
-		subs = append(subs, s)
-	}
-	return subs
-}
-
-// GetSettingsMap returns all telegram settings (for internal use)
-func (h *SettingHandler) GetSettingsMap(ctx context.Context) map[string]string {
-	rows, _ := h.pool.Query(ctx, `SELECT key, value FROM app_settings WHERE key LIKE 'telegram_%'`)
-	defer rows.Close()
-	m := map[string]string{}
-	for rows.Next() {
-		var k, v string
-		rows.Scan(&k, &v)
-		m[k] = v
-	}
-	return m
-}
-
-// AutoRegisterSubscriber is called when someone /starts the bot or joins a group
-func (h *SettingHandler) AutoRegisterSubscriber(ctx context.Context, chatID int64, info *models.ChatFullInfo) {
-	if info == nil {
-		return
-	}
-	chatType := "private"
-	chatTitle := ""
-	chatUsername := ""
-
-	switch info.Type {
-	case "private":
-		chatType = "private"
-		chatTitle = info.FirstName + " " + info.LastName
-		chatUsername = info.Username
-	case "group", "supergroup":
-		chatType = "group"
-		chatTitle = info.Title
-		chatUsername = info.Username
-	case "channel":
-		chatType = "channel"
-		chatTitle = info.Title
-		chatUsername = info.Username
-	}
-
-	if chatTitle == "" {
-		chatTitle = strconv.FormatInt(chatID, 10)
-	}
-
-	h.pool.Exec(ctx,
-		`INSERT INTO telegram_subscribers (chat_id, type, title, username, active)
-		 VALUES ($1,$2,$3,$4,TRUE)
-		 ON CONFLICT (chat_id) DO UPDATE SET type=$2, title=$3, username=$4, updated_at=now()`,
-		chatID, chatType, chatTitle, chatUsername)
 }
 
 // ==================== COMMAND CRUD ====================

@@ -39,8 +39,15 @@ func (h *UserHandler) List(c *gin.Context) {
 	for rows.Next() {
 		var u user
 		var ts time.Time
-		rows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &ts)
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &ts); err != nil {
+			internalError(c, "gagal membaca data user", err)
+			return
+		}
 		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		internalError(c, "gagal membaca daftar user", err)
+		return
 	}
 	c.JSON(http.StatusOK, users)
 }
@@ -262,7 +269,10 @@ func (h *UserHandler) AuditLog(c *gin.Context) {
 	offset := (page - 1) * perPage
 
 	var total int
-	h.pool.QueryRow(c, `SELECT count(*) FROM audit_log`).Scan(&total)
+	if err := h.pool.QueryRow(c, `SELECT count(*) FROM audit_log`).Scan(&total); err != nil {
+		internalError(c, "gagal menghitung total audit log", err)
+		return
+	}
 
 	rows, err := h.pool.Query(c, `SELECT table_name, op, row_id, old_data, new_data, at FROM audit_log ORDER BY at DESC LIMIT $1 OFFSET $2`, perPage, offset)
 	if err != nil {
@@ -283,12 +293,19 @@ func (h *UserHandler) AuditLog(c *gin.Context) {
 		var l log
 		var ts time.Time
 		var rowID *string
-		rows.Scan(&l.Table, &l.Op, &rowID, &l.OldData, &l.NewData, &ts)
+		if err := rows.Scan(&l.Table, &l.Op, &rowID, &l.OldData, &l.NewData, &ts); err != nil {
+			internalError(c, "gagal membaca baris audit log", err)
+			return
+		}
 		if rowID != nil {
 			l.RowID = *rowID
 		}
 		l.At = ts.In(time.FixedZone("WIB", 7*3600)).Format("02-01-2006 15:04:05")
 		logs = append(logs, l)
+	}
+	if err := rows.Err(); err != nil {
+		internalError(c, "gagal membaca audit log", err)
+		return
 	}
 	pages := total / perPage
 	if total%perPage > 0 {
@@ -320,7 +337,10 @@ func (h *UserHandler) UnblockIP(c *gin.Context) {
 }
 
 func (h *UserHandler) ClearSecurityEvents(c *gin.Context) {
-	middleware.ClearSecurityEvents()
+	if err := middleware.ClearSecurityEvents(c.Request.Context()); err != nil {
+		internalError(c, "gagal membersihkan log keamanan", err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "log keamanan dibersihkan"})
 }
 

@@ -819,11 +819,12 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
     const sheetBorder = spec.isYellowBacking ? '#facc15' : '#e2e8f0'
     const slotBorderCss = showCutBorder ? 'border: 1px dashed #cbd5e1; border-radius: 4px;' : ''
     pageCss = `
-      @page { size: A4 portrait; margin: ${spec.pageMargin}; }
+      @page { size: 210mm 297mm; margin: 0; }
       .sheet-page {
-        width: fit-content;
+        width: 210mm;
+        box-sizing: border-box;
         margin: 20px auto;
-        padding: 8mm 6mm;
+        padding: ${spec.pageMargin};
         background: ${sheetBg};
         border: 1px solid ${sheetBorder};
         border-radius: 6px;
@@ -832,6 +833,7 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
         grid-template-columns: repeat(${spec.cols}, ${slotW}mm);
         gap: ${spec.rowGapMm}mm ${spec.colGapMm}mm;
         justify-content: center;
+        align-content: start;
       }
       .label-slot {
         width: ${slotW}mm;
@@ -849,12 +851,15 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
         box-shadow: none;
       }
       @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
         .sheet-page {
           background: transparent !important;
           border: none !important;
           box-shadow: none !important;
-          margin: 0 auto !important;
-          padding: 0 !important;
+          margin: 0 !important;
         }
         .label-slot {
           box-shadow: none !important;
@@ -1116,4 +1121,65 @@ export function openCustomPrintTab(
     void triggerPrint()
   }
   return true
+}
+
+export function printUrlInHiddenFrame(url: string): void {
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    try {
+      iframe.remove()
+    } catch {}
+  }
+  iframe.addEventListener(
+    'load',
+    () => {
+      const win = iframe.contentWindow
+      if (!win) {
+        cleanup()
+        return
+      }
+      const imgs = Array.from(win.document.images || [])
+      const runPrint = () => {
+        const fallback = window.setTimeout(cleanup, 60000)
+        win.addEventListener(
+          'afterprint',
+          () => {
+            window.clearTimeout(fallback)
+            setTimeout(cleanup, 200)
+          },
+          { once: true }
+        )
+        win.focus()
+        win.print()
+      }
+      if (!imgs.length) {
+        setTimeout(runPrint, 100)
+        return
+      }
+      Promise.race([
+        Promise.all(
+          imgs.map(
+            (img) =>
+              new Promise<void>((resolve) => {
+                if (img.complete) {
+                  resolve()
+                  return
+                }
+                img.addEventListener('load', () => resolve(), { once: true })
+                img.addEventListener('error', () => resolve(), { once: true })
+              })
+          )
+        ),
+        new Promise<void>((resolve) => setTimeout(resolve, 6000)),
+      ]).then(() => setTimeout(runPrint, 100))
+    },
+    { once: true }
+  )
+  iframe.src = url
+  document.body.appendChild(iframe)
 }

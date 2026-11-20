@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +17,16 @@ import (
 )
 
 type PublicReportHandler struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	uploader *UploadHandler
 }
 
-func NewPublicReportHandler(pool *pgxpool.Pool) *PublicReportHandler {
-	return &PublicReportHandler{pool: pool}
+func NewPublicReportHandler(pool *pgxpool.Pool, uploader ...*UploadHandler) *PublicReportHandler {
+	h := &PublicReportHandler{pool: pool}
+	if len(uploader) > 0 {
+		h.uploader = uploader[0]
+	}
+	return h
 }
 
 type CreateReportInput struct {
@@ -230,19 +233,14 @@ func (h *PublicReportHandler) PublicUploadPhoto(c *gin.Context) {
 	}
 
 	filename := "report_" + uuid.NewString() + ".jpg"
-	dir := getUploadDir()
-	destPath := filepath.Join(dir, filename)
-	if err := os.WriteFile(destPath, processed, 0644); err != nil {
-		_ = os.MkdirAll("uploads", 0755)
-		destPath = filepath.Join("uploads", filename)
-		if err2 := os.WriteFile(destPath, processed, 0644); err2 != nil {
-			internalError(c, "Gagal menyimpan file foto", err2)
-			return
-		}
+	url, err := h.uploader.SavePhoto(c.Request.Context(), filename, processed)
+	if err != nil {
+		internalError(c, "Gagal menyimpan file foto", err)
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"url": fmt.Sprintf("/api/uploads/%s", filename),
+		"url": url,
 	})
 }
 
@@ -484,6 +482,8 @@ func (h *PublicReportHandler) UpdateReportStatus(c *gin.Context) {
 // DELETE /api/reports/:id - Delete report (Admin)
 func (h *PublicReportHandler) DeleteReport(c *gin.Context) {
 	id := c.Param("id")
+	var photo *string
+	_ = h.pool.QueryRow(c, `SELECT photo_url FROM item_reports WHERE id::text = $1`, id).Scan(&photo)
 	res, err := h.pool.Exec(c, `DELETE FROM item_reports WHERE id::text = $1`, id)
 	if err != nil {
 		internalError(c, "Gagal menghapus laporan", err)
@@ -492,6 +492,9 @@ func (h *PublicReportHandler) DeleteReport(c *gin.Context) {
 	if res.RowsAffected() == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Laporan tidak ditemukan"})
 		return
+	}
+	if photo != nil && *photo != "" {
+		DeleteUploadedPhoto(c.Request.Context(), h.pool, *photo)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Laporan berhasil dihapus"})
 }

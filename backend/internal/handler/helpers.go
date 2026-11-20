@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"inventariskantor/internal/service"
 )
 
 func fmtSprintf(format string, args ...any) string {
@@ -58,25 +60,9 @@ func internalError(c *gin.Context, publicMsg string, err error) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": publicMsg})
 }
 
-// SanitizeSpreadsheetCell neutralizes CSV/XLSX formula injection payloads
-// (values starting with =, +, -, @, tab, or carriage return).
+// SanitizeSpreadsheetCell neutralizes CSV/XLSX formula injection payloads.
 func SanitizeSpreadsheetCell(s string) string {
-	if s == "" {
-		return s
-	}
-	trimmed := strings.TrimLeft(s, " \t\r\n")
-	if trimmed == "" {
-		return s
-	}
-	switch s[0] {
-	case '=', '+', '-', '@', '\t', '\r', '\n':
-		return "'" + s
-	}
-	switch trimmed[0] {
-	case '=', '+', '-', '@':
-		return "'" + s
-	}
-	return s
+	return service.SanitizeSpreadsheetCell(s)
 }
 
 // SanitizePhotoURL validates a stored photo URL to prevent javascript:/data: Stored XSS
@@ -229,4 +215,145 @@ func NewSafeHTTPClient(timeout time.Duration, allowPrivate bool) *http.Client {
 			return http.ErrUseLastResponse
 		},
 	}
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isAllZeros(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != '0' {
+			return false
+		}
+	}
+	return true
+}
+
+func parseGroupedInt(parts []string) (string, bool) {
+	if len(parts) < 2 || len(parts[0]) < 1 || len(parts[0]) > 3 || !isAllDigits(parts[0]) {
+		return "", false
+	}
+	var b strings.Builder
+	b.WriteString(parts[0])
+	for _, p := range parts[1:] {
+		if len(p) != 3 || !isAllDigits(p) {
+			return "", false
+		}
+		b.WriteString(p)
+	}
+	return b.String(), true
+}
+
+// parseStrictInt64 parses spreadsheet integers safely across Indonesian (1.500.000,00)
+// and English (1,500,000.00) formats, rejecting non-integer decimals like "1.5" or "1,5".
+func parseStrictInt64(raw string) (int64, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, errors.New("nilai angka kosong")
+	}
+	upper := strings.ToUpper(s)
+	if strings.HasPrefix(upper, "RP") {
+		s = strings.TrimSpace(strings.TrimPrefix(s[2:], "."))
+	} else if strings.HasPrefix(upper, "IDR") {
+		s = strings.TrimSpace(s[3:])
+	}
+	sign := ""
+	if strings.HasPrefix(s, "-") || strings.HasPrefix(s, "+") {
+		sign = s[:1]
+		s = strings.TrimSpace(s[1:])
+	}
+	if s == "" {
+		return 0, fmt.Errorf("format angka tidak valid: %q", raw)
+	}
+
+	hasDot := strings.Contains(s, ".")
+	hasComma := strings.Contains(s, ",")
+	var digits string
+
+	switch {
+	case hasDot && hasComma:
+		lastDot := strings.LastIndex(s, ".")
+		lastComma := strings.LastIndex(s, ",")
+		decSep := ","
+		thouSep := "."
+		if lastDot > lastComma {
+			decSep = "."
+			thouSep = ","
+		}
+		decParts := strings.Split(s, decSep)
+		if len(decParts) != 2 || !isAllZeros(decParts[1]) {
+			return 0, fmt.Errorf("angka desimal tidak diizinkan: %q", raw)
+		}
+		intPart := decParts[0]
+		if strings.Contains(intPart, thouSep) {
+			g, ok := parseGroupedInt(strings.Split(intPart, thouSep))
+			if !ok {
+				return 0, fmt.Errorf("format pemisah ribuan tidak valid: %q", raw)
+			}
+			digits = g
+		} else if isAllDigits(intPart) {
+			digits = intPart
+		} else {
+			return 0, fmt.Errorf("format angka tidak valid: %q", raw)
+		}
+
+	case hasDot || hasComma:
+		sep := "."
+		if hasComma {
+			sep = ","
+		}
+		parts := strings.Split(s, sep)
+		if len(parts) > 2 {
+			g, ok := parseGroupedInt(parts)
+			if !ok {
+				return 0, fmt.Errorf("format pemisah ribuan tidak valid: %q", raw)
+			}
+			digits = g
+		} else {
+			left, right := parts[0], parts[1]
+			if !isAllDigits(left) || !isAllDigits(right) {
+				return 0, fmt.Errorf("format angka tidak valid: %q", raw)
+			}
+			// Single separator with 3-digit group (e.g. "1.000", "25,500") is a thousands separator
+			// unless left is "0" (e.g. "0.000" -> 0, "0.500" -> decimal error).
+			if len(right) == 3 && len(left) >= 1 && len(left) <= 3 && left != "0" {
+				digits = left + right
+			} else if isAllZeros(right) {
+				digits = left
+			} else {
+				return 0, fmt.Errorf("angka harus berupa bilangan bulat: %q", raw)
+			}
+		}
+
+	default:
+		if !isAllDigits(s) {
+			return 0, fmt.Errorf("format angka tidak valid: %q", raw)
+		}
+		digits = s
+	}
+
+	return strconv.ParseInt(sign+digits, 10, 64)
+}
+
+func parseStrictInt32(raw string) (int32, error) {
+	v, err := parseStrictInt64(raw)
+	if err != nil {
+		return 0, err
+	}
+	if v < -2147483648 || v > 2147483647 {
+		return 0, fmt.Errorf("angka di luar rentang int32: %q", raw)
+	}
+	return int32(v), nil
 }

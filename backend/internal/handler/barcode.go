@@ -96,7 +96,12 @@ func (h *BarcodeHandler) PNG(c *gin.Context) {
 	err := h.pool.QueryRow(c, `SELECT sku FROM inventory_items WHERE id::text=$1 OR sku=$1`, id).Scan(&sku)
 	if err != nil {
 		var unitBc string
-		errUnit := h.pool.QueryRow(c, `SELECT barcode FROM item_units WHERE id::text=$1 OR barcode=$1`, id).Scan(&unitBc)
+		errUnit := h.pool.QueryRow(c, `
+			SELECT COALESCE(NULLIF(u.barcode, ''), i.sku, '')
+			FROM item_units u
+			JOIN inventory_items i ON u.item_id = i.id
+			WHERE u.id::text=$1 OR u.barcode=$1
+		`, id).Scan(&unitBc)
 		if errUnit != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
@@ -264,13 +269,15 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 		}
 	}
 
-	// 3. Fetch physical units if fixed asset
+	// 3. Fetch all registered physical units with photos & details for scan view
+	isAuth := h.isAuthenticatedRequest(c)
 	resp.Units = []gin.H{}
 	if !resp.TrackStock {
 		uRows, uErr := h.pool.Query(c, `
 			SELECT id::text, unit_number, COALESCE(register_number, ''), COALESCE(barcode, ''),
 			       COALESCE(serial_number, ''), COALESCE(condition_status, 'Baik (B)'),
-			       COALESCE(location, ''), COALESCE(photo_url, '')
+			       COALESCE(location, ''), COALESCE(location_code, ''),
+			       COALESCE(notes, ''), COALESCE(photo_url, ''), COALESCE(geo_name, '')
 			FROM item_units
 			WHERE item_id::text = $1
 			ORDER BY unit_number ASC
@@ -278,55 +285,58 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 		if uErr == nil {
 			defer uRows.Close()
 			for uRows.Next() {
-				var uid, reg, bc, sn, cond, loc, ph string
+				var uid, reg, bc, sn, cond, loc, locCode, notes, ph, geoName string
 				var unum int
-				uRows.Scan(&uid, &unum, &reg, &bc, &sn, &cond, &loc, &ph)
-				resp.Units = append(resp.Units, gin.H{
-					"id":               uid,
-					"unit_number":      unum,
-					"register_number":  reg,
-					"barcode":          bc,
-					"serial_number":    sn,
-					"condition_status": cond,
-					"location":         loc,
-					"photo_url":        ph,
-				})
+				if err := uRows.Scan(&uid, &unum, &reg, &bc, &sn, &cond, &loc, &locCode, &notes, &ph, &geoName); err == nil {
+					resp.Units = append(resp.Units, gin.H{
+						"id":               uid,
+						"unit_number":      unum,
+						"register_number":  reg,
+						"barcode":          bc,
+						"serial_number":    sn,
+						"condition_status": cond,
+						"location":         loc,
+						"location_code":    locCode,
+						"notes":            notes,
+						"photo_url":        ph,
+						"geo_name":         geoName,
+					})
+				}
 			}
 		}
 	}
 
-	// 4. Fetch maintenance history for public view
-	isAuth := h.isAuthenticatedRequest(c)
-	mRows, err := h.pool.Query(c, `
-		SELECT service_type, service_date::text,
-		       COALESCE(vendor_or_technician, ''), COALESCE(description, ''),
-		       next_service_date::text, COALESCE(photo_url, '')
-		FROM item_maintenances
-		WHERE item_id::text = $1
-		ORDER BY service_date DESC, created_at DESC
-	`, resp.ID)
+	// 4. Fetch maintenance history only for authenticated users
 	resp.Maintenances = []gin.H{}
-	if err == nil {
-		defer mRows.Close()
-		for mRows.Next() {
-			var sType, sDate, vendor, desc, photo string
-			var nextDate *string
-			mRows.Scan(&sType, &sDate, &vendor, &desc, &nextDate, &photo)
-			mItem := gin.H{
-				"service_type":      sType,
-				"service_date":      sDate,
-				"description":       desc,
-				"next_service_date": nextDate,
-				"photo_url":         photo,
+	if isAuth {
+		mRows, err := h.pool.Query(c, `
+			SELECT service_type, service_date::text,
+			       COALESCE(vendor_or_technician, ''), COALESCE(description, ''),
+			       next_service_date::text, COALESCE(photo_url, '')
+			FROM item_maintenances
+			WHERE item_id::text = $1
+			ORDER BY service_date DESC, created_at DESC
+		`, resp.ID)
+		if err == nil {
+			defer mRows.Close()
+			for mRows.Next() {
+				var sType, sDate, vendor, desc, photo string
+				var nextDate *string
+				if err := mRows.Scan(&sType, &sDate, &vendor, &desc, &nextDate, &photo); err == nil {
+					resp.Maintenances = append(resp.Maintenances, gin.H{
+						"service_type":         sType,
+						"service_date":         sDate,
+						"vendor_or_technician": vendor,
+						"description":          desc,
+						"next_service_date":    nextDate,
+						"photo_url":            photo,
+					})
+				}
 			}
-			if isAuth {
-				mItem["vendor_or_technician"] = vendor
-			}
-			resp.Maintenances = append(resp.Maintenances, mItem)
 		}
 	}
 
-	// Redact sensitive procurement/financial/GPS details for unauthenticated public scans
+	// Redact sensitive procurement, financial, and raw GPS coordinates for unauthenticated public scans
 	if !isAuth {
 		resp.PricePerUnit = 0
 		resp.FundingSource = ""
@@ -334,6 +344,11 @@ func (h *BarcodeHandler) ScanItem(c *gin.Context) {
 		resp.GeoLat = nil
 		resp.GeoLng = nil
 		resp.GeoAcc = nil
+		if resp.ScannedUnit != nil {
+			delete(*resp.ScannedUnit, "geo_lat")
+			delete(*resp.ScannedUnit, "geo_lng")
+			delete(*resp.ScannedUnit, "geo_acc")
+		}
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -345,6 +360,160 @@ type LabelItem struct {
 	SKU      string
 	Location string
 	Category string
+}
+
+// GET /api/barcode/units — paginated list of registered physical units for barcode generation
+func (h *BarcodeHandler) ListUnits(c *gin.Context) {
+	q := strings.TrimSpace(c.Query("q"))
+	cat := strings.TrimSpace(c.Query("cat"))
+	loc := strings.TrimSpace(c.Query("loc"))
+	itemID := strings.TrimSpace(c.Query("item_id"))
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	perPage := configPerPage(c)
+
+	where := []string{"1=1"}
+	args := []any{}
+	idx := 1
+
+	if q != "" {
+		where = append(where, fmt.Sprintf(`(
+			i.name ILIKE $%d OR i.sku ILIKE $%d OR COALESCE(i.item_code,'') ILIKE $%d OR
+			COALESCE(u.barcode,'') ILIKE $%d OR COALESCE(u.register_number,'') ILIKE $%d OR
+			COALESCE(u.serial_number,'') ILIKE $%d OR COALESCE(u.location, i.location, '') ILIKE $%d
+		)`, idx, idx, idx, idx, idx, idx, idx))
+		args = append(args, "%"+q+"%")
+		idx++
+	}
+	if cat != "" {
+		where = append(where, fmt.Sprintf("i.category = $%d", idx))
+		args = append(args, cat)
+		idx++
+	}
+	if loc != "" {
+		where = append(where, fmt.Sprintf("COALESCE(NULLIF(u.location, ''), i.location, '') = $%d", idx))
+		args = append(args, loc)
+		idx++
+	}
+	if itemID != "" {
+		where = append(where, fmt.Sprintf("u.item_id::text = $%d", idx))
+		args = append(args, itemID)
+		idx++
+	}
+
+	whereSQL := strings.Join(where, " AND ")
+
+	var total int
+	if err := h.pool.QueryRow(c, fmt.Sprintf(`
+		SELECT count(*)
+		FROM item_units u
+		JOIN inventory_items i ON u.item_id = i.id
+		WHERE %s
+	`, whereSQL), args...).Scan(&total); err != nil {
+		internalError(c, "gagal menghitung unit fisik", err)
+		return
+	}
+
+	query := fmt.Sprintf(`
+		SELECT u.id::text, u.item_id::text, u.unit_number,
+		       i.name,
+		       COALESCE(NULLIF(u.barcode, ''), i.sku, ''),
+		       COALESCE(u.barcode, ''),
+		       COALESCE(i.item_code, ''),
+		       COALESCE(NULLIF(u.register_number, ''), i.register_number, ''),
+		       COALESCE(NULLIF(u.serial_number, ''), i.serial_number, ''),
+		       COALESCE(NULLIF(u.location, ''), i.location, ''),
+		       COALESCE(NULLIF(u.location_code, ''), i.location_code, ''),
+		       COALESCE(i.category, ''),
+		       COALESCE(i.merk, ''),
+		       COALESCE(i.type_model, ''),
+		       COALESCE(i.procurement_year, 0),
+		       COALESCE(i.funding_source, ''),
+		       COALESCE(NULLIF(u.condition_status, ''), i.condition_status, 'Baik (B)'),
+		       COALESCE(i.size, ''),
+		       COALESCE(i.material, ''),
+		       COALESCE(i.price_per_unit, 0),
+		       COALESCE(NULLIF(u.notes, ''), i.description, ''),
+		       COALESCE(NULLIF(u.photo_url, ''), i.photo_url, '')
+		FROM item_units u
+		JOIN inventory_items i ON u.item_id = i.id
+		WHERE %s
+		ORDER BY i.name ASC, u.unit_number ASC
+		LIMIT $%d OFFSET $%d
+	`, whereSQL, idx, idx+1)
+	args = append(args, perPage, (page-1)*perPage)
+
+	rows, err := h.pool.Query(c, query, args...)
+	if err != nil {
+		internalError(c, "gagal memuat daftar unit fisik", err)
+		return
+	}
+	defer rows.Close()
+
+	data := make([]gin.H, 0)
+	for rows.Next() {
+		var (
+			uid, iid, itemName, sku, unitBarcode, itemCode, regNum, serialNum string
+			locName, locCode, catName, merk, typeModel, funding, cond         string
+			sizeStr, material, desc, photoURL                                 string
+			unitNum, procYear                                                 int
+			pricePerUnit                                                      int64
+		)
+		if err := rows.Scan(
+			&uid, &iid, &unitNum,
+			&itemName, &sku, &unitBarcode, &itemCode, &regNum, &serialNum,
+			&locName, &locCode, &catName, &merk, &typeModel, &procYear, &funding, &cond,
+			&sizeStr, &material, &pricePerUnit, &desc, &photoURL,
+		); err != nil {
+			internalError(c, "gagal membaca data unit fisik", err)
+			return
+		}
+		data = append(data, gin.H{
+			"id":               uid,
+			"item_id":          iid,
+			"is_unit":          true,
+			"unit_number":      unitNum,
+			"item_name":        itemName,
+			"name":             fmt.Sprintf("%s (U%d)", itemName, unitNum),
+			"sku":              sku,
+			"barcode":          unitBarcode,
+			"item_code":        itemCode,
+			"register_number":  regNum,
+			"serial_number":    serialNum,
+			"location":         locName,
+			"location_code":    locCode,
+			"category":         catName,
+			"merk":             merk,
+			"type_model":       typeModel,
+			"procurement_year": procYear,
+			"funding_source":   funding,
+			"condition_status": cond,
+			"size":             sizeStr,
+			"material":         material,
+			"price_per_unit":   pricePerUnit,
+			"description":      desc,
+			"photo_url":        photoURL,
+			"track_stock":      false,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		internalError(c, "gagal menyelesaikan pembacaan daftar unit fisik", err)
+		return
+	}
+
+	pages := (total + perPage - 1) / perPage
+	if pages < 1 {
+		pages = 1
+	}
+	c.JSON(http.StatusOK, paginatedResp{
+		Data:    data,
+		Total:   total,
+		Page:    page,
+		PerPage: perPage,
+		Pages:   pages,
+	})
 }
 
 // GET /api/barcode/sheet?ids=a,b,c&layout=...&fmt=...&copies=...&offset=...&show_border=...
@@ -379,39 +548,72 @@ func (h *BarcodeHandler) Sheet(c *gin.Context) {
 
 	idList := splitComma(ids)
 	const maxSheetIDs = 200
-	if len(idList) > maxSheetIDs {
-		idList = idList[:maxSheetIDs]
-	}
-	var items []LabelItem
-	for _, id := range idList {
-		id = strings.TrimSpace(id)
+	cleanIDs := make([]string, 0, len(idList))
+	for _, raw := range idList {
+		id := strings.TrimSpace(raw)
 		if id == "" {
 			continue
 		}
-		var it LabelItem
-		it.ID = id
-		err := h.pool.QueryRow(c, `
-			SELECT name, COALESCE(sku, ''), COALESCE(location, ''), COALESCE(category, '')
-			FROM inventory_items WHERE id::text=$1
-		`, id).Scan(&it.Name, &it.SKU, &it.Location, &it.Category)
-		if err != nil {
-			var uName, uBc, uLoc, uCat string
-			var uNum int
-			errU := h.pool.QueryRow(c, `
-				SELECT i.name, u.unit_number, COALESCE(u.barcode, ''), COALESCE(u.location, i.location, ''), COALESCE(i.category, '')
-				FROM item_units u
-				JOIN inventory_items i ON u.item_id = i.id
-				WHERE u.id::text=$1 OR u.barcode=$1
-			`, id).Scan(&uName, &uNum, &uBc, &uLoc, &uCat)
-			if errU == nil {
-				it.Name = fmt.Sprintf("%s (U%d)", uName, uNum)
-				it.SKU = uBc
-				it.Location = uLoc
-				it.Category = uCat
-				err = nil
+		cleanIDs = append(cleanIDs, id)
+		if len(cleanIDs) >= maxSheetIDs {
+			break
+		}
+	}
+
+	byKey := make(map[string]LabelItem, len(cleanIDs))
+	if len(cleanIDs) > 0 {
+		if iRows, err := h.pool.Query(c, `
+			SELECT id::text, name, COALESCE(sku, ''), COALESCE(location, ''), COALESCE(category, '')
+			FROM inventory_items
+			WHERE id::text = ANY($1)
+		`, cleanIDs); err == nil {
+			for iRows.Next() {
+				var it LabelItem
+				if err := iRows.Scan(&it.ID, &it.Name, &it.SKU, &it.Location, &it.Category); err == nil {
+					byKey[it.ID] = it
+				}
+			}
+			iRows.Close()
+		}
+
+		var missing []string
+		for _, id := range cleanIDs {
+			if _, ok := byKey[id]; !ok {
+				missing = append(missing, id)
 			}
 		}
-		if err == nil {
+		if len(missing) > 0 {
+			if uRows, err := h.pool.Query(c, `
+				SELECT u.id::text, i.name, u.unit_number, COALESCE(NULLIF(u.barcode, ''), i.sku, ''), COALESCE(NULLIF(u.location, ''), i.location, ''), COALESCE(i.category, '')
+				FROM item_units u
+				JOIN inventory_items i ON u.item_id = i.id
+				WHERE u.id::text = ANY($1) OR u.barcode = ANY($1)
+			`, missing); err == nil {
+				for uRows.Next() {
+					var uid, uName, uBc, uLoc, uCat string
+					var uNum int
+					if err := uRows.Scan(&uid, &uName, &uNum, &uBc, &uLoc, &uCat); err == nil {
+						it := LabelItem{
+							ID:       uid,
+							Name:     fmt.Sprintf("%s (U%d)", uName, uNum),
+							SKU:      uBc,
+							Location: uLoc,
+							Category: uCat,
+						}
+						byKey[uid] = it
+						if uBc != "" {
+							byKey[uBc] = it
+						}
+					}
+				}
+				uRows.Close()
+			}
+		}
+	}
+
+	items := make([]LabelItem, 0, len(cleanIDs))
+	for _, id := range cleanIDs {
+		if it, ok := byKey[id]; ok {
 			items = append(items, it)
 		}
 	}
@@ -493,77 +695,77 @@ func (h *BarcodeHandler) renderSheetHTML(rawItems []LabelItem, layout, fmtType, 
 	var cssPage, cssContainer, cssCard string
 	switch layout {
 	case "tj_103":
-		// Tom & Jerry No. 103 (3 cols x 4 rows, 64x32 mm per sticker)
-		cssPage = `@page { size: auto; margin: 6mm 5mm; }`
-		cssContainer = `width: 200mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 64mm); gap: 3.5mm 4mm; justify-content: center;`
+		// Tom & Jerry No. 103 (3 cols x 4 rows, 64x32 mm per sticker) on A4 portrait with zero browser margin
+		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 6mm 5mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 64mm); gap: 3.5mm 4mm; justify-content: center; align-content: start;`
 		cssCard = fmt.Sprintf(`width: 64mm; height: 32mm; %s border-radius: 4px; box-sizing: border-box; padding: 2mm 2.5mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 
 	case "tj_107":
 		// Tom & Jerry No. 107 (3 cols x 8 rows, 50x18 mm per sticker)
-		cssPage = `@page { size: auto; margin: 5mm; }`
-		cssContainer = `width: 160mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 50mm); gap: 2mm 3mm; justify-content: center;`
+		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 5mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 50mm); gap: 2mm 3mm; justify-content: center; align-content: start;`
 		cssCard = fmt.Sprintf(`width: 50mm; height: 18mm; %s border-radius: 3px; box-sizing: border-box; padding: 1mm 1.5mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 
 	case "tj_108":
 		// Tom & Jerry No. 108 (5 cols x 8 rows, 38x18 mm per sticker)
-		cssPage = `@page { size: auto; margin: 5mm; }`
-		cssContainer = `width: 198mm; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 38mm); gap: 2mm 2mm; justify-content: center;`
+		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 5mm; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 38mm); gap: 2mm 2mm; justify-content: center; align-content: start;`
 		cssCard = fmt.Sprintf(`width: 38mm; height: 18mm; %s border-radius: 3px; box-sizing: border-box; padding: 1mm 1.5mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 
 	case "tj_121":
 		// Tom & Jerry No. 121 (2 cols x 5 rows, 75x38 mm per sticker)
-		cssPage = `@page { size: auto; margin: 6mm 5mm; }`
-		cssContainer = `width: 160mm; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 75mm); gap: 3mm 4mm; justify-content: center;`
+		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 6mm 5mm; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 75mm); gap: 3mm 4mm; justify-content: center; align-content: start;`
 		cssCard = fmt.Sprintf(`width: 75mm; height: 38mm; %s border-radius: 4px; box-sizing: border-box; padding: 2.5mm 3mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 
 	case "a4_3x7":
-		cssPage = `@page { size: A4 portrait; margin: 8mm; }`
-		cssContainer = `display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; padding: 0; margin: 0;`
+		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 8mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; align-content: start;`
 		cssCard = fmt.Sprintf(`height: 38mm; %s border-radius: 4px; box-sizing: border-box; padding: 2.5mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 
 	case "a4_4x10":
-		cssPage = `@page { size: A4 portrait; margin: 6mm; }`
-		cssContainer = `display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.5mm; padding: 0; margin: 0;`
+		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 6mm; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.5mm; align-content: start;`
 		cssCard = fmt.Sprintf(`height: 25.5mm; %s border-radius: 3px; box-sizing: border-box; padding: 1.5mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 
 	case "thermal_58":
 		cssPage = `@page { size: 58mm auto; margin: 0; }`
 		cssContainer = `width: 54mm; margin: 0 auto; padding: 2mm 0;`
-		cssCard = `width: 50mm; margin: 0 auto 3mm auto; padding: 2mm; text-align: center; border-bottom: 1px dashed #666; page-break-after: always; break-after: page; box-sizing: border-box;`
+		cssCard = `width: 50mm; margin: 0 auto 3mm auto; padding: 2mm; text-align: center; border-bottom: 1px dashed #666; box-sizing: border-box;`
 
 	case "thermal_80":
 		cssPage = `@page { size: 80mm auto; margin: 0; }`
 		cssContainer = `width: 76mm; margin: 0 auto; padding: 2mm 0;`
-		cssCard = `width: 72mm; margin: 0 auto 4mm auto; padding: 3mm; text-align: center; border-bottom: 1px dashed #666; page-break-after: always; break-after: page; box-sizing: border-box;`
+		cssCard = `width: 72mm; margin: 0 auto 4mm auto; padding: 3mm; text-align: center; border-bottom: 1px dashed #666; box-sizing: border-box;`
 
 	case "label_40x30":
 		cssPage = `@page { size: 40mm 30mm; margin: 0; }`
 		cssContainer = `margin: 0; padding: 0;`
-		cssCard = fmt.Sprintf(`width: 40mm; height: 30mm; margin: 0; padding: 1.5mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; page-break-after: always; break-after: page; overflow: hidden; %s`, borderStyle)
+		cssCard = fmt.Sprintf(`width: 40mm; height: 30mm; margin: 0; padding: 1.5mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; %s`, borderStyle)
 
 	case "label_50x30":
 		cssPage = `@page { size: 50mm 30mm; margin: 0; }`
 		cssContainer = `margin: 0; padding: 0;`
-		cssCard = fmt.Sprintf(`width: 50mm; height: 30mm; margin: 0; padding: 1.5mm 2.5mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; page-break-after: always; break-after: page; overflow: hidden; %s`, borderStyle)
+		cssCard = fmt.Sprintf(`width: 50mm; height: 30mm; margin: 0; padding: 1.5mm 2.5mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; %s`, borderStyle)
 
 	case "label_60x40":
 		cssPage = `@page { size: 60mm 40mm; margin: 0; }`
 		cssContainer = `margin: 0; padding: 0;`
-		cssCard = fmt.Sprintf(`width: 60mm; height: 40mm; margin: 0; padding: 2.5mm 3mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; page-break-after: always; break-after: page; overflow: hidden; %s`, borderStyle)
+		cssCard = fmt.Sprintf(`width: 60mm; height: 40mm; margin: 0; padding: 2.5mm 3mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; %s`, borderStyle)
 
 	case "label_70x50":
 		cssPage = `@page { size: 70mm 50mm; margin: 0; }`
 		cssContainer = `margin: 0; padding: 0;`
-		cssCard = fmt.Sprintf(`width: 70mm; height: 50mm; margin: 0; padding: 3mm 4mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; page-break-after: always; break-after: page; overflow: hidden; %s`, borderStyle)
+		cssCard = fmt.Sprintf(`width: 70mm; height: 50mm; margin: 0; padding: 3mm 4mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; %s`, borderStyle)
 
 	case "label_100x50":
 		cssPage = `@page { size: 100mm 50mm; margin: 0; }`
 		cssContainer = `margin: 0; padding: 0;`
-		cssCard = fmt.Sprintf(`width: 100mm; height: 50mm; margin: 0; padding: 3mm 5mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; page-break-after: always; break-after: page; overflow: hidden; %s`, borderStyle)
+		cssCard = fmt.Sprintf(`width: 100mm; height: 50mm; margin: 0; padding: 3mm 5mm; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; %s`, borderStyle)
 
 	default:
-		cssPage = `@page { size: auto; margin: 6mm; }`
-		cssContainer = `width: 200mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 64mm); gap: 3.5mm 4mm; justify-content: center;`
+		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 6mm 5mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 64mm); gap: 3.5mm 4mm; justify-content: center; align-content: start;`
 		cssCard = fmt.Sprintf(`width: 64mm; height: 32mm; %s border-radius: 4px; box-sizing: border-box; padding: 2mm 2.5mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 	}
 
@@ -670,18 +872,23 @@ body {
 }
 @media print {
   .screen-toolbar { display: none !important; }
-  body { background: #fff !important; padding: 0 !important; }
+  body { background: #fff !important; padding: 0 !important; margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .sheet-page {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+  }
+  .sheet-page:not(:last-child) {
     page-break-after: always;
     break-after: page;
   }
   .sheet-page .label-unit { box-shadow: none !important; }
   .print-page-wrapper { box-shadow: none !important; margin: 0 !important; }
+  .print-page-wrapper .label-unit:not(:last-child) {
+    page-break-after: always;
+    break-after: page;
+  }
 }
 %s
 .sheet-page {

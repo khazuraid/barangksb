@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -381,6 +380,11 @@ func (h *BulkHandler) BulkAdjust(c *gin.Context) {
 		}
 	}
 
+	if ok > 0 && h.tg != nil {
+		summaryNotes := fmt.Sprintf("Opname massal selesai: %d berubah, %d tetap, %d gagal", ok, unchanged, fail)
+		go h.tg.NotifyMovement(context.Background(), "ADJUST", "OPNAME-MASSAL", "Ringkasan Stock Opname Massal", int32(ok), "barang", 0, int32(ok), person, summaryNotes)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"ok":        ok,
 		"unchanged": unchanged,
@@ -441,10 +445,6 @@ func (h *BulkHandler) adjustSingleItem(ctx context.Context, sku string, actual i
 		return 0, fmt.Errorf("gagal menyimpan perubahan: %w", err)
 	}
 
-	if h.tg != nil {
-		go h.tg.NotifyMovement(context.Background(), txType, sku, name, absDiff, unit, current, actual, person, note)
-	}
-
 	return diff, nil
 }
 
@@ -475,17 +475,12 @@ func isMasterBarangShape(row []string) bool {
 }
 
 func parseQty(s string) (int32, error) {
-	s = strings.TrimSpace(s)
-	clean := strings.ReplaceAll(s, ",", "")
-	if idx := strings.Index(clean, "."); idx != -1 {
-		clean = clean[:idx]
-	}
-	v, err := strconv.ParseInt(clean, 10, 32)
+	v, err := parseStrictInt32(s)
 	if err != nil {
 		return 0, err
 	}
 	if v < 0 {
 		return 0, fmt.Errorf("stok tidak boleh negatif")
 	}
-	return int32(v), nil
+	return v, nil
 }

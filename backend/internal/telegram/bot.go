@@ -12,7 +12,6 @@ import (
 	"image/png"
 	"io"
 	"log/slog"
-	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,6 +29,8 @@ import (
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/oned"
 	qrcode "github.com/makiuchi-d/gozxing/qrcode"
+
+	"inventariskantor/internal/service"
 )
 
 type wizardState struct {
@@ -48,6 +49,7 @@ type Bot struct {
 	pool        *pgxpool.Pool
 	botInst     *bot.Bot
 	httpClient  *http.Client
+	initMu      sync.Mutex
 	wizards     map[int64]*wizardState
 	wizardMutex sync.RWMutex
 }
@@ -87,25 +89,6 @@ func isBlockedTelegramIP(ip net.IP) bool {
 		}
 	}
 	return false
-}
-
-func sanitizeTelegramCSVCell(s string) string {
-	if s == "" {
-		return s
-	}
-	trimmed := strings.TrimLeft(s, " \t\r\n")
-	if trimmed == "" {
-		return s
-	}
-	switch s[0] {
-	case '=', '+', '-', '@', '\t', '\r', '\n':
-		return "'" + s
-	}
-	switch trimmed[0] {
-	case '=', '+', '-', '@':
-		return "'" + s
-	}
-	return s
 }
 
 func validateTelegramAPIURL(raw string, allowPrivate bool) bool {
@@ -188,18 +171,31 @@ func (b *Bot) authMiddleware(next bot.HandlerFunc) bot.HandlerFunc {
 	}
 }
 
-func (b *Bot) Start(ctx context.Context) {
-	if b.token == "" {
+// initClient creates the Telegram HTTP client and bot instance without starting polling.
+func (b *Bot) initClient(ctx context.Context, withHandlers bool) *bot.Bot {
+	b.initMu.Lock()
+	defer b.initMu.Unlock()
+
+	if b.botInst != nil && !withHandlers {
+		return b.botInst
+	}
+
+	if b.token == "" && b.pool != nil {
 		var token string
-		b.pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='telegram_bot_token'`).Scan(&token)
+		_ = b.pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='telegram_bot_token'`).Scan(&token)
 		if token == "" {
-			return
+			return nil
 		}
 		b.token = token
 	}
+	if b.token == "" {
+		return nil
+	}
 
 	var apiURL string
-	b.pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='telegram_api_url'`).Scan(&apiURL)
+	if b.pool != nil {
+		_ = b.pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='telegram_api_url'`).Scan(&apiURL)
+	}
 	if apiURL == "" {
 		apiURL = os.Getenv("TELEGRAM_API_URL")
 	}
@@ -247,8 +243,6 @@ func (b *Bot) Start(ctx context.Context) {
 	opts := []bot.Option{
 		bot.WithSkipGetMe(),
 		bot.WithHTTPClient(30*time.Second, httpClient),
-		bot.WithMiddlewares(b.authMiddleware),
-		bot.WithDefaultHandler(b.handleDefault),
 		bot.WithErrorsHandler(func(err error) {
 			if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline") {
 				slog.Debug("telegram polling timeout", "err", err)
@@ -256,6 +250,9 @@ func (b *Bot) Start(ctx context.Context) {
 			}
 			slog.Warn("telegram bot error", "err", err)
 		}),
+	}
+	if withHandlers {
+		opts = append(opts, bot.WithMiddlewares(b.authMiddleware), bot.WithDefaultHandler(b.handleDefault))
 	}
 	apiURL = strings.TrimRight(strings.TrimSpace(apiURL), "/")
 	if apiURL != "" {
@@ -269,9 +266,24 @@ func (b *Bot) Start(ctx context.Context) {
 	botInst, err := bot.New(b.token, opts...)
 	if err != nil {
 		slog.Error("telegram bot init failed", "err", err)
-		return
+		return nil
 	}
 	b.botInst = botInst
+	return botInst
+}
+
+// InitSender initializes the Telegram client for outbound notifications only (used in worker mode).
+func (b *Bot) InitSender(ctx context.Context) {
+	if b.initClient(ctx, false) != nil {
+		slog.Info("telegram sender initialized (send-only mode)")
+	}
+}
+
+func (b *Bot) Start(ctx context.Context) {
+	botInst := b.initClient(ctx, true)
+	if botInst == nil {
+		return
+	}
 
 	// Register specific slash command handlers
 	botInst.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypeExact, b.handleStart)
@@ -1431,14 +1443,33 @@ func (b *Bot) handleKeluar(ctx context.Context, bt *bot.Bot, u *models.Update) {
 }
 
 func (b *Bot) executeStockMutation(ctx context.Context, bt *bot.Bot, chatID int64, sku string, qty int32, mutType string) {
-	var id, name, unit string
-	var currentStock int32
+	if qty <= 0 {
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Jumlah harus lebih dari 0."})
+		return
+	}
 
-	err := b.pool.QueryRow(ctx,
-		`SELECT id::text, name, unit, current_stock FROM inventory_items WHERE sku ILIKE $1 OR serial_number ILIKE $1 LIMIT 1`, sku).
-		Scan(&id, &name, &unit, &currentStock)
+	tx, err := b.pool.Begin(ctx)
+	if err != nil {
+		slog.Error("telegram stock mutation begin tx failed", "err", err)
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal memulai transaksi stok."})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var id, itemSKU, name, unit string
+	var currentStock int32
+	var trackStock bool
+
+	err = tx.QueryRow(ctx,
+		`SELECT id::text, sku, name, unit, current_stock, COALESCE(track_stock, true)
+		 FROM inventory_items WHERE sku ILIKE $1 OR serial_number ILIKE $1 LIMIT 1 FOR UPDATE`, sku).
+		Scan(&id, &itemSKU, &name, &unit, &currentStock, &trackStock)
 	if err != nil {
 		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Barang tidak ditemukan dengan SKU: " + sku})
+		return
+	}
+	if !trackStock {
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: fmt.Sprintf("⚠️ %s (%s) adalah aset tetap (tidak mengelola kuantitas stok).", name, itemSKU)})
 		return
 	}
 
@@ -1449,25 +1480,42 @@ func (b *Bot) executeStockMutation(ctx context.Context, bt *bot.Bot, chatID int6
 		actionLabel = "Barang Masuk"
 		icon = "📥"
 	} else {
-		newStock = int32(math.Max(0, float64(currentStock-qty)))
+		if currentStock < qty {
+			bt.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID: chatID,
+				Text:   fmt.Sprintf("⚠️ Stok tidak mencukupi untuk %s (%s). Tersedia: %d %s, diminta keluar: %d %s.", name, itemSKU, currentStock, unit, qty, unit),
+			})
+			return
+		}
+		newStock = currentStock - qty
 		actionLabel = "Barang Keluar"
 		icon = "📤"
 	}
 
-	_, err = b.pool.Exec(ctx,
-		`UPDATE inventory_items SET current_stock = $2, updated_at = now() WHERE id::text = $1`, id, newStock)
-	if err != nil {
+	if _, err = tx.Exec(ctx,
+		`UPDATE inventory_items SET current_stock = $2, updated_at = now() WHERE id::text = $1`, id, newStock); err != nil {
+		slog.Error("telegram stock update failed", "sku", itemSKU, "err", err)
 		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal memperbarui stok."})
 		return
 	}
 
-	b.pool.Exec(ctx,
+	if _, err = tx.Exec(ctx,
 		`INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, notes)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Mutasi via Bot Telegram')`,
-		mutType, id, sku, name, qty, unit, currentStock, newStock)
+		mutType, id, itemSKU, name, qty, unit, currentStock, newStock); err != nil {
+		slog.Error("telegram stock ledger insert failed", "sku", itemSKU, "err", err)
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal mencatat riwayat mutasi stok."})
+		return
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		slog.Error("telegram stock mutation commit failed", "sku", itemSKU, "err", err)
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal menyimpan mutasi stok."})
+		return
+	}
 
 	text := fmt.Sprintf("%s *%s Berhasil!*\n\n📦 *%s* (`%s`)\n• Jumlah: *%d %s*\n• Stok Sebelumnya: %d %s\n• Stok Sekarang: *%d %s*",
-		icon, actionLabel, name, sku, qty, unit, currentStock, unit, newStock, unit)
+		icon, actionLabel, name, itemSKU, qty, unit, currentStock, unit, newStock, unit)
 
 	kb := models.InlineKeyboardMarkup{
 		InlineKeyboard: [][]models.InlineKeyboardButton{
@@ -1545,13 +1593,27 @@ func (b *Bot) handleBatchMutation(ctx context.Context, bt *bot.Bot, u *models.Up
 			continue
 		}
 
-		var id, name, unit string
+		tx, txErr := b.pool.Begin(ctx)
+		if txErr != nil {
+			report.WriteString(fmt.Sprintf("❌ `%s`: gagal memulai transaksi\n", sku))
+			continue
+		}
+
+		var id, itemSKU, name, unit string
 		var currentStock int32
-		err = b.pool.QueryRow(ctx,
-			`SELECT id::text, name, unit, current_stock FROM inventory_items WHERE sku ILIKE $1 LIMIT 1`, sku).
-			Scan(&id, &name, &unit, &currentStock)
+		var trackStock bool
+		err = tx.QueryRow(ctx,
+			`SELECT id::text, sku, name, unit, current_stock, COALESCE(track_stock, true)
+			 FROM inventory_items WHERE sku ILIKE $1 LIMIT 1 FOR UPDATE`, sku).
+			Scan(&id, &itemSKU, &name, &unit, &currentStock, &trackStock)
 		if err != nil {
+			tx.Rollback(ctx)
 			report.WriteString(fmt.Sprintf("❌ `%s`: SKU tidak ditemukan\n", sku))
+			continue
+		}
+		if !trackStock {
+			tx.Rollback(ctx)
+			report.WriteString(fmt.Sprintf("❌ `%s`: aset tetap (non-stok)\n", itemSKU))
 			continue
 		}
 
@@ -1559,16 +1621,33 @@ func (b *Bot) handleBatchMutation(ctx context.Context, bt *bot.Bot, u *models.Up
 		if mutType == "IN" {
 			newStock = currentStock + int32(qty)
 		} else {
-			newStock = int32(math.Max(0, float64(currentStock-int32(qty))))
+			if currentStock < int32(qty) {
+				tx.Rollback(ctx)
+				report.WriteString(fmt.Sprintf("❌ `%s`: stok kurang (tersedia %d, keluar %d)\n", itemSKU, currentStock, qty))
+				continue
+			}
+			newStock = currentStock - int32(qty)
 		}
 
-		b.pool.Exec(ctx, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, id, newStock)
-		b.pool.Exec(ctx,
+		if _, err = tx.Exec(ctx, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, id, newStock); err != nil {
+			tx.Rollback(ctx)
+			report.WriteString(fmt.Sprintf("❌ `%s`: gagal update stok\n", itemSKU))
+			continue
+		}
+		if _, err = tx.Exec(ctx,
 			`INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, notes)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Batch mutation via Bot')`,
-			mutType, id, sku, name, qty, unit, currentStock, newStock)
+			mutType, id, itemSKU, name, qty, unit, currentStock, newStock); err != nil {
+			tx.Rollback(ctx)
+			report.WriteString(fmt.Sprintf("❌ `%s`: gagal catat mutasi\n", itemSKU))
+			continue
+		}
+		if err = tx.Commit(ctx); err != nil {
+			report.WriteString(fmt.Sprintf("❌ `%s`: gagal simpan transaksi\n", itemSKU))
+			continue
+		}
 
-		report.WriteString(fmt.Sprintf("✅ *%s* (`%s`): %d -> *%d %s*\n", name, sku, currentStock, newStock, unit))
+		report.WriteString(fmt.Sprintf("✅ *%s* (`%s`): %d -> *%d %s*\n", name, itemSKU, currentStock, newStock, unit))
 		successCount++
 	}
 
@@ -1667,34 +1746,60 @@ func (b *Bot) handleOpname(ctx context.Context, bt *bot.Bot, u *models.Update) {
 }
 
 func (b *Bot) executeOpname(ctx context.Context, bt *bot.Bot, chatID int64, sku string, actual int32) {
-	var id, name, unit string
+	tx, err := b.pool.Begin(ctx)
+	if err != nil {
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal memulai transaksi opname."})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var id, itemSKU, name, unit string
 	var prev int32
-	err := b.pool.QueryRow(ctx,
-		`SELECT id::text, name, unit, current_stock FROM inventory_items WHERE sku ILIKE $1 LIMIT 1`, sku).
-		Scan(&id, &name, &unit, &prev)
+	var trackStock bool
+	err = tx.QueryRow(ctx,
+		`SELECT id::text, sku, name, unit, current_stock, COALESCE(track_stock, true)
+		 FROM inventory_items WHERE sku ILIKE $1 LIMIT 1 FOR UPDATE`, sku).
+		Scan(&id, &itemSKU, &name, &unit, &prev, &trackStock)
 	if err != nil {
 		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Barang tidak ditemukan dengan SKU: " + sku})
+		return
+	}
+	if !trackStock {
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: fmt.Sprintf("⚠️ %s (%s) adalah aset tetap (tidak mengelola kuantitas stok).", name, itemSKU)})
 		return
 	}
 
 	diff := actual - prev
 	diffStr := fmt.Sprintf("%+d", diff)
 
-	b.pool.Exec(ctx, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, id, actual)
+	if _, err = tx.Exec(ctx, `UPDATE inventory_items SET current_stock=$2, updated_at=now() WHERE id::text=$1`, id, actual); err != nil {
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal memperbarui stok opname."})
+		return
+	}
 	note := fmt.Sprintf("Stock Opname: fisik %d vs sistem %d (selisih %s) via Bot", actual, prev, diffStr)
 
-	qty := int32(math.Abs(float64(diff)))
-	if qty == 0 {
-		qty = 1
+	txType := "ADJUST+"
+	qty := diff
+	if diff < 0 {
+		txType = "ADJUST-"
+		qty = -diff
+	}
+	if qty > 0 {
+		if _, err = tx.Exec(ctx,
+			`INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, notes)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			txType, id, itemSKU, name, qty, unit, prev, actual, note); err != nil {
+			bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal mencatat riwayat opname."})
+			return
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		bt.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "⚠️ Gagal menyimpan hasil opname."})
+		return
 	}
 
-	b.pool.Exec(ctx,
-		`INSERT INTO stock_transactions (type, item_id, item_sku, item_name, quantity, unit, previous_stock, new_stock, notes)
-		 VALUES ('ADJUST', $1, $2, $3, $4, $5, $6, $7, $8)`,
-		id, sku, name, qty, unit, prev, actual, note)
-
 	text := fmt.Sprintf("📋 *Audit Opname Selesai!*\n\n📦 *%s* (`%s`)\n• Stok Sistem: %d %s\n• Stok Fisik Riil: *%d %s*\n• Selisih: *%s %s*",
-		name, sku, prev, unit, actual, unit, diffStr, unit)
+		name, itemSKU, prev, unit, actual, unit, diffStr, unit)
 
 	bt.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
@@ -1945,14 +2050,14 @@ func (b *Bot) handleRekap(ctx context.Context, bt *bot.Bot, u *models.Update) {
 		var cur, min int32
 		rows.Scan(&sku, &name, &cat, &loc, &cur, &min, &unit, &cond)
 		_ = writer.Write([]string{
-			sanitizeTelegramCSVCell(sku),
-			sanitizeTelegramCSVCell(name),
-			sanitizeTelegramCSVCell(cat),
-			sanitizeTelegramCSVCell(loc),
+			service.SanitizeSpreadsheetCell(sku),
+			service.SanitizeSpreadsheetCell(name),
+			service.SanitizeSpreadsheetCell(cat),
+			service.SanitizeSpreadsheetCell(loc),
 			strconv.Itoa(int(cur)),
 			strconv.Itoa(int(min)),
-			sanitizeTelegramCSVCell(unit),
-			sanitizeTelegramCSVCell(cond),
+			service.SanitizeSpreadsheetCell(unit),
+			service.SanitizeSpreadsheetCell(cond),
 		})
 		count++
 	}
@@ -1999,15 +2104,15 @@ func (b *Bot) handleRekapMutasi(ctx context.Context, bt *bot.Bot, u *models.Upda
 		var qty, prev, next int32
 		rows.Scan(&ts, &mType, &sku, &name, &qty, &unit, &prev, &next, &notes)
 		_ = writer.Write([]string{
-			sanitizeTelegramCSVCell(ts),
-			sanitizeTelegramCSVCell(mType),
-			sanitizeTelegramCSVCell(sku),
-			sanitizeTelegramCSVCell(name),
+			service.SanitizeSpreadsheetCell(ts),
+			service.SanitizeSpreadsheetCell(mType),
+			service.SanitizeSpreadsheetCell(sku),
+			service.SanitizeSpreadsheetCell(name),
 			strconv.Itoa(int(qty)),
-			sanitizeTelegramCSVCell(unit),
+			service.SanitizeSpreadsheetCell(unit),
 			strconv.Itoa(int(prev)),
 			strconv.Itoa(int(next)),
-			sanitizeTelegramCSVCell(notes),
+			service.SanitizeSpreadsheetCell(notes),
 		})
 		count++
 	}
@@ -2440,8 +2545,12 @@ func (b *Bot) handleCallback(ctx context.Context, bt *bot.Bot, u *models.Update)
 }
 
 func (b *Bot) getLowStockText(ctx context.Context) string {
-	rows, _ := b.pool.Query(ctx,
+	rows, err := b.pool.Query(ctx,
 		`SELECT name, sku, current_stock, min_stock, unit FROM inventory_items WHERE COALESCE(track_stock, true) = true AND current_stock <= min_stock ORDER BY current_stock LIMIT 20`)
+	if err != nil {
+		slog.Error("getLowStockText query failed", "err", err)
+		return "⚠️ Gagal memuat daftar stok menipis."
+	}
 	defer rows.Close()
 	var sb strings.Builder
 	sb.WriteString("⚠️ *Daftar Barang Stok Menipis:*\n\n")
@@ -2503,7 +2612,11 @@ func (b *Bot) dailyAlert(ctx context.Context) {
 
 func (b *Bot) sendLowStockAlert(ctx context.Context) {
 	text := b.getLowStockText(ctx)
-	rows, _ := b.pool.Query(ctx, `SELECT chat_id, title FROM telegram_subscribers WHERE active=TRUE AND notify_low_stock=TRUE`)
+	rows, err := b.pool.Query(ctx, `SELECT chat_id, title FROM telegram_subscribers WHERE active=TRUE AND notify_low_stock=TRUE`)
+	if err != nil {
+		slog.Error("sendLowStockAlert query failed", "err", err)
+		return
+	}
 	defer rows.Close()
 	type target struct {
 		chatID int64
@@ -2633,7 +2746,10 @@ func (b *Bot) SyncBotCommands(ctx context.Context) error {
 // NotifyMovement broadcasts real-time stock mutation notifications to matching active subscribers
 func (b *Bot) NotifyMovement(ctx context.Context, txType, sku, name string, qty int32, unit string, prev, next int32, person, notes string) {
 	if b.botInst == nil {
-		return
+		b.InitSender(ctx)
+		if b.botInst == nil {
+			return
+		}
 	}
 
 	var notifColumn string
@@ -2649,7 +2765,7 @@ func (b *Bot) NotifyMovement(ctx context.Context, txType, sku, name string, qty 
 		notifColumn = "notify_out"
 		icon = "📤"
 		header = "*MUTASI BARANG KELUAR*"
-	case "ADJUST+", "ADJUST-":
+	case "ADJUST", "ADJUST+", "ADJUST-":
 		notifColumn = "notify_adjust"
 		icon = "⚖️"
 		header = "*PENYESUAIAN STOK (OPNAME)*"

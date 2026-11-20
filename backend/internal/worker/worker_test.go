@@ -10,6 +10,7 @@ import (
 )
 
 type mockTgNotifier struct {
+	done   chan struct{}
 	called bool
 	txType string
 	sku    string
@@ -19,6 +20,9 @@ func (m *mockTgNotifier) NotifyMovement(ctx context.Context, txType, sku, name s
 	m.called = true
 	m.txType = txType
 	m.sku = sku
+	if m.done != nil {
+		close(m.done)
+	}
 }
 
 func (m *mockTgNotifier) SyncBotCommands(ctx context.Context) error {
@@ -26,14 +30,17 @@ func (m *mockTgNotifier) SyncBotCommands(ctx context.Context) error {
 }
 
 func TestQueuedTelegramNotifier_FallbackWhenNoRedis(t *testing.T) {
-	mock := &mockTgNotifier{}
+	mock := &mockTgNotifier{done: make(chan struct{})}
 	q := NewQueue(nil) // No redis
 	notifier := NewQueuedTelegramNotifier(mock, q)
 
 	notifier.NotifyMovement(context.Background(), "IN", "SKU-001", "Kertas", 5, "Rim", 10, 15, "Budi", "Pengadaan")
 
-	// Allow goroutine fallback to execute
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-mock.done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for fallback NotifyMovement")
+	}
 
 	assert.True(t, mock.called)
 	assert.Equal(t, "IN", mock.txType)

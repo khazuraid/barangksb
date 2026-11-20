@@ -11,8 +11,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
 
 type rowQuerier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
@@ -149,7 +155,10 @@ func (h *ItemHandler) List(c *gin.Context) {
 	if lowStockOnly { where += ` AND current_stock <= min_stock AND COALESCE(track_stock, true) = true` }
 
 	var total int
-	h.pool.QueryRow(c, `SELECT count(*) FROM inventory_items`+where, args...).Scan(&total)
+	if err := h.pool.QueryRow(c, `SELECT count(*) FROM inventory_items`+where, args...).Scan(&total); err != nil {
+		internalError(c, "gagal menghitung total barang", err)
+		return
+	}
 
 	orderClause := "ORDER BY created_at DESC, name ASC"
 	switch sortBy {
@@ -247,9 +256,14 @@ func (h *ItemHandler) List(c *gin.Context) {
 			&it.Merk, &it.TypeModel, &it.SerialNumber, &it.ProcurementYear,
 			&it.FundingSource, &it.Description,
 		); err != nil {
-			continue
+			internalError(c, "gagal membaca data barang", err)
+			return
 		}
 		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		internalError(c, "gagal membaca daftar barang", err)
+		return
 	}
 
 	pages := total / perPage
@@ -291,15 +305,11 @@ func (h *ItemHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "stok, stok minimum, harga, dan jumlah unit tidak boleh negatif"})
 		return
 	}
-	sku := strings.TrimSpace(req.SKU)
-	if sku == "" {
-		sku = generateSKU(h, c, req.Category)
-	}
+	customSKU := strings.TrimSpace(req.SKU)
 	trackStock := true
 	if req.TrackStock != nil {
 		trackStock = *req.TrackStock
 	}
-	req.LocationCode = resolveLocationCode(c, h.pool, req.Location, req.LocationCode)
 	initialStock := req.CurrentStock
 	unitsCount := 0
 	if !trackStock {
@@ -310,42 +320,78 @@ func (h *ItemHandler) Create(c *gin.Context) {
 		}
 		initialStock = int32(unitsCount)
 	}
-	var id string
-	err = h.pool.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, location_code, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, size, material, item_code, register_number, geo_lat, geo_lng, geo_acc, geo_name, track_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id::text`,
-		sku, req.Name, req.Category, req.Location, nullable(req.LocationCode), initialStock, req.MinStock, req.Unit, req.PricePerUnit,
-		nullable(req.Description), nullable(req.PhotoURL), nullable(req.Merk), nullable(req.TypeModel), nullable(req.SerialNumber),
-		nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd),
-		nullable(req.Size), nullable(req.Material), nullable(req.ItemCode), nullable(req.RegisterNumber),
-		req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), trackStock).
-		Scan(&id)
-	if err != nil {
-		internalError(c, "gagal menyimpan barang baru", err)
-		return
-	}
 
-	// If fixed asset, automatically seed initial physical units
-	if !trackStock {
-		for i := 1; i <= unitsCount; i++ {
-			unitNum := i
-			regStr := unitRegisterFor(req.RegisterNumber, unitNum, unitsCount)
-			unitBarcode := unitBarcodeFor(sku, unitNum, unitsCount)
-			var unitPhoto any
-			var uLat, uLng, uAcc *float64
-			var uGeoName any
-			if i == 1 && req.PhotoURL != "" {
-				unitPhoto = nullable(req.PhotoURL)
-				uLat = req.GeoLat
-				uLng = req.GeoLng
-				uAcc = req.GeoAcc
-				uGeoName = nullable(req.GeoName)
-			}
-			var uSerial any
-			if i == 1 && req.SerialNumber != "" {
-				uSerial = nullable(req.SerialNumber)
-			}
-			_, _ = h.pool.Exec(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code, photo_url, geo_lat, geo_lng, geo_acc, geo_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-				id, unitNum, regStr, unitBarcode, uSerial, nullable(req.ConditionStatus), req.Location, nullable(req.LocationCode), unitPhoto, uLat, uLng, uAcc, uGeoName)
+	var id, sku string
+	maxAttempts := 1
+	if customSKU == "" {
+		maxAttempts = 3
+	}
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		tx, txErr := h.pool.Begin(c)
+		if txErr != nil {
+			internalError(c, "gagal memulai transaksi penyimpanan barang", txErr)
+			return
 		}
+		locCode := resolveLocationCode(c, tx, req.Location, req.LocationCode)
+		if customSKU != "" {
+			sku = customSKU
+		} else {
+			sku = generateSKU(tx, c, req.Category)
+		}
+
+		err = tx.QueryRow(c, `INSERT INTO inventory_items (sku, name, category, location, location_code, current_stock, min_stock, unit, price_per_unit, description, photo_url, merk, type_model, serial_number, procurement_year, condition_status, funding_source, distributor, akl_akd, size, material, item_code, register_number, geo_lat, geo_lng, geo_acc, geo_name, track_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id::text`,
+			sku, req.Name, req.Category, req.Location, nullable(locCode), initialStock, req.MinStock, req.Unit, req.PricePerUnit,
+			nullable(req.Description), nullable(req.PhotoURL), nullable(req.Merk), nullable(req.TypeModel), nullable(req.SerialNumber),
+			nullable(req.ProcurementYear), nullable(req.ConditionStatus), nullable(req.FundingSource), nullable(req.Distributor), nullable(req.AklAkd),
+			nullable(req.Size), nullable(req.Material), nullable(req.ItemCode), nullable(req.RegisterNumber),
+			req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), trackStock).
+			Scan(&id)
+		if err != nil {
+			_ = tx.Rollback(c)
+			if customSKU == "" && isUniqueViolation(err) && attempt+1 < maxAttempts {
+				continue
+			}
+			if isUniqueViolation(err) {
+				c.JSON(http.StatusConflict, gin.H{"error": "SKU sudah digunakan, silakan gunakan SKU lain"})
+				return
+			}
+			internalError(c, "gagal menyimpan barang baru", err)
+			return
+		}
+
+		if !trackStock {
+			for i := 1; i <= unitsCount; i++ {
+				unitNum := i
+				regStr := unitRegisterFor(req.RegisterNumber, unitNum, unitsCount)
+				unitBarcode := unitBarcodeFor(sku, unitNum, unitsCount)
+				var unitPhoto any
+				var uLat, uLng, uAcc *float64
+				var uGeoName any
+				if i == 1 && req.PhotoURL != "" {
+					unitPhoto = nullable(req.PhotoURL)
+					uLat = req.GeoLat
+					uLng = req.GeoLng
+					uAcc = req.GeoAcc
+					uGeoName = nullable(req.GeoName)
+				}
+				var uSerial any
+				if i == 1 && req.SerialNumber != "" {
+					uSerial = nullable(req.SerialNumber)
+				}
+				if _, err = tx.Exec(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code, photo_url, geo_lat, geo_lng, geo_acc, geo_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+					id, unitNum, regStr, unitBarcode, uSerial, nullable(req.ConditionStatus), req.Location, nullable(locCode), unitPhoto, uLat, uLng, uAcc, uGeoName); err != nil {
+					_ = tx.Rollback(c)
+					internalError(c, "gagal menyimpan unit fisik barang", err)
+					return
+				}
+			}
+		}
+
+		if err = tx.Commit(c); err != nil {
+			internalError(c, "gagal menyimpan barang baru", err)
+			return
+		}
+		break
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": id, "sku": sku})
@@ -630,9 +676,9 @@ func (h *ItemHandler) Dashboard(c *gin.Context) {
 
 // helpers
 
-func generateSKU(h *ItemHandler, c *gin.Context, category string) string {
+func generateSKU(q rowQuerier, ctx context.Context, category string) string {
 	var slug string
-	h.pool.QueryRow(c, `SELECT id FROM categories WHERE name=$1`, category).Scan(&slug)
+	_ = q.QueryRow(ctx, `SELECT id FROM categories WHERE name=$1`, category).Scan(&slug)
 	parts := strings.Split(slug, "-")
 	prefix := strings.ToUpper(parts[0])
 	if len(prefix) > 4 {
@@ -645,7 +691,7 @@ func generateSKU(h *ItemHandler, c *gin.Context, category string) string {
 	prefixYear := prefix + "-" + year + "-"
 	pattern := prefixYear + "%"
 	var last string
-	h.pool.QueryRow(c, `SELECT sku FROM inventory_items WHERE sku LIKE $1 ORDER BY LENGTH(sku) DESC, sku DESC LIMIT 1`, pattern).Scan(&last)
+	_ = q.QueryRow(ctx, `SELECT sku FROM inventory_items WHERE sku LIKE $1 ORDER BY LENGTH(sku) DESC, sku DESC LIMIT 1`, pattern).Scan(&last)
 	serial := 1
 	if strings.HasPrefix(last, prefixYear) {
 		if n, e := strconv.Atoi(last[len(prefixYear):]); e == nil {
@@ -696,17 +742,31 @@ func (h *ItemHandler) CreateUnit(c *gin.Context) {
 	}
 	req.PhotoURL = safePhoto
 
-	// Verify item exists and get default metadata
+	tx, err := h.pool.Begin(c)
+	if err != nil {
+		internalError(c, "gagal memulai transaksi tambah unit", err)
+		return
+	}
+	defer tx.Rollback(c)
+
+	// Lock parent item so concurrent unit additions cannot assign duplicate unit_number
 	var itemSKU, itemLoc, itemLocCode, itemCond string
-	err = h.pool.QueryRow(c, `SELECT sku, location, COALESCE(location_code, ''), COALESCE(condition_status, 'Baik (B)') FROM inventory_items WHERE id::text=$1`, id).
+	err = tx.QueryRow(c, `SELECT sku, location, COALESCE(location_code, ''), COALESCE(condition_status, 'Baik (B)') FROM inventory_items WHERE id::text=$1 FOR UPDATE`, id).
 		Scan(&itemSKU, &itemLoc, &itemLocCode, &itemCond)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "item tidak ditemukan"})
+			return
+		}
+		internalError(c, "gagal memuat data barang", err)
 		return
 	}
 
 	var maxUnitNum int
-	_ = h.pool.QueryRow(c, `SELECT COALESCE(MAX(unit_number), 0) FROM item_units WHERE item_id::text=$1`, id).Scan(&maxUnitNum)
+	if err := tx.QueryRow(c, `SELECT COALESCE(MAX(unit_number), 0) FROM item_units WHERE item_id::text=$1`, id).Scan(&maxUnitNum); err != nil {
+		internalError(c, "gagal menghitung nomor unit", err)
+		return
+	}
 	nextUnitNum := maxUnitNum + 1
 
 	if req.UnitNumber <= 0 {
@@ -721,7 +781,7 @@ func (h *ItemHandler) CreateUnit(c *gin.Context) {
 	if strings.TrimSpace(req.Location) == "" {
 		req.Location = itemLoc
 	}
-	req.LocationCode = resolveLocationCode(c, h.pool, req.Location, req.LocationCode)
+	req.LocationCode = resolveLocationCode(c, tx, req.Location, req.LocationCode)
 	if strings.TrimSpace(req.LocationCode) == "" {
 		req.LocationCode = itemLocCode
 	}
@@ -730,7 +790,7 @@ func (h *ItemHandler) CreateUnit(c *gin.Context) {
 	}
 
 	var unitID string
-	err = h.pool.QueryRow(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code, photo_url, geo_lat, geo_lng, geo_acc, geo_name, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id::text`,
+	err = tx.QueryRow(c, `INSERT INTO item_units (item_id, unit_number, register_number, barcode, serial_number, condition_status, location, location_code, photo_url, geo_lat, geo_lng, geo_acc, geo_name, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id::text`,
 		id, req.UnitNumber, req.RegisterNumber, req.Barcode, nullable(req.SerialNumber), req.ConditionStatus, req.Location, nullable(req.LocationCode), nullable(req.PhotoURL), req.GeoLat, req.GeoLng, req.GeoAcc, nullable(req.GeoName), nullable(req.Notes)).
 		Scan(&unitID)
 	if err != nil {
@@ -739,7 +799,14 @@ func (h *ItemHandler) CreateUnit(c *gin.Context) {
 	}
 
 	// Sync current_stock to total physical units count
-	_, _ = h.pool.Exec(c, `UPDATE inventory_items SET current_stock = (SELECT COUNT(*) FROM item_units WHERE item_id::text=$1) WHERE id::text=$1`, id)
+	if _, err = tx.Exec(c, `UPDATE inventory_items SET current_stock = (SELECT COUNT(*) FROM item_units WHERE item_id::text=$1), updated_at = now() WHERE id::text=$1`, id); err != nil {
+		internalError(c, "gagal menyinkronkan jumlah unit barang", err)
+		return
+	}
+	if err = tx.Commit(c); err != nil {
+		internalError(c, "gagal menyimpan unit barang", err)
+		return
+	}
 
 	req.ID = unitID
 	req.ItemID = id

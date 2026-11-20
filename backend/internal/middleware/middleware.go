@@ -20,7 +20,9 @@ func isPublicRoute(p string) bool {
 		strings.HasPrefix(p, "/api/public/") {
 		return true
 	}
-	if strings.HasPrefix(p, "/api/barcode/") && !strings.HasPrefix(p, "/api/barcode/templates") {
+	if strings.HasPrefix(p, "/api/barcode/") &&
+		!strings.HasPrefix(p, "/api/barcode/templates") &&
+		!strings.HasPrefix(p, "/api/barcode/units") {
 		return true
 	}
 	return false

@@ -132,8 +132,3 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "password berhasil diganti, silakan login ulang"})
 }
-
-func (h *AuthHandler) CreateUserCLI(c *gin.Context) {
-	// not via API — CLI subcommand in main.go
-	c.JSON(http.StatusOK, gin.H{"message": "use CLI: go run ./cmd/server -create-user"})
-}
