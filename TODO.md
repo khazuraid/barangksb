@@ -42,9 +42,10 @@ Terakhir diperbarui: 2026-11-20
    - Endpoint baru/diubah (`GET /api/barcode/units`, `GET /api/scan/:id`, `POST /api/public/reports`, `POST /api/public/upload`, dan worker Telegram) baru terverifikasi lewat unit test Go; belum dijalankan terhadap container DB/Redis/MinIO live.
 3. **Uji visual & interaksi browser live**
    - Halaman `/lapor`, `/scan/:id`, `/barcode`, dan `/items/:id` belum dibuka dan diuji langsung di browser (desktop & mobile, light & dark mode).
-4. **Pemecahan sub-komponen UI berukuran besar (opsional / maintainability)**
-   - `frontend/src/components/LabelDesignerModal.vue` (3.128 baris) dan `frontend/src/views/BarcodeView.vue` (1.757 baris) baru diekstrak preset & helper cetaknya; pemecahan sub-komponen UI (canvas editor, inspector, toolbar) belum dilakukan.
-5. **Audit sisa file deploy lama**
-   - `backend/Dockerfile` dan `backend/dist/.gitkeep` masih ada di repo; perlu dipastikan apakah masih dipakai pipeline build atau bisa dihapus.
+4. **Pemecahan sub-komponen UI berukuran besar (opsional / maintainability)** — *sebagian selesai (2026-11-20)*
+   - Tab **Printer & Lembar Cetak** diekstrak dari `LabelDesignerModal.vue` ke `frontend/src/components/LabelPrinterPanel.vue` (memakai `defineModel`; `vue-tsc` & `npm run build` lulus). `LabelDesignerModal.vue` kini 3.038 baris.
+   - Belum: canvas editor, inspector baris/sel, tab Kop/Barcode/Footer, dan `BarcodeView.vue` (1.757 baris). Perlu uji visual di browser setelah dipecah.
+5. ~~**Audit sisa file deploy lama**~~ — **Selesai (2026-11-20)**
+   - `backend/Dockerfile` dihapus (tidak dipakai: `docker-compose.yml` memakai `Dockerfile` root, dan versi backend tidak membangun frontend untuk `go:embed`). `backend/dist/.gitkeep` dihapus (embed memakai `backend/cmd/server/dist`, bukan `backend/dist`).
 6. **Build ulang & deploy ke server produksi**
    - Perubahan masih berada di repo lokal dan belum di-deploy ke `https://barang.kesling.biz.id`.
