@@ -300,8 +300,9 @@ function rows() {
               v-if="showMap"
               :src="osmEmbedUrl"
               title="Peta lokasi aset"
-              class="w-full h-48 rounded-[7px] border border-line"
+              class="w-full h-48 rounded-[7px] border border-line bg-slate-100"
               loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
             />
           </div>
 

@@ -202,41 +202,91 @@ async function getReverseGeocode(lat: number, lng: number): Promise<{ title: str
   }
 }
 
-// Fetch map tile as local blob to prevent tainted canvas
-function latLngToTile(lat: number, lng: number, zoom: number) {
+// Fractional Web-Mercator tile coords so the geotag pin lands on the exact GPS point
+function latLngToFractionalTile(lat: number, lng: number, zoom: number) {
   const n = Math.pow(2, zoom)
-  const x = Math.floor(((lng + 180) / 360) * n)
+  const x = ((lng + 180) / 360) * n
   const latRad = (lat * Math.PI) / 180
-  const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n)
-  return { x, y }
+  const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+  return { x, y, n }
 }
 
-async function loadTileBlobImage(lat: number, lng: number): Promise<HTMLImageElement | null> {
-  try {
-    const { x, y } = latLngToTile(lat, lng, 16)
-    const tileUrl = `https://tile.openstreetmap.org/16/${x}/${y}.png`
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 2000)
-    const res = await fetch(tileUrl, { signal: controller.signal })
-    clearTimeout(timer)
-    if (!res.ok) return null
-    const blob = await res.blob()
-    const blobUrl = URL.createObjectURL(blob)
-    return new Promise((resolve) => {
-      const img = new Image()
-      img.onload = () => {
-        URL.revokeObjectURL(blobUrl)
-        resolve(img)
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(blobUrl)
-        resolve(null)
-      }
-      img.src = blobUrl
-    })
-  } catch {
-    return null
+async function fetchSingleTileImage(z: number, x: number, y: number): Promise<HTMLImageElement | null> {
+  const providers = [
+    `https://basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`,
+    `https://tile.openstreetmap.org/${z}/${x}/${y}.png`,
+  ]
+  for (const tileUrl of providers) {
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 3500)
+      const res = await fetch(tileUrl, { signal: controller.signal, mode: 'cors' })
+      clearTimeout(timer)
+      if (!res.ok) continue
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const loaded = await new Promise<HTMLImageElement | null>((resolve) => {
+        const img = new Image()
+        img.onload = () => {
+          URL.revokeObjectURL(blobUrl)
+          resolve(img)
+        }
+        img.onerror = () => {
+          URL.revokeObjectURL(blobUrl)
+          resolve(null)
+        }
+        img.src = blobUrl
+      })
+      if (loaded) return loaded
+    } catch {
+      // Try next tile provider
+    }
   }
+  return null
+}
+
+// Stitch a 2×2 tile patch cropped cleanly around the exact GPS coordinate (256×256)
+async function loadTileBlobImage(lat: number, lng: number): Promise<HTMLCanvasElement | null> {
+  const zoom = 16
+  const { x: fx, y: fy, n } = latLngToFractionalTile(lat, lng, zoom)
+  const tileX = Math.floor(fx)
+  const tileY = Math.floor(fy)
+  const offsetX = (fx - tileX) * 256
+  const offsetY = (fy - tileY) * 256
+
+  // Pick the 2×2 tiles whose combined 512×512 square surrounds (fx, fy)
+  const startX = offsetX < 128 ? tileX - 1 : tileX
+  const startY = offsetY < 128 ? tileY - 1 : tileY
+  const coords = [
+    { dx: 0, dy: 0, tx: ((startX % n) + n) % n, ty: Math.max(0, Math.min(n - 1, startY)) },
+    { dx: 1, dy: 0, tx: (((startX + 1) % n) + n) % n, ty: Math.max(0, Math.min(n - 1, startY)) },
+    { dx: 0, dy: 1, tx: ((startX % n) + n) % n, ty: Math.max(0, Math.min(n - 1, startY + 1)) },
+    { dx: 1, dy: 1, tx: (((startX + 1) % n) + n) % n, ty: Math.max(0, Math.min(n - 1, startY + 1)) },
+  ]
+
+  const tiles = await Promise.all(coords.map((c) => fetchSingleTileImage(zoom, c.tx, c.ty)))
+  if (!tiles.some(Boolean)) return null
+
+  const patch = document.createElement('canvas')
+  patch.width = 512
+  patch.height = 512
+  const pCtx = patch.getContext('2d')
+  if (!pCtx) return null
+  pCtx.fillStyle = '#e5e7eb'
+  pCtx.fillRect(0, 0, 512, 512)
+  tiles.forEach((img, idx) => {
+    if (img) pCtx.drawImage(img, coords[idx].dx * 256, coords[idx].dy * 256, 256, 256)
+  })
+
+  const centerX = (fx - startX) * 256
+  const centerY = (fy - startY) * 256
+  const out = document.createElement('canvas')
+  out.width = 256
+  out.height = 256
+  const oCtx = out.getContext('2d')
+  if (!oCtx) return null
+  oCtx.drawImage(patch, centerX - 128, centerY - 128, 256, 256, 0, 0, 256, 256)
+  return out
 }
 
 function formatGpsDate(d: Date): string {
@@ -307,28 +357,35 @@ function drawPin(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: nu
 
 function drawProceduralMap(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
   ctx.save()
-  ctx.fillStyle = '#2d3748'
+  // Light cartographic fallback matching OSM/Voyager palette when offline
+  ctx.fillStyle = '#eef2f6'
   ctx.fillRect(x, y, w, h)
 
-  ctx.fillStyle = '#22543d'
-  ctx.fillRect(x + w * 0.1, y + h * 0.1, w * 0.35, h * 0.4)
-  ctx.fillRect(x + w * 0.6, y + h * 0.5, w * 0.3, h * 0.35)
+  // City blocks & parks
+  ctx.fillStyle = '#e2e8f0'
+  ctx.fillRect(x + w * 0.06, y + h * 0.08, w * 0.34, h * 0.24)
+  ctx.fillRect(x + w * 0.52, y + h * 0.08, w * 0.40, h * 0.22)
+  ctx.fillRect(x + w * 0.54, y + h * 0.44, w * 0.38, h * 0.44)
+  ctx.fillStyle = '#d1fae5'
+  ctx.fillRect(x + w * 0.08, y + h * 0.46, w * 0.32, h * 0.40)
 
-  ctx.strokeStyle = '#4a5568'
-  ctx.lineWidth = Math.max(2, w * 0.04)
+  // Secondary streets
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = Math.max(3, w * 0.045)
   ctx.beginPath()
-  ctx.moveTo(x, y + h * 0.35)
-  ctx.lineTo(x + w, y + h * 0.35)
-  ctx.moveTo(x + w * 0.45, y)
-  ctx.lineTo(x + w * 0.45, y + h)
+  ctx.moveTo(x, y + h * 0.38)
+  ctx.lineTo(x + w, y + h * 0.38)
+  ctx.moveTo(x + w * 0.46, y)
+  ctx.lineTo(x + w * 0.46, y + h)
   ctx.stroke()
 
-  ctx.strokeStyle = '#d97706'
-  ctx.lineWidth = Math.max(3, w * 0.05)
+  // Main arterial road
+  ctx.strokeStyle = '#f59e0b'
+  ctx.lineWidth = Math.max(3, w * 0.04)
   ctx.beginPath()
-  ctx.moveTo(x, y + h * 0.7)
-  ctx.lineTo(x + w * 0.45, y + h * 0.35)
-  ctx.lineTo(x + w, y + h * 0.2)
+  ctx.moveTo(x, y + h * 0.74)
+  ctx.lineTo(x + w * 0.46, y + h * 0.38)
+  ctx.lineTo(x + w, y + h * 0.22)
   ctx.stroke()
 
   ctx.restore()
@@ -571,15 +628,37 @@ async function stampGpsMapCamera(
           drawProceduralMap(ctx, mapX, mapY, mapSize, mapSize)
         }
 
-        // Draw Red Google Map Pin in center
-        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2 + Math.round(mapSize * 0.05), Math.round(mapSize * 0.22))
+        // Draw Red Map Pin at exact center
+        drawPin(ctx, mapX + mapSize / 2, mapY + mapSize / 2, Math.round(mapSize * 0.22))
 
-        // Google watermark at bottom of map
-        ctx.font = `bold ${Math.max(13, Math.round(15 * scale))}px system-ui, sans-serif`
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
-        ctx.fillText('Google', mapX + 8, mapY + mapSize - 6)
+        // Subtle attribution pill at bottom-left of map
+        const attrFont = Math.max(10, Math.round(11 * scale))
+        ctx.font = `600 ${attrFont}px system-ui, sans-serif`
+        ctx.textBaseline = 'bottom'
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.65)'
+        const attrText = '© OSM'
+        const attrW = ctx.measureText(attrText).width + 10
+        ctx.fillRect(mapX + 4, mapY + mapSize - attrFont - 8, attrW, attrFont + 4)
         ctx.fillStyle = '#ffffff'
-        ctx.fillText('Google', mapX + 7, mapY + mapSize - 7)
+        ctx.fillText(attrText, mapX + 9, mapY + mapSize - 5)
+        ctx.restore()
+
+        // Crisp border around map thumbnail
+        ctx.save()
+        ctx.beginPath()
+        ctx.moveTo(mapX + mapRadius, mapY)
+        ctx.lineTo(mapX + mapSize - mapRadius, mapY)
+        ctx.arcTo(mapX + mapSize, mapY, mapX + mapSize, mapY + mapRadius, mapRadius)
+        ctx.lineTo(mapX + mapSize, mapY + mapSize - mapRadius)
+        ctx.arcTo(mapX + mapSize, mapY + mapSize, mapX + mapSize - mapRadius, mapY + mapSize, mapRadius)
+        ctx.lineTo(mapX + mapRadius, mapY + mapSize)
+        ctx.arcTo(mapX, mapY + mapSize, mapX, mapY + mapSize - mapRadius, mapRadius)
+        ctx.lineTo(mapX, mapY + mapRadius)
+        ctx.arcTo(mapX, mapY, mapX + mapRadius, mapY, mapRadius)
+        ctx.closePath()
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)'
+        ctx.lineWidth = Math.max(1.5, Math.round(1.5 * scale))
+        ctx.stroke()
         ctx.restore()
 
         // Draw Text Block (Right column, vertically centered inside card)
@@ -1092,11 +1171,12 @@ async function downloadPhoto() {
       v-if="showInlineMap && coords"
       class="rounded-[8px] overflow-hidden border border-line bg-panel flex flex-col"
     >
-      <div class="relative w-full h-44 bg-ink-950">
+      <div class="relative w-full h-44 bg-slate-100">
         <iframe
           :src="osmEmbedUrl"
           class="w-full h-full border-0"
           loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
           title="OpenStreetMap Pin"
         />
       </div>
@@ -1462,10 +1542,11 @@ async function downloadPhoto() {
             </div>
 
             <!-- Tab 2: Peta Lokasi Geotag Interaktif -->
-            <div v-else-if="modalTab === 'map' && coords" class="relative w-full h-[65vh]">
+            <div v-else-if="modalTab === 'map' && coords" class="relative w-full h-[65vh] bg-slate-100">
               <iframe
                 :src="osmEmbedUrl"
                 class="w-full h-full border-0"
+                referrerpolicy="no-referrer-when-downgrade"
                 title="Peta Lokasi OpenStreetMap"
               />
             </div>

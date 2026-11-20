@@ -11,18 +11,23 @@ import { useConfirm } from 'primevue/useconfirm'
 import api from '@/api'
 import {
   type SheetFormatId,
+  type PrintMode,
   type LabelElement,
   type TableCellConfig,
   type TableRowConfig,
   type TableLayoutConfig,
   type LabelTemplate,
   SHEET_FORMAT_OPTIONS,
+  PRINT_MODE_OPTIONS,
   inferSheetFormat,
   getSheetSpec,
+  getPrintMode,
+  getShowCutBorder,
   getRowCells,
   ensureTableConfig,
   resolveFieldValue,
   printCustomLabels,
+  openCustomPrintTab,
 } from '@/utils/customLabelPrint'
 
 export type {
@@ -90,6 +95,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     name: 'Kota Cirebon BMD (65 × 30 mm) - Lambang & QR Berdampingan Atas-Bawah',
     widthMm: 65,
     heightMm: 30,
+    sheetFormat: 'auto_a4',
     layoutMode: 'table',
     tableConfig: {
       borderWidth: 1.5,
@@ -248,6 +254,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     name: 'Stiker Rol (50 × 30 mm) - 2 Kolom Ringkas',
     widthMm: 50,
     heightMm: 30,
+    sheetFormat: 'single',
     layoutMode: 'table',
     tableConfig: {
       borderWidth: 1.2,
@@ -321,6 +328,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     name: 'Kartu Aset BMD (70 × 50 mm) - Full Custom & Dobel Kop',
     widthMm: 70,
     heightMm: 50,
+    sheetFormat: 'auto_a4',
     layoutMode: 'table',
     tableConfig: {
       borderWidth: 1.5,
@@ -429,6 +437,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     name: 'Kota Cirebon BMD (50 × 60 mm) - QR Kanan & Garis Dobel',
     widthMm: 50,
     heightMm: 60,
+    sheetFormat: 'auto_a4',
     layoutMode: 'table',
     tableConfig: {
       borderWidth: 1.5,
@@ -512,7 +521,7 @@ const selectedTableCellIndex = ref<number | null>(0)
 const copies = ref(Math.max(1, props.initialCopies || 1))
 const offset = ref(Math.max(0, props.initialOffset || 0))
 const isPrinting = ref(false)
-const paletteTab = ref<'data' | 'borders' | 'header_footer' | 'free_components'>('data')
+const paletteTab = ref<'data' | 'borders' | 'header_footer' | 'free_components' | 'printer'>('data')
 const tableLogoFileInput = ref<HTMLInputElement | null>(null)
 const isUploadingLogo = ref(false)
 const saveTemplateDialog = ref(false)
@@ -722,6 +731,22 @@ const activeSheetFormat = computed<SheetFormatId>({
 const activeSheetSpec = computed(() =>
   getSheetSpec(activeSheetFormat.value, activeTemplate.value.widthMm, activeTemplate.value.heightMm)
 )
+
+const activePrintMode = computed<PrintMode>({
+  get: () => getPrintMode(activeTemplate.value),
+  set: (val) => {
+    if (!activeTemplate.value.config) activeTemplate.value.config = {}
+    activeTemplate.value.config.printMode = val
+  },
+})
+
+const activeShowCutBorder = computed<boolean>({
+  get: () => getShowCutBorder(activeTemplate.value),
+  set: (val) => {
+    if (!activeTemplate.value.config) activeTemplate.value.config = {}
+    activeTemplate.value.config.showCutBorder = val
+  },
+})
 
 onMounted(() => {
   ensureTableConfig(activeTemplate.value)
@@ -1536,12 +1561,48 @@ const resolvedItemsToPrint = computed(() => {
   return props.selectedIds.map((id) => byId.get(id) || { id, name: id, sku: id })
 })
 
+function openSheetPreview(autoPrint = false) {
+  const win = window.open('', '_blank')
+  if (!win) {
+    if (autoPrint) {
+      // Fallback to hidden iframe when browser blocks popups
+      void printCustomLabels(activeTemplate.value, resolvedItemsToPrint.value, {
+        copies: copies.value,
+        offset: offset.value,
+        sheetFormat: activeSheetFormat.value,
+        showCutBorder: activeShowCutBorder.value,
+      })
+      return
+    }
+    toast.add({
+      severity: 'warn',
+      summary: 'Popup Diblokir Browser',
+      detail: 'Izinkan popup untuk membuka lembar cetak di tab baru.',
+      life: 3500,
+    })
+    return
+  }
+  openCustomPrintTab(win, activeTemplate.value, resolvedItemsToPrint.value, {
+    copies: copies.value,
+    offset: offset.value,
+    sheetFormat: activeSheetFormat.value,
+    showCutBorder: activeShowCutBorder.value,
+    autoPrint,
+  })
+}
+
 async function printLabels() {
+  if (activePrintMode.value === 'sheet_tab') {
+    openSheetPreview(true)
+    return
+  }
   isPrinting.value = true
   try {
     await printCustomLabels(activeTemplate.value, resolvedItemsToPrint.value, {
       copies: copies.value,
       offset: offset.value,
+      sheetFormat: activeSheetFormat.value,
+      showCutBorder: activeShowCutBorder.value,
     })
   } catch (err: any) {
     toast.add({
@@ -1780,6 +1841,16 @@ async function printLabels() {
             />
           </div>
           <Button
+            label="Pratinjau Lembar"
+            icon="pi pi-external-link"
+            size="small"
+            severity="secondary"
+            outlined
+            class="!text-xs !py-1.5 !px-2.5 font-semibold shrink-0"
+            v-tooltip.top="'Buka tampilan lembar cetak T&J / A4 di tab baru'"
+            @click="openSheetPreview(false)"
+          />
+          <Button
             label="Cetak Label Ini"
             icon="pi pi-print"
             size="small"
@@ -1835,6 +1906,15 @@ async function printLabels() {
           >
             <i class="pi pi-plus text-xs mr-1" aria-hidden="true" />
             <span>Komponen</span>
+          </button>
+          <button
+            type="button"
+            class="tab-btn"
+            :class="paletteTab === 'printer' ? 'tab-btn-active' : ''"
+            @click="paletteTab = 'printer'"
+          >
+            <i class="pi pi-print text-xs mr-1" aria-hidden="true" />
+            <span>Printer &amp; Lembar</span>
           </button>
         </div>
 
@@ -2372,6 +2452,109 @@ async function printLabels() {
             </div>
             <i class="pi pi-plus text-txt-muted text-xs" aria-hidden="true" />
           </button>
+        </div>
+
+        <!-- 5. TAB PRINTER & LEMBAR CETAK (MODE TABEL & BEBAS) -->
+        <div v-if="paletteTab === 'printer'" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label class="t-label text-txt">Format Kertas / Lembar Cetak</label>
+            <Select
+              v-model="activeSheetFormat"
+              :options="SHEET_FORMAT_OPTIONS"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full !text-xs"
+            />
+            <span class="text-[10.5px] text-txt-dim leading-snug">
+              Memilih format Tom &amp; Jerry / A4 otomatis menyelaraskan ukuran stiker &amp; susunan lembar saat dicetak.
+            </span>
+          </div>
+
+          <div class="flex flex-col gap-1.5 pt-2 border-t border-line">
+            <label class="t-label text-txt">Tampilan Printer saat Cetak</label>
+            <Select
+              v-model="activePrintMode"
+              :options="PRINT_MODE_OPTIONS"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full !text-xs"
+            />
+            <span class="text-[10.5px] text-txt-dim leading-snug">
+              Mode <b>Lembar Cetak Tab Baru</b> menampilkan pratinjau lembar kuning/A4 &amp; tombol cetak selaras dengan layout bawaan.
+            </span>
+          </div>
+
+          <div class="pt-2 border-t border-line flex flex-col gap-2">
+            <label class="flex items-center gap-2 cursor-pointer text-xs text-txt">
+              <Checkbox v-model="activeShowCutBorder" binary />
+              <span>Garis bantu potong putus-putus di tiap slot</span>
+            </label>
+          </div>
+
+          <!-- Ringkasan & Mini Preview Lembar -->
+          <div class="p-2.5 rounded-lg border border-line bg-panel-2 flex flex-col gap-2">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="font-semibold text-txt">{{ activeSheetSpec.shortLabel }}</span>
+              <span class="t-mono text-acc-500 font-semibold">
+                {{ activeSheetSpec.isSheet ? `${activeSheetSpec.perSheet}/lembar` : '1/halaman' }}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-1.5 text-[10.5px] text-txt-dim t-mono">
+              <div>Grid: <b class="text-txt">{{ activeSheetSpec.cols }}×{{ activeSheetSpec.rows }}</b></div>
+              <div>Slot: <b class="text-txt">{{ activeSheetSpec.labelW }}×{{ activeSheetSpec.labelH }} mm</b></div>
+              <div>Jarak: <b class="text-txt">{{ activeSheetSpec.rowGapMm }}/{{ activeSheetSpec.colGapMm }} mm</b></div>
+              <div>Margin: <b class="text-txt">{{ activeSheetSpec.pageMargin }}</b></div>
+            </div>
+
+            <!-- Visual Mini Lembar -->
+            <div
+              class="p-2 rounded border grid place-items-center"
+              :style="{
+                background: activeSheetSpec.isYellowBacking ? '#fefce8' : '#ffffff',
+                borderColor: activeSheetSpec.isYellowBacking ? '#fde047' : '#cbd5e1',
+              }"
+            >
+              <div
+                class="w-full grid gap-1"
+                :style="{
+                  gridTemplateColumns: `repeat(${Math.min(activeSheetSpec.cols, 5)}, minmax(0, 1fr))`,
+                }"
+              >
+                <div
+                  v-for="idx in Math.min(activeSheetSpec.perSheet, 15)"
+                  :key="idx"
+                  class="h-4 rounded-[2px] bg-white flex items-center justify-center text-[8px] font-mono text-slate-500"
+                  :style="{
+                    border: activeShowCutBorder ? '1px dashed #94a3b8' : '1px solid #cbd5e1',
+                  }"
+                >
+                  {{ idx }}
+                </div>
+              </div>
+              <span v-if="activeSheetSpec.perSheet > 15" class="text-[9.5px] text-slate-500 mt-1">
+                +{{ activeSheetSpec.perSheet - 15 }} slot lainnya per lembar
+              </span>
+            </div>
+
+            <div class="flex items-center gap-1.5 pt-1">
+              <Button
+                label="Pratinjau Lembar"
+                icon="pi pi-external-link"
+                size="small"
+                severity="secondary"
+                outlined
+                class="flex-1 !text-[11px] !py-1"
+                @click="openSheetPreview(false)"
+              />
+              <Button
+                label="Cetak"
+                icon="pi pi-print"
+                size="small"
+                class="!text-[11px] !py-1"
+                @click="printLabels"
+              />
+            </div>
+          </div>
         </div>
 
         <div class="p-2.5 border-t border-line bg-panel-2 text-[11px] text-txt-dim leading-tight flex items-start gap-1.5">

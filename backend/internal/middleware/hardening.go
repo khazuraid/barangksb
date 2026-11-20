@@ -32,7 +32,7 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 				c.Header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 			}
 		} else {
-			c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' https://telegram.org; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'")
+			c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' https://telegram.org; connect-src 'self' https://nominatim.openstreetmap.org https://tile.openstreetmap.org https://basemaps.cartocdn.com; frame-src 'self' https://www.openstreetmap.org; frame-ancestors 'self'; base-uri 'self'; form-action 'self'")
 		}
 		if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")

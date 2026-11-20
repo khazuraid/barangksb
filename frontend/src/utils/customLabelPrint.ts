@@ -114,6 +114,24 @@ export interface SheetSpec {
   isYellowBacking: boolean
 }
 
+export type PrintMode = 'sheet_tab' | 'direct'
+
+export const PRINT_MODE_OPTIONS: { label: string; value: PrintMode }[] = [
+  { label: 'Lembar Cetak Tab Baru (Selaras T&J / A4)', value: 'sheet_tab' },
+  { label: 'Langsung Dialog Print Browser', value: 'direct' },
+]
+
+export function getPrintMode(tpl?: Partial<LabelTemplate> | null): PrintMode {
+  return tpl?.config?.printMode === 'direct' ? 'direct' : 'sheet_tab'
+}
+
+export function getShowCutBorder(tpl?: Partial<LabelTemplate> | null): boolean {
+  if (typeof tpl?.config?.showCutBorder === 'boolean') return tpl.config.showCutBorder
+  // Default off when table already draws its own outer border; on otherwise
+  if (tpl?.layoutMode === 'table' && tpl?.tableConfig?.showOuterBorder) return false
+  return true
+}
+
 export const SHEET_FORMAT_OPTIONS: { label: string; value: SheetFormatId }[] = [
   { label: 'Tom & Jerry No. 103 (3×4 · 12/lembar · 64×32 mm)', value: 'tj_103' },
   { label: 'Tom & Jerry No. 107 (3×8 · 24/lembar · 50×18 mm)', value: 'tj_107' },
@@ -159,6 +177,9 @@ export function inferSheetFormat(tpl?: Partial<LabelTemplate> | null): SheetForm
   if ((w === 75 && h === 38) || /tom\s*&?\s*jerry.*121|t&j\s*121|tj[\s_-]*121/i.test(hint)) return 'tj_121'
   if (w === 65 && h === 38) return 'a4_3x7'
   if (w === 48 && h === 25.5) return 'a4_4x10'
+  if (/thermal|rol\b|roll\b|struk/i.test(hint)) return 'single'
+  // Multi-label A4 grid fallback so saved sticker templates don't print 1 label per A4 sheet
+  if (w > 0 && h > 0 && w <= 105 && h <= 140) return 'auto_a4'
   return 'single'
 }
 
@@ -175,8 +196,8 @@ export function getSheetSpec(format: SheetFormatId, widthMm = 64, heightMm = 32)
         cols: 3,
         rows: 4,
         perSheet: 12,
-        labelW: w,
-        labelH: h,
+        labelW: 64,
+        labelH: 32,
         rowGapMm: 3.5,
         colGapMm: 4,
         pageMargin: '6mm 5mm',
@@ -191,8 +212,8 @@ export function getSheetSpec(format: SheetFormatId, widthMm = 64, heightMm = 32)
         cols: 3,
         rows: 8,
         perSheet: 24,
-        labelW: w,
-        labelH: h,
+        labelW: 50,
+        labelH: 18,
         rowGapMm: 2,
         colGapMm: 3,
         pageMargin: '5mm',
@@ -207,8 +228,8 @@ export function getSheetSpec(format: SheetFormatId, widthMm = 64, heightMm = 32)
         cols: 5,
         rows: 8,
         perSheet: 40,
-        labelW: w,
-        labelH: h,
+        labelW: 38,
+        labelH: 18,
         rowGapMm: 2,
         colGapMm: 2,
         pageMargin: '5mm',
@@ -223,8 +244,8 @@ export function getSheetSpec(format: SheetFormatId, widthMm = 64, heightMm = 32)
         cols: 2,
         rows: 5,
         perSheet: 10,
-        labelW: w,
-        labelH: h,
+        labelW: 75,
+        labelH: 38,
         rowGapMm: 3,
         colGapMm: 4,
         pageMargin: '6mm 5mm',
@@ -239,8 +260,8 @@ export function getSheetSpec(format: SheetFormatId, widthMm = 64, heightMm = 32)
         cols: 3,
         rows: 7,
         perSheet: 21,
-        labelW: w,
-        labelH: h,
+        labelW: 65,
+        labelH: 38,
         rowGapMm: 2,
         colGapMm: 3,
         pageMargin: '8mm 5mm',
@@ -255,8 +276,8 @@ export function getSheetSpec(format: SheetFormatId, widthMm = 64, heightMm = 32)
         cols: 4,
         rows: 10,
         perSheet: 40,
-        labelW: w,
-        labelH: h,
+        labelW: 48,
+        labelH: 25.5,
         rowGapMm: 2,
         colGapMm: 2,
         pageMargin: '8mm 5mm',
@@ -693,6 +714,7 @@ export interface CustomPrintOptions {
   copies?: number
   offset?: number
   sheetFormat?: SheetFormatId
+  showCutBorder?: boolean
   showToolbar?: boolean
   autoPrint?: boolean
 }
@@ -717,6 +739,14 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
   ensureTableConfig(tpl)
   const format = opts.sheetFormat || inferSheetFormat(tpl)
   const spec = getSheetSpec(format, tpl.widthMm, tpl.heightMm)
+  const slotW = spec.labelW
+  const slotH = spec.labelH
+  // Align rendered label box to the chosen sheet slot dimensions (keeps Tom & Jerry grids exact)
+  if (spec.isSheet && format !== 'auto_a4') {
+    tpl.widthMm = slotW
+    tpl.heightMm = slotH
+  }
+  const showCutBorder = typeof opts.showCutBorder === 'boolean' ? opts.showCutBorder : getShowCutBorder(tpl)
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const slots = expandItemsForPrint(items, opts.copies ?? 1, opts.offset ?? 0, spec.isSheet)
   const totalLabels = items.length * Math.max(1, Math.min(50, Number(opts.copies) || 1))
@@ -728,12 +758,16 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
     const perSheet = Math.max(1, spec.perSheet)
     const pages: (any | null)[][] = []
     for (let i = 0; i < slots.length; i += perSheet) {
-      pages.push(slots.slice(i, i + perSheet))
+      const slice = slots.slice(i, i + perSheet)
+      // Pad last sheet to full grid like built-in /api/barcode/sheet so backing sheet keeps exact proportions
+      while (slice.length < perSheet) slice.push(null)
+      pages.push(slice)
     }
-    if (pages.length === 0) pages.push([])
+    if (pages.length === 0) pages.push(Array(perSheet).fill(null))
 
     const sheetBg = spec.isYellowBacking ? '#fefce8' : '#ffffff'
     const sheetBorder = spec.isYellowBacking ? '#fef08a' : '#e2e8f0'
+    const slotBorderCss = showCutBorder ? 'border: 1px dashed #cbd5e1; border-radius: 4px;' : ''
     pageCss = `
       @page { size: A4 portrait; margin: ${spec.pageMargin}; }
       .sheet-page {
@@ -745,18 +779,22 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
         border-radius: 6px;
         box-shadow: 0 4px 14px rgba(0,0,0,0.08);
         display: grid;
-        grid-template-columns: repeat(${spec.cols}, ${tpl.widthMm}mm);
+        grid-template-columns: repeat(${spec.cols}, ${slotW}mm);
         gap: ${spec.rowGapMm}mm ${spec.colGapMm}mm;
         justify-content: center;
       }
       .label-slot {
-        width: ${tpl.widthMm}mm;
-        height: ${tpl.heightMm}mm;
+        width: ${slotW}mm;
+        height: ${slotH}mm;
         box-sizing: border-box;
         overflow: hidden;
+        background: #fff;
+        ${slotBorderCss}
       }
       .label-slot.is-blank {
         visibility: hidden;
+        background: transparent;
+        border: none;
       }
       @media print {
         .sheet-page {
@@ -816,9 +854,9 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
   const cleanTitle = escapeHtml((tpl.name || 'Label Kustom').replace(/^[🌟🏷️🖨️📄⭐\s]+/, ''))
   const toolbarHtml = opts.showToolbar
     ? `<div class="screen-toolbar">
-        <div>
-          <strong>${cleanTitle}</strong>
-          <span style="opacity:0.75;margin-left:8px;">${escapeHtml(spec.shortLabel)} · ${totalLabels} label</span>
+        <div style="display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;">
+          <strong style="white-space:nowrap;">Lembar Cetak Label Stiker</strong>
+          <span style="opacity:0.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">· ${cleanTitle} (${escapeHtml(spec.shortLabel)} · ${slotW}×${slotH} mm) · ${totalLabels} Stiker Dicetak</span>
         </div>
         <button id="btn-print-sheet" type="button">Cetak Sekarang</button>
       </div>`

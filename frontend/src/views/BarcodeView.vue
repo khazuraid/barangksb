@@ -17,8 +17,11 @@ import LabelDesignerModal from '@/components/LabelDesignerModal.vue'
 import {
   type LabelTemplate,
   type SheetFormatId,
+  SHEET_FORMAT_OPTIONS,
   inferSheetFormat,
   getSheetSpec,
+  getPrintMode,
+  getShowCutBorder,
   ensureTableConfig,
   renderCustomLabelHtml,
   printCustomLabels,
@@ -425,11 +428,68 @@ const copies = ref(1)
 const offset = ref(0)
 const labelTitle = ref('INVENTARIS KANTOR')
 const printModalVisible = ref(false)
+const customSheetFormat = ref<SheetFormatId>('tj_103')
+const customShowCutBorder = ref(false)
+const savingSheetFormat = ref(false)
+
+watch(
+  selectedCustomTemplate,
+  (tpl) => {
+    if (tpl) {
+      customSheetFormat.value = inferSheetFormat(tpl)
+      customShowCutBorder.value = getShowCutBorder(tpl)
+    }
+  },
+  { immediate: true }
+)
+
+async function saveCustomSheetFormat() {
+  const tpl = selectedCustomTemplate.value
+  if (!tpl) return
+  savingSheetFormat.value = true
+  try {
+    const spec = getSheetSpec(customSheetFormat.value, tpl.widthMm, tpl.heightMm)
+    const updated: LabelTemplate = {
+      ...JSON.parse(JSON.stringify(tpl)),
+      sheetFormat: customSheetFormat.value,
+      config: {
+        ...(tpl.config || {}),
+        sheetFormat: customSheetFormat.value,
+        showCutBorder: customShowCutBorder.value,
+      },
+    }
+    if (customSheetFormat.value !== 'single' && customSheetFormat.value !== 'auto_a4') {
+      updated.widthMm = spec.labelW
+      updated.heightMm = spec.labelH
+    }
+    await api.post('/barcode/templates', updated)
+    const idx = customTemplates.value.findIndex((t) => t.id === tpl.id)
+    if (idx !== -1) customTemplates.value[idx] = updated
+    try {
+      localStorage.setItem('custom_label_templates_v6', JSON.stringify(customTemplates.value))
+    } catch {}
+    toast.add({
+      severity: 'success',
+      summary: 'Format Kertas Disimpan',
+      detail: `${spec.shortLabel} disimpan ke template ${updated.name}`,
+      life: 2500,
+    })
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Gagal Menyimpan Format',
+      detail: err?.response?.data?.error || err?.message,
+      life: 3000,
+    })
+  } finally {
+    savingSheetFormat.value = false
+  }
+}
 
 const customSheetSpec = computed(() => {
   if (!selectedCustomTemplate.value) return null
   return getSheetSpec(
-    inferSheetFormat(selectedCustomTemplate.value),
+    customSheetFormat.value,
     selectedCustomTemplate.value.widthMm || 64,
     selectedCustomTemplate.value.heightMm || 32
   )
@@ -701,14 +761,30 @@ async function printNow() {
       })
       return
     }
+    const printOpts = {
+      copies: Math.max(1, copies.value || 1),
+      offset: isSheetLayout.value ? Math.max(0, offset.value || 0) : 0,
+      sheetFormat: customSheetFormat.value,
+      showCutBorder: customShowCutBorder.value,
+    }
+    const preferTab = getPrintMode(tpl) === 'sheet_tab'
+    // Open tab synchronously before async fetch so browser popup blocker allows it (matches built-in sheet print)
+    const win = preferTab ? window.open('', '_blank') : null
+    if (win) {
+      win.document.write('<p style="font-family:sans-serif;padding:24px;color:#475569">Menyiapkan lembar cetak label...</p>')
+    }
     printingCustom.value = true
     try {
       const targetItems = await ensureSelectedItemsLoaded()
-      await printCustomLabels(tpl, targetItems, {
-        copies: Math.max(1, copies.value || 1),
-        offset: isSheetLayout.value ? Math.max(0, offset.value || 0) : 0,
-      })
+      if (win) {
+        openCustomPrintTab(win, tpl, targetItems, { ...printOpts, autoPrint: true })
+      } else {
+        await printCustomLabels(tpl, targetItems, printOpts)
+      }
     } catch (err: any) {
+      if (win) {
+        try { win.close() } catch {}
+      }
       toast.add({
         severity: 'error',
         summary: 'Gagal Mencetak Template Kustom',
@@ -753,6 +829,8 @@ async function openSheetTab() {
       openCustomPrintTab(win, tpl, targetItems, {
         copies: Math.max(1, copies.value || 1),
         offset: isSheetLayout.value ? Math.max(0, offset.value || 0) : 0,
+        sheetFormat: customSheetFormat.value,
+        showCutBorder: customShowCutBorder.value,
       })
     } catch (err: any) {
       try { win.close() } catch {}
@@ -1165,6 +1243,36 @@ const sampleItem = computed(() => {
                 aria-label="Hapus template dari dropdown"
                 v-tooltip.top="'Hapus template ini dari dropdown'"
                 @click="deleteSelectedCustomTemplate"
+              />
+            </div>
+          </div>
+
+          <div v-if="selectedCustomTemplate" class="flex flex-col gap-1.5 sm:col-span-2">
+            <div class="flex items-center justify-between gap-2">
+              <label class="text-[11.5px] font-semibold text-txt">Format Kertas / Lembar Printer</label>
+              <label class="flex items-center gap-1.5 cursor-pointer text-[11px] text-txt-dim">
+                <Checkbox v-model="customShowCutBorder" binary />
+                <span>Garis bantu potong</span>
+              </label>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <Select
+                v-model="customSheetFormat"
+                :options="SHEET_FORMAT_OPTIONS"
+                optionLabel="label"
+                optionValue="value"
+                class="w-full !text-[12.5px]"
+              />
+              <Button
+                icon="pi pi-save"
+                size="small"
+                severity="secondary"
+                outlined
+                :loading="savingSheetFormat"
+                class="!p-2 shrink-0"
+                aria-label="Simpan format kertas ke template ini"
+                v-tooltip.top="'Simpan format kertas ini ke template'"
+                @click="saveCustomSheetFormat"
               />
             </div>
           </div>
