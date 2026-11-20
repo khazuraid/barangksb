@@ -28,6 +28,11 @@ Terakhir diperbarui: 2026-11-20
 ### 5. Pembersihan File Deploy Usang
 - Menghapus `Caddyfile`, `frontend/Dockerfile`, dan `frontend/nginx.conf`, serta memperbarui `README.md`.
 
+### 6. Redesign Halaman Scan QR (`/scan/:id`) — 2026-11-20
+- `frontend/src/views/ScanView.vue` didesain ulang mengikuti Clinical Precision: header sticky, hero band, kartu metrik dengan **Total Unit** (aset tetap = jumlah unit fisik terdaftar, barang habis pakai = stok saat ini), banner unit yang dipindai, tombol aksi 44px, tab ber-ARIA (`tablist`/`tabpanel`), dan teks minimum 12px.
+- Kartu unit diekstrak ke `frontend/src/components/ScanUnitCard.vue` (varian `compact` & lengkap), menghapus duplikasi markup.
+- Diverifikasi visual (desktop & mobile, mode gelap) memakai mock API lokal; `vue-tsc` & `npm run build` lulus. Mode terang & data backend nyata belum diuji.
+
 ### Hasil Verifikasi Lokal
 - `cd backend && go test -count=1 -race ./...` → **LULUS** (`auth`, `handler`, `middleware`, `telegram`, `worker`).
 - `cd frontend && npx vue-tsc --noEmit && npm run build` → **LULUS**.
