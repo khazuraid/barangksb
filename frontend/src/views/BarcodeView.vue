@@ -14,13 +14,25 @@ import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LabelDesignerModal from '@/components/LabelDesignerModal.vue'
+import {
+  type LabelTemplate,
+  type SheetFormatId,
+  inferSheetFormat,
+  getSheetSpec,
+  ensureTableConfig,
+  renderCustomLabelHtml,
+  printCustomLabels,
+  openCustomPrintTab,
+} from '@/utils/customLabelPrint'
 
 const toast = useToast()
 const confirm = useConfirm()
 const items = ref<any[]>([])
+const selectedItemsMap = ref<Record<string, any>>({})
 const total = ref(0)
 const selected = ref<string[]>([])
 const loading = ref(true)
+const printingCustom = ref(false)
 const showCustomDesigner = ref(false)
 const saveTemplateDialog = ref(false)
 const saveTemplateName = ref('')
@@ -86,7 +98,19 @@ async function loadCustomTemplates(newTpl?: any) {
     map.set(newTpl.id, newTpl)
   }
 
-  customTemplates.value = Array.from(map.values())
+  customTemplates.value = Array.from(map.values()).map((t: any) => {
+    const normalized: LabelTemplate = {
+      ...t,
+      widthMm: t.widthMm || 64,
+      heightMm: t.heightMm || 32,
+      layoutMode: t.layoutMode || 'table',
+      sheetFormat: t.sheetFormat || inferSheetFormat(t),
+      elements: Array.isArray(t.elements) ? t.elements : [],
+      tableConfig: t.tableConfig,
+    }
+    ensureTableConfig(normalized)
+    return normalized
+  })
 
   // Simpan kembali list lengkap ke localStorage
   try {
@@ -113,9 +137,16 @@ function onTemplateSaved(savedTpl: any) {
   })
 }
 
-function openCustomDesignerWithTemplate(templateId?: string) {
+async function openCustomDesignerWithTemplate(templateId?: string) {
   if (templateId) {
     selectedCustomTemplateId.value = templateId
+  } else if (selectedCustomTemplate.value?.id) {
+    selectedCustomTemplateId.value = selectedCustomTemplate.value.id
+  } else {
+    selectedCustomTemplateId.value = ''
+  }
+  if (selected.value.length > 0) {
+    await ensureSelectedItemsLoaded()
   }
   showCustomDesigner.value = true
 }
@@ -196,7 +227,20 @@ async function confirmSaveLayoutAsTemplate() {
 
   let widthMm = 64
   let heightMm = 32
-  if (layout.value.includes('50x30') || layout.value === 'label_50x30') {
+  let sheetFormat: SheetFormatId = 'single'
+  if (layout.value === 'tj_103') {
+    widthMm = 64; heightMm = 32; sheetFormat = 'tj_103'
+  } else if (layout.value === 'tj_107') {
+    widthMm = 50; heightMm = 18; sheetFormat = 'tj_107'
+  } else if (layout.value === 'tj_108') {
+    widthMm = 38; heightMm = 18; sheetFormat = 'tj_108'
+  } else if (layout.value === 'tj_121') {
+    widthMm = 75; heightMm = 38; sheetFormat = 'tj_121'
+  } else if (layout.value === 'a4_3x7') {
+    widthMm = 65; heightMm = 38; sheetFormat = 'a4_3x7'
+  } else if (layout.value === 'a4_4x10') {
+    widthMm = 48; heightMm = 25.5; sheetFormat = 'a4_4x10'
+  } else if (layout.value.includes('50x30') || layout.value === 'label_50x30') {
     widthMm = 50; heightMm = 30
   } else if (layout.value.includes('40x30') || layout.value === 'label_40x30') {
     widthMm = 40; heightMm = 30
@@ -206,53 +250,118 @@ async function confirmSaveLayoutAsTemplate() {
     widthMm = 70; heightMm = 50
   } else if (layout.value.includes('100x50') || layout.value === 'label_100x50') {
     widthMm = 100; heightMm = 50
-  } else if (layout.value === 'tj_107') {
-    widthMm = 50; heightMm = 18
-  } else if (layout.value === 'tj_108') {
-    widthMm = 38; heightMm = 18
-  } else if (layout.value === 'tj_121') {
-    widthMm = 75; heightMm = 38
+  } else if (layout.value === 'thermal_58') {
+    widthMm = 58; heightMm = 40
+  } else if (layout.value === 'thermal_80') {
+    widthMm = 80; heightMm = 50
   } else if (selectedCustomTemplate.value) {
     widthMm = selectedCustomTemplate.value.widthMm || 64
     heightMm = selectedCustomTemplate.value.heightMm || 32
+    sheetFormat = selectedCustomTemplate.value.sheetFormat || inferSheetFormat(selectedCustomTemplate.value)
   }
 
-  const newTpl: any = {
-    id: customId,
-    name: cleanName,
-    widthMm,
-    heightMm,
-    layoutMode: 'table',
-    config: {
-      baseLayout: layout.value,
-      fmt: fmt.value,
-      labelTitle: labelTitle.value || 'INVENTARIS KANTOR',
-      showName: showName.value,
-      showSKU: showSKU.value,
-      showLoc: showLoc.value,
-      showBorder: showBorder.value,
-      copies: copies.value,
-    },
-    tableConfig: selectedCustomTemplate.value?.tableConfig || {
-      showHeader: true,
-      headerText: labelTitle.value || 'INVENTARIS KANTOR',
-      showLogo: false,
-      logoUrl: '',
-      logoWidthMm: 12,
-      qrPosition: 'left',
-      qrType: fmt.value,
-      qrWidthMm: 18,
-      showFooter: false,
-      footerText: '',
-      footerFontSize: 6,
-      defaultFontSize: 7,
-      rows: [
-        { label: 'Nama', field: 'name', showLabel: false, isBold: true, fontSize: 8 },
-        { label: 'Kode', field: 'item_code', showLabel: true, isBold: false, fontSize: 7 },
-        { label: 'Ruang', field: 'location', showLabel: true, isBold: false, fontSize: 7 },
-      ],
-    },
+  let newTpl: LabelTemplate
+  if (selectedCustomTemplate.value) {
+    const cloned = JSON.parse(JSON.stringify(selectedCustomTemplate.value))
+    newTpl = {
+      ...cloned,
+      id: customId,
+      name: cleanName,
+      widthMm,
+      heightMm,
+      sheetFormat,
+    }
+  } else {
+    const rows: any[] = []
+    if (showName.value) {
+      rows.push({
+        id: 'r_name',
+        type: 'cells',
+        field: 'name',
+        label: '',
+        cells: [{ id: 'c_name', field: 'name', label: '', bold: true, fontSize: 7.5, align: 'left', bgColor: 'white' }],
+      })
+    }
+    if (showSKU.value) {
+      rows.push({
+        id: 'r_sku',
+        type: 'cells',
+        field: 'sku',
+        label: 'SKU',
+        cells: [{ id: 'c_sku', field: 'sku', label: 'SKU', bold: true, fontSize: 6.5, align: 'left', bgColor: 'white' }],
+      })
+    }
+    if (showLoc.value) {
+      rows.push({
+        id: 'r_loc',
+        type: 'cells',
+        field: 'location',
+        label: 'Ruang',
+        cells: [{ id: 'c_loc', field: 'location', label: 'Ruang', bold: false, fontSize: 6, align: 'left', bgColor: 'white' }],
+      })
+    }
+    if (rows.length === 0) {
+      rows.push({
+        id: 'r_name',
+        type: 'cells',
+        field: 'name',
+        label: '',
+        cells: [{ id: 'c_name', field: 'name', label: '', bold: true, fontSize: 7.5, align: 'left', bgColor: 'white' }],
+      })
+    }
+
+    newTpl = {
+      id: customId,
+      name: cleanName,
+      widthMm,
+      heightMm,
+      sheetFormat,
+      layoutMode: 'table',
+      elements: [],
+      config: {
+        baseLayout: layout.value,
+        fmt: fmt.value,
+        labelTitle: labelTitle.value || 'INVENTARIS KANTOR',
+        showName: showName.value,
+        showSKU: showSKU.value,
+        showLoc: showLoc.value,
+        showBorder: showBorder.value,
+        copies: copies.value,
+      },
+      tableConfig: {
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: '#000000',
+        showOuterBorder: showBorder.value,
+        showGridLines: showBorder.value,
+        showColBorder: showBorder.value,
+        showLabelColBorder: showBorder.value,
+        showHeaderBorder: true,
+        showFooterBorder: false,
+        cellPaddingMm: 0.7,
+        labelColWidthPercent: 28,
+        showHeader: true,
+        headerText: labelTitle.value || 'INVENTARIS KANTOR',
+        headerSubText: '',
+        headerFontSize: 6.5,
+        headerStyle: 'standard',
+        showLogo: false,
+        logoUrl: '',
+        logoWidthMm: 10,
+        logoPosition: 'above_qr',
+        showItemNameUnderLogo: false,
+        qrPosition: 'left',
+        qrType: fmt.value,
+        qrWidthMm: Math.min(20, Math.max(12, Math.round(heightMm * 0.62))),
+        showFooter: false,
+        footerText: '',
+        footerFontSize: 6,
+        defaultFontSize: 6.5,
+        rows,
+      },
+    }
   }
+  ensureTableConfig(newTpl)
 
   try {
     try {
@@ -317,8 +426,26 @@ const offset = ref(0)
 const labelTitle = ref('INVENTARIS KANTOR')
 const printModalVisible = ref(false)
 
-const isSheetLayout = computed(() => ['tj_103', 'tj_107', 'tj_108', 'tj_121', 'a4_3x7', 'a4_4x10'].includes(layout.value))
+const customSheetSpec = computed(() => {
+  if (!selectedCustomTemplate.value) return null
+  return getSheetSpec(
+    inferSheetFormat(selectedCustomTemplate.value),
+    selectedCustomTemplate.value.widthMm || 64,
+    selectedCustomTemplate.value.heightMm || 32
+  )
+})
+
+const isSheetLayout = computed(() => {
+  if (selectedCustomTemplate.value && customSheetSpec.value) {
+    return customSheetSpec.value.isSheet
+  }
+  return ['tj_103', 'tj_107', 'tj_108', 'tj_121', 'a4_3x7', 'a4_4x10'].includes(layout.value)
+})
+
 const labelsPerSheet = computed(() => {
+  if (selectedCustomTemplate.value && customSheetSpec.value) {
+    return customSheetSpec.value.perSheet
+  }
   switch (layout.value) {
     case 'tj_103': return 12
     case 'tj_107': return 24
@@ -327,6 +454,22 @@ const labelsPerSheet = computed(() => {
     case 'a4_3x7': return 21
     case 'a4_4x10': return 40
     default: return 1
+  }
+})
+
+const printerProfileLabel = computed(() => {
+  if (selectedCustomTemplate.value && customSheetSpec.value) {
+    return customSheetSpec.value.isSheet ? customSheetSpec.value.shortLabel : 'Desain Kustom'
+  }
+  if (layout.value.startsWith('tj_')) return 'Lembar Tom & Jerry'
+  if (layout.value.startsWith('thermal')) return 'Printer Thermal'
+  if (layout.value.startsWith('a4')) return 'Kertas A4'
+  return 'Stiker Rol'
+})
+
+watch(labelsPerSheet, (maxPerSheet) => {
+  if (offset.value >= maxPerSheet) {
+    offset.value = Math.max(0, maxPerSheet - 1)
   }
 })
 const totalLabelsToPrint = computed(() => selected.value.length * Math.max(1, copies.value || 1))
@@ -338,6 +481,17 @@ const estimatedSheets = computed(() => {
 
 const categoriesRaw = ref<any[]>([])
 const locationsRaw = ref<any[]>([])
+
+function rememberItems(list: any[]) {
+  if (!Array.isArray(list) || list.length === 0) return
+  const next = { ...selectedItemsMap.value }
+  for (const it of list) {
+    if (it && it.id) {
+      next[it.id] = it
+    }
+  }
+  selectedItemsMap.value = next
+}
 
 async function fetchItems(reset = false) {
   if (reset) page.value = 0
@@ -353,6 +507,7 @@ async function fetchItems(reset = false) {
       },
     })
     items.value = res.data?.data || []
+    rememberItems(items.value)
     total.value = res.data?.total || 0
   } finally {
     loading.value = false
@@ -401,15 +556,31 @@ const selectingAllGlobal = ref(false)
 async function selectAllGlobal() {
   selectingAllGlobal.value = true
   try {
-    const res = await api.get('/items', {
-      params: {
-        q: q.value,
-        cat: categoryFilter.value,
-        loc: locationFilter.value,
-        per_page: 1000,
-      },
-    })
-    const allIds = (res.data?.data || []).map((i: any) => i.id)
+    const batchSize = 500
+    const collected: any[] = []
+    let currentPage = 1
+    let expectedTotal = Infinity
+
+    while (collected.length < expectedTotal) {
+      const res = await api.get('/items', {
+        params: {
+          q: q.value,
+          cat: categoryFilter.value,
+          loc: locationFilter.value,
+          page: currentPage,
+          per_page: batchSize,
+        },
+      })
+      const batch: any[] = res.data?.data || []
+      const resTotal = Number(res.data?.total ?? batch.length)
+      if (Number.isFinite(resTotal)) expectedTotal = resTotal
+      collected.push(...batch)
+      if (batch.length < batchSize) break
+      currentPage++
+    }
+
+    rememberItems(collected)
+    const allIds = collected.map((i: any) => i.id)
     selected.value = Array.from(new Set([...selected.value, ...allIds]))
     toast.add({
       severity: 'success',
@@ -423,6 +594,59 @@ async function selectAllGlobal() {
     selectingAllGlobal.value = false
   }
 }
+
+async function ensureSelectedItemsLoaded(): Promise<any[]> {
+  const missingIds = selected.value.filter((id) => !selectedItemsMap.value[id])
+  if (missingIds.length > 0) {
+    try {
+      const batchSize = 500
+      let currentPage = 1
+      let expectedTotal = Infinity
+      let fetched = 0
+      while (fetched < expectedTotal) {
+        const res = await api.get('/items', {
+          params: { page: currentPage, per_page: batchSize },
+        })
+        const batch: any[] = res.data?.data || []
+        const resTotal = Number(res.data?.total ?? batch.length)
+        if (Number.isFinite(resTotal)) expectedTotal = resTotal
+        rememberItems(batch)
+        fetched += batch.length
+        if (batch.length < batchSize || selected.value.every((id) => Boolean(selectedItemsMap.value[id]))) {
+          break
+        }
+        currentPage++
+      }
+    } catch (err) {
+      console.warn('Gagal melengkapi data barang terpilih:', err)
+    }
+  }
+
+  return selected.value.map((id) => {
+    return (
+      selectedItemsMap.value[id] ||
+      items.value.find((i) => i.id === id) || {
+        id,
+        name: id,
+        sku: id,
+      }
+    )
+  })
+}
+
+const designerItems = computed(() => {
+  const byId = new Map<string, any>()
+  for (const it of items.value) {
+    if (it?.id) byId.set(it.id, it)
+  }
+  for (const id of selected.value) {
+    const cached = selectedItemsMap.value[id]
+    if (cached && !byId.has(id)) {
+      byId.set(id, cached)
+    }
+  }
+  return Array.from(byId.values())
+})
 
 function clearSelection() {
   selected.value = []
@@ -465,27 +689,92 @@ function openPrintDialog() {
   printModalVisible.value = true
 }
 
-function printNow() {
+async function printNow() {
   if (layout.value.startsWith('custom_')) {
-    const customId = layout.value.replace('custom_', '')
-    openCustomDesignerWithTemplate(customId)
-    printModalVisible.value = false
+    const tpl = selectedCustomTemplate.value
+    if (!tpl) {
+      toast.add({
+        severity: 'error',
+        summary: 'Template Kustom Tidak Ditemukan',
+        detail: 'Pilih ulang template dari dropdown atau buka Desainer Kustom.',
+        life: 3000,
+      })
+      return
+    }
+    printingCustom.value = true
+    try {
+      const targetItems = await ensureSelectedItemsLoaded()
+      await printCustomLabels(tpl, targetItems, {
+        copies: Math.max(1, copies.value || 1),
+        offset: isSheetLayout.value ? Math.max(0, offset.value || 0) : 0,
+      })
+    } catch (err: any) {
+      toast.add({
+        severity: 'error',
+        summary: 'Gagal Mencetak Template Kustom',
+        detail: err?.message || 'Tidak dapat menyiapkan dokumen cetak.',
+        life: 3000,
+      })
+    } finally {
+      printingCustom.value = false
+    }
     return
   }
   const url = getPrintUrl(true)
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-function openSheetTab() {
+async function openSheetTab() {
   if (layout.value.startsWith('custom_')) {
-    const customId = layout.value.replace('custom_', '')
-    openCustomDesignerWithTemplate(customId)
-    printModalVisible.value = false
+    const tpl = selectedCustomTemplate.value
+    if (!tpl) {
+      toast.add({
+        severity: 'error',
+        summary: 'Template Kustom Tidak Ditemukan',
+        detail: 'Pilih ulang template dari dropdown atau buka Desainer Kustom.',
+        life: 3000,
+      })
+      return
+    }
+    const win = window.open('', '_blank')
+    if (!win) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Popup Diblokir Browser',
+        detail: 'Izinkan popup untuk membuka pratinjau cetak di tab baru.',
+        life: 3500,
+      })
+      return
+    }
+    win.document.write('<p style="font-family:sans-serif;padding:24px;color:#475569">Menyiapkan pratinjau label...</p>')
+    printingCustom.value = true
+    try {
+      const targetItems = await ensureSelectedItemsLoaded()
+      openCustomPrintTab(win, tpl, targetItems, {
+        copies: Math.max(1, copies.value || 1),
+        offset: isSheetLayout.value ? Math.max(0, offset.value || 0) : 0,
+      })
+    } catch (err: any) {
+      try { win.close() } catch {}
+      toast.add({
+        severity: 'error',
+        summary: 'Gagal Membuka Pratinjau',
+        detail: err?.message || 'Tidak dapat menyiapkan pratinjau cetak.',
+        life: 3000,
+      })
+    } finally {
+      printingCustom.value = false
+    }
     return
   }
   const url = getPrintUrl(false)
   window.open(url, '_blank', 'noopener,noreferrer')
 }
+
+const customPreviewHtml = computed(() => {
+  if (!selectedCustomTemplate.value) return ''
+  return renderCustomLabelHtml(selectedCustomTemplate.value, sampleItem.value, '')
+})
 
 function downloadOne(item: any) {
   const a = document.createElement('a')
@@ -566,7 +855,7 @@ const sampleItem = computed(() => {
       />
       <StatCard
         label="Profil Printer / Label"
-        :value="layout.startsWith('tj_') ? 'Lembar Tom & Jerry' : layout.startsWith('thermal') ? 'Printer Thermal' : layout.startsWith('a4') ? 'Kertas A4' : 'Stiker Rol'"
+        :value="printerProfileLabel"
         icon="pi pi-print"
         tone="info"
         :hint="layoutOptions.find(o => o.value === layout)?.label || layout"
@@ -857,6 +1146,17 @@ const sampleItem = computed(() => {
               />
               <Button
                 v-if="selectedCustomTemplate"
+                icon="pi pi-pencil"
+                size="small"
+                severity="info"
+                outlined
+                class="!p-2 shrink-0"
+                aria-label="Edit template di Desainer Kustom"
+                v-tooltip.top="'Edit template ini di Desainer Kustom'"
+                @click="printModalVisible = false; openCustomDesignerWithTemplate(selectedCustomTemplate.id)"
+              />
+              <Button
+                v-if="selectedCustomTemplate"
                 icon="pi pi-trash"
                 size="small"
                 severity="danger"
@@ -869,7 +1169,7 @@ const sampleItem = computed(() => {
             </div>
           </div>
 
-          <div class="flex flex-col gap-1.5">
+          <div v-if="!selectedCustomTemplate" class="flex flex-col gap-1.5">
             <label class="text-[11.5px] font-semibold text-txt">Format Barcode</label>
             <Select
               v-model="fmt"
@@ -883,7 +1183,7 @@ const sampleItem = computed(() => {
             />
           </div>
 
-          <div class="flex flex-col gap-1.5">
+          <div v-if="!selectedCustomTemplate" class="flex flex-col gap-1.5">
             <label class="text-[11.5px] font-semibold text-txt">Teks Header Label</label>
             <InputText
               v-model="labelTitle"
@@ -919,8 +1219,8 @@ const sampleItem = computed(() => {
             />
           </div>
 
-          <!-- Element Toggles -->
-          <div class="flex flex-wrap items-center gap-4 sm:col-span-2 pt-2 border-t border-line">
+          <!-- Element Toggles (Built-in layouts only) -->
+          <div v-if="!selectedCustomTemplate" class="flex flex-wrap items-center gap-4 sm:col-span-2 pt-2 border-t border-line">
             <label class="flex items-center gap-2 cursor-pointer text-[12px] text-txt">
               <Checkbox v-model="showName" binary />
               <span>Tampilkan Nama Barang</span>
@@ -955,7 +1255,13 @@ const sampleItem = computed(() => {
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
             <span class="t-label">
-              {{ layout === 'tj_103' ? 'Pratinjau Lembar Tom & Jerry No. 103 (3 Kolom × 4 Baris)' : 'Pratinjau Nyata Label' }}
+              {{
+                selectedCustomTemplate
+                  ? `Pratinjau Desain Kustom · ${customSheetSpec?.shortLabel || '1 Label / Halaman'}`
+                  : layout === 'tj_103'
+                    ? 'Pratinjau Lembar Tom & Jerry No. 103 (3 Kolom × 4 Baris)'
+                    : 'Pratinjau Nyata Label'
+              }}
             </span>
             <span class="t-mono !text-[11px] text-txt-dim">
               {{ totalLabelsToPrint }} label akan dicetak
@@ -963,39 +1269,54 @@ const sampleItem = computed(() => {
           </div>
 
           <div class="p-4 rounded-[10px] border border-line grid place-items-center bg-panel-2 overflow-x-auto">
-            <!-- 0. Pratinjau Desain Kustom -->
+            <!-- 0. Pratinjau Desain Kustom (Live HTML Render) -->
             <div
-              v-if="layout.startsWith('custom_')"
-              class="bg-white text-black p-4 rounded-[10px] shadow-sm border-2 border-acc-500 flex flex-col items-center justify-between"
-              :style="{
-                width: `${Math.min(520, Math.max(300, (selectedCustomTemplate?.widthMm || 64) * 5))}px`,
-                minHeight: `${Math.min(260, Math.max(160, (selectedCustomTemplate?.heightMm || 32) * 5))}px`,
-              }"
+              v-if="layout.startsWith('custom_') && selectedCustomTemplate"
+              class="w-full flex flex-col items-center gap-3"
             >
-              <div class="w-full flex items-center justify-between pb-2 mb-2 border-b border-slate-200 text-xs font-bold text-slate-900">
-                <span class="flex items-center gap-1.5">
-                  <i class="pi pi-palette text-acc-600" aria-hidden="true" />
-                  <span>{{ (selectedCustomTemplate?.name || 'Desain Kustom').replace(/^[🌟🏷️🖨️📄⭐\s]+/, '') }}</span>
+              <div class="w-full max-w-[560px] flex items-center justify-between gap-2 text-xs font-bold text-txt">
+                <span class="flex items-center gap-1.5 truncate">
+                  <i class="pi pi-palette text-acc-500" aria-hidden="true" />
+                  <span class="truncate">{{ (selectedCustomTemplate.name || 'Desain Kustom').replace(/^[🌟🏷️🖨️📄⭐\s]+/, '') }}</span>
                 </span>
-                <span class="t-mono !text-[11px] text-acc-600 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                  {{ selectedCustomTemplate?.widthMm }} &times; {{ selectedCustomTemplate?.heightMm }} mm
-                </span>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="t-mono !text-[11px] text-acc-500 bg-panel px-2 py-0.5 rounded border border-line">
+                    {{ selectedCustomTemplate.widthMm }} &times; {{ selectedCustomTemplate.heightMm }} mm
+                  </span>
+                  <Button
+                    label="Edit Template"
+                    icon="pi pi-pencil"
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    class="!text-[11px] !py-0.5 !px-2"
+                    @click="printModalVisible = false; openCustomDesignerWithTemplate(selectedCustomTemplate.id)"
+                  />
+                </div>
               </div>
-              <div class="flex-1 w-full flex flex-col items-center justify-center p-3 text-center bg-slate-50 rounded-[8px] border border-dashed border-slate-300 gap-2">
-                <div class="text-xs font-semibold text-slate-800">
-                  Label akan dicetak menggunakan tata letak kustom yang telah Anda buat.
+
+              <div
+                class="rounded-[10px] shadow-sm border p-3 flex flex-col items-center gap-2 max-w-full"
+                :class="customSheetSpec?.isYellowBacking ? 'border-amber-300' : 'border-line bg-panel'"
+                :style="customSheetSpec?.isYellowBacking ? { background: '#fef08a' } : {}"
+              >
+                <div
+                  v-if="customSheetSpec?.isSheet"
+                  class="w-full flex items-center justify-between gap-4 text-[10.5px] font-bold uppercase tracking-wider pb-1.5 border-b"
+                  :class="customSheetSpec.isYellowBacking ? 'text-amber-950 border-amber-300/80' : 'text-txt-dim border-line'"
+                >
+                  <span>{{ customSheetSpec.shortLabel }}</span>
+                  <span>{{ customSheetSpec.perSheet }} Label / Lembar · Offset {{ offset }}</span>
                 </div>
-                <div v-if="selectedCustomTemplate?.tableConfig?.logoUrl" class="flex items-center gap-2 text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                  <i class="pi pi-image" aria-hidden="true" />
-                  <span>Foto logo custom terpasang</span>
-                </div>
-                <Button
-                  label="Buka &amp; Cetak di Desainer Kustom"
-                  icon="pi pi-external-link"
-                  size="small"
-                  class="!text-xs !py-1 mt-1"
-                  @click="openCustomDesignerWithTemplate(selectedCustomTemplate?.id)"
+                <div
+                  class="bg-white text-black shadow-sm overflow-hidden"
+                  style="display: inline-block; line-height: 1;"
+                  v-html="customPreviewHtml"
                 />
+              </div>
+
+              <div class="text-[11px] text-txt-dim text-center">
+                Klik <strong>Cetak Sekarang</strong> untuk langsung mencetak {{ totalLabelsToPrint }} label sesuai template &amp; format kertas ini.
               </div>
             </div>
 
@@ -1146,7 +1467,7 @@ const sampleItem = computed(() => {
               size="small"
               severity="secondary"
               outlined
-              @click="printModalVisible = false; showCustomDesigner = true"
+              @click="printModalVisible = false; openCustomDesignerWithTemplate(selectedCustomTemplate?.id)"
             />
             <Button
               label="Buka di Tab Baru"
@@ -1154,12 +1475,14 @@ const sampleItem = computed(() => {
               size="small"
               severity="secondary"
               outlined
+              :loading="printingCustom"
               @click="openSheetTab"
             />
             <Button
               label="Cetak Sekarang"
               icon="pi pi-print"
               size="small"
+              :loading="printingCustom"
               @click="printNow"
             />
           </div>
@@ -1200,9 +1523,11 @@ const sampleItem = computed(() => {
     <!-- Custom Visual Drag-and-Drop Label Designer -->
     <LabelDesignerModal
       v-model:visible="showCustomDesigner"
-      :items="items"
+      :items="designerItems"
       :selectedIds="selected"
       :initialTemplateId="selectedCustomTemplateId"
+      :initialCopies="copies"
+      :initialOffset="offset"
       @template-saved="onTemplateSaved"
     />
   </div>

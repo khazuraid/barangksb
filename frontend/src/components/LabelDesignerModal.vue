@@ -9,103 +9,29 @@ import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import api from '@/api'
+import {
+  type SheetFormatId,
+  type LabelElement,
+  type TableCellConfig,
+  type TableRowConfig,
+  type TableLayoutConfig,
+  type LabelTemplate,
+  SHEET_FORMAT_OPTIONS,
+  inferSheetFormat,
+  getSheetSpec,
+  getRowCells,
+  ensureTableConfig,
+  resolveFieldValue,
+  printCustomLabels,
+} from '@/utils/customLabelPrint'
 
-export interface LabelElement {
-  id: string
-  type: 'qr' | 'code128' | 'field' | 'static_text' | 'header' | 'line' | 'logo'
-  field?: string
-  prefix?: string
-  text?: string
-  logoUrl?: string
-  x: number // mm
-  y: number // mm
-  w: number // mm
-  h: number // mm
-  fontSize?: number // pt
-  bold?: boolean
-  align?: 'left' | 'center' | 'right'
-  border?: boolean
-  lineOrientation?: 'horizontal' | 'vertical'
-}
-
-export interface TableCellConfig {
-  id: string
-  field: string
-  label: string
-  customText?: string
-  bold?: boolean
-  fontSize?: number // pt (opsional)
-  align?: 'left' | 'center' | 'right'
-  bgColor?: 'white' | 'light_gray' | 'dark'
-}
-
-export interface TableRowConfig {
-  id: string
-  type: 'cells' | 'field' | 'two_fields' | 'custom' | 'barcode_strip'
-  field: string
-  label: string
-  field2?: string
-  label2?: string
-  customText?: string
-  bold?: boolean
-  bold2?: boolean
-  fontSize?: number // pt (opsional)
-  align?: 'left' | 'center' | 'right'
-  bgColor?: 'white' | 'light_gray' | 'dark'
-  hasBottomBorder?: boolean
-  cells?: TableCellConfig[]
-}
-
-export interface TableLayoutConfig {
-  // Border Global Controls
-  borderWidth: number // 0.5, 1, 1.5, 2 pt
-  borderStyle: 'solid' | 'dashed' | 'dotted' | 'double'
-  borderColor: string // '#000000', '#333333', '#666666'
-  showOuterBorder: boolean
-  showGridLines: boolean
-  showColBorder: boolean
-  showLabelColBorder: boolean
-  showHeaderBorder: boolean
-  showFooterBorder: boolean
-
-  // Density & Dimensions
-  cellPaddingMm: number // 0.4 - 2.0 mm
-  labelColWidthPercent: number // 20 - 55%
-
-  // Kop / Header
-  showHeader: boolean
-  headerText: string
-  headerSubText: string
-  headerFontSize: number
-  headerStyle: 'standard' | 'double_line' | 'inverted'
-  showLogo: boolean
-  logoUrl: string
-  logoWidthMm: number
-  logoPosition?: 'above_qr' | 'header'
-  showItemNameUnderLogo?: boolean
-
-  // Barcode / QR
-  qrPosition: 'left' | 'right' | 'none'
-  qrType: 'qr' | 'code128'
-  qrWidthMm: number
-
-  // Footer / Catatan Kaki
-  showFooter: boolean
-  footerText: string
-  footerFontSize: number
-
-  defaultFontSize: number
-  rows: TableRowConfig[]
-}
-
-export interface LabelTemplate {
-  id: string
-  name: string
-  widthMm: number
-  heightMm: number
-  layoutMode: 'table' | 'free'
-  tableConfig: TableLayoutConfig
-  elements: LabelElement[]
+export type {
+  SheetFormatId,
+  LabelElement,
+  TableCellConfig,
+  TableRowConfig,
+  TableLayoutConfig,
+  LabelTemplate,
 }
 
 const props = withDefaults(
@@ -114,9 +40,13 @@ const props = withDefaults(
     items: any[]
     selectedIds: string[]
     initialTemplateId?: string
+    initialCopies?: number
+    initialOffset?: number
   }>(),
   {
     initialTemplateId: '',
+    initialCopies: 1,
+    initialOffset: 0,
   }
 )
 
@@ -234,6 +164,7 @@ const DEFAULT_PRESETS: LabelTemplate[] = [
     name: 'T&J 103 (64 × 32 mm) - Tabel Bergaris Lengkap',
     widthMm: 64,
     heightMm: 32,
+    sheetFormat: 'tj_103',
     layoutMode: 'table',
     tableConfig: {
       borderWidth: 1.5,
@@ -578,7 +509,8 @@ const activeTemplate = ref<LabelTemplate>(JSON.parse(JSON.stringify(DEFAULT_PRES
 const activeElementId = ref<string | null>(null)
 const selectedTableRowIndex = ref<number | null>(0)
 const selectedTableCellIndex = ref<number | null>(0)
-const copies = ref(1)
+const copies = ref(Math.max(1, props.initialCopies || 1))
+const offset = ref(Math.max(0, props.initialOffset || 0))
 const isPrinting = ref(false)
 const paletteTab = ref<'data' | 'borders' | 'header_footer' | 'free_components'>('data')
 const tableLogoFileInput = ref<HTMLInputElement | null>(null)
@@ -654,60 +586,14 @@ function resetTableLogo() {
   }
 }
 
-// Helper untuk normalisasi sel pada setiap baris
-function getRowCells(row: TableRowConfig): TableCellConfig[] {
-  if (row.cells && row.cells.length > 0) {
-    return row.cells
-  }
-  if (row.type === 'two_fields') {
-    row.cells = [
-      { id: 'c1', field: row.field || 'name', label: row.label || 'Kolom 1', bold: row.bold, fontSize: row.fontSize, align: row.align, bgColor: row.bgColor },
-      { id: 'c2', field: row.field2 || 'location', label: row.label2 || 'Kolom 2', bold: row.bold2, fontSize: row.fontSize, align: row.align, bgColor: row.bgColor },
-    ]
-  } else if (row.type === 'custom') {
-    row.cells = [
-      { id: 'c1', field: '', label: row.label || 'Catatan', customText: row.customText || '', bold: row.bold, fontSize: row.fontSize, align: row.align || 'center', bgColor: row.bgColor },
-    ]
-  } else {
-    row.cells = [
-      { id: 'c1', field: row.field || 'name', label: row.label || 'Nama', bold: row.bold, fontSize: row.fontSize, align: row.align, bgColor: row.bgColor },
-    ]
-  }
-  return row.cells
+function normalizeTemplateId(id?: string): string {
+  return (id || '').replace(/^custom_/, '')
 }
 
-function ensureTableConfig(tpl: LabelTemplate) {
-  if (!tpl.tableConfig) {
-    tpl.tableConfig = JSON.parse(JSON.stringify(DEFAULT_PRESETS[0].tableConfig))
-  } else {
-    // Migrasi field yang belum ada
-    if (tpl.tableConfig.borderWidth === undefined) tpl.tableConfig.borderWidth = 1.5
-    if (!tpl.tableConfig.borderStyle) tpl.tableConfig.borderStyle = 'solid'
-    if (!tpl.tableConfig.borderColor) tpl.tableConfig.borderColor = '#000000'
-    if (tpl.tableConfig.showLabelColBorder === undefined) tpl.tableConfig.showLabelColBorder = true
-    if (tpl.tableConfig.cellPaddingMm === undefined) tpl.tableConfig.cellPaddingMm = 0.8
-    if (tpl.tableConfig.labelColWidthPercent === undefined) tpl.tableConfig.labelColWidthPercent = 28
-    if (tpl.tableConfig.headerSubText === undefined) tpl.tableConfig.headerSubText = ''
-    if (!tpl.tableConfig.headerStyle) tpl.tableConfig.headerStyle = 'standard'
-    if (tpl.tableConfig.showLogo === undefined) tpl.tableConfig.showLogo = false
-    if (tpl.tableConfig.logoUrl === undefined) tpl.tableConfig.logoUrl = ''
-    if (tpl.tableConfig.logoWidthMm === undefined) tpl.tableConfig.logoWidthMm = 8
-    if (!tpl.tableConfig.logoPosition) tpl.tableConfig.logoPosition = 'above_qr'
-    if (tpl.tableConfig.showItemNameUnderLogo === undefined) tpl.tableConfig.showItemNameUnderLogo = false
-    if (tpl.tableConfig.showHeaderBorder === undefined || (tpl.tableConfig.showHeader && !tpl.tableConfig.showHeaderBorder)) {
-      tpl.tableConfig.showHeaderBorder = true
-    }
-
-    tpl.tableConfig.rows?.forEach((r) => {
-      if (!r.type) r.type = 'cells'
-      if (!r.bgColor) r.bgColor = 'white'
-      getRowCells(r)
-    })
-  }
-
-  if (!tpl.layoutMode) {
-    tpl.layoutMode = 'table'
-  }
+function findTemplateById(list: LabelTemplate[], targetId?: string): LabelTemplate | undefined {
+  if (!targetId) return undefined
+  const cleanTarget = normalizeTemplateId(targetId)
+  return list.find((p) => p.id === targetId || normalizeTemplateId(p.id) === cleanTarget)
 }
 
 async function loadSavedTemplates(preferredId?: string) {
@@ -723,6 +609,8 @@ async function loadSavedTemplates(preferredId?: string) {
           name: t.name,
           widthMm: t.widthMm || 64,
           heightMm: t.heightMm || 32,
+          sheetFormat: t.sheetFormat || inferSheetFormat(t),
+          config: t.config,
           layoutMode: t.layoutMode || 'table',
           tableConfig: t.tableConfig,
           elements: t.elements || [],
@@ -745,7 +633,10 @@ async function loadSavedTemplates(preferredId?: string) {
     if (raw) {
       try {
         const parsed = JSON.parse(raw)
-        parsed.forEach((t: LabelTemplate) => ensureTableConfig(t))
+        parsed.forEach((t: LabelTemplate) => {
+          t.sheetFormat = t.sheetFormat || inferSheetFormat(t)
+          ensureTableConfig(t)
+        })
         templates.value = parsed
         loadedList = parsed
       } catch {
@@ -759,7 +650,7 @@ async function loadSavedTemplates(preferredId?: string) {
   // 3. Tentukan template yang harus aktif (activeTemplate)
   const targetId = preferredId || props.initialTemplateId
   if (targetId) {
-    const match = allPresets.value.find((p) => p.id === targetId)
+    const match = findTemplateById(allPresets.value, targetId)
     if (match) {
       applyPreset(match)
       return
@@ -774,8 +665,9 @@ async function loadSavedTemplates(preferredId?: string) {
   if (lastActive) {
     try {
       const parsedActive = JSON.parse(lastActive)
+      parsedActive.sheetFormat = parsedActive.sheetFormat || inferSheetFormat(parsedActive)
       ensureTableConfig(parsedActive)
-      const stillExists = allPresets.value.find((p) => p.id === parsedActive.id)
+      const stillExists = findTemplateById(allPresets.value, parsedActive.id)
       if (stillExists) {
         applyPreset(stillExists)
         return
@@ -810,6 +702,27 @@ const isCustomActive = computed(() => {
   return !DEFAULT_PRESETS.some((p) => p.id === activeTemplate.value.id)
 })
 
+const activeSheetFormat = computed<SheetFormatId>({
+  get: () => activeTemplate.value.sheetFormat || inferSheetFormat(activeTemplate.value),
+  set: (val) => {
+    activeTemplate.value.sheetFormat = val
+    const spec = getSheetSpec(val, activeTemplate.value.widthMm, activeTemplate.value.heightMm)
+    if (val !== 'single' && val !== 'auto_a4') {
+      activeTemplate.value.widthMm = spec.labelW
+      activeTemplate.value.heightMm = spec.labelH
+    }
+    if (!spec.isSheet) {
+      offset.value = 0
+    } else if (offset.value >= spec.perSheet) {
+      offset.value = Math.max(0, spec.perSheet - 1)
+    }
+  },
+})
+
+const activeSheetSpec = computed(() =>
+  getSheetSpec(activeSheetFormat.value, activeTemplate.value.widthMm, activeTemplate.value.heightMm)
+)
+
 onMounted(() => {
   ensureTableConfig(activeTemplate.value)
   loadSavedTemplates(props.initialTemplateId)
@@ -819,6 +732,8 @@ watch(
   () => props.visible,
   (val) => {
     if (val) {
+      copies.value = Math.max(1, props.initialCopies || 1)
+      offset.value = Math.max(0, props.initialOffset || 0)
       loadSavedTemplates(props.initialTemplateId)
     }
   }
@@ -828,7 +743,7 @@ watch(
   () => props.initialTemplateId,
   (val) => {
     if (val) {
-      const match = allPresets.value.find((p) => p.id === val)
+      const match = findTemplateById(allPresets.value, val)
       if (match) applyPreset(match)
     }
   }
@@ -903,34 +818,6 @@ const sampleItem = computed(() => {
     }
   )
 })
-
-function resolveFieldValue(item: any, fieldKey?: string, prefix?: string): string {
-  if (!fieldKey) return ''
-  let val = item[fieldKey]
-  if (val === undefined || val === null || val === '') {
-    switch (fieldKey) {
-      case 'name': val = item.name || 'Nama Aset'; break
-      case 'sku': val = item.sku || 'AST-0001'; break
-      case 'item_code': val = item.item_code || '02.06.01.001'; break
-      case 'register_number': val = item.register_number || '0001'; break
-      case 'location': val = item.location || 'Gudang Utama'; break
-      case 'location_code': val = item.location_code || 'G.01'; break
-      case 'merk': val = item.merk || 'Standar'; break
-      case 'type_model': val = item.type_model || '-'; break
-      case 'serial_number': val = item.serial_number || 'SN-12345'; break
-      case 'procurement_year': val = item.procurement_year || '2024'; break
-      case 'funding_source': val = item.funding_source || 'APBD'; break
-      case 'condition_status': val = item.condition_status || 'Baik'; break
-      case 'price_per_unit': val = item.price_per_unit ? `Rp ${Number(item.price_per_unit).toLocaleString('id-ID')}` : '-'; break
-      default: val = '-'
-    }
-  } else if (fieldKey === 'price_per_unit') {
-    val = `Rp ${Number(val).toLocaleString('id-ID')}`
-  }
-
-  const pfx = prefix || ''
-  return `${pfx}${val}`
-}
 
 // ==== OPERASI TAMBAH DAN HAPUS BARIS (ROW) ====
 function addNewRow(fieldKey = 'name', defaultLabel = 'Nama', insertAfterIndex?: number) {
@@ -1535,6 +1422,7 @@ async function confirmSaveNewTemplate() {
       ...JSON.parse(JSON.stringify(activeTemplate.value)),
       id: `custom_${Date.now().toString(36)}`,
       name: trimmed,
+      sheetFormat: activeSheetFormat.value,
     }
     templates.value.push(newTpl)
     activeTemplate.value.id = newTpl.id
@@ -1558,7 +1446,10 @@ async function confirmSaveNewTemplate() {
 async function updateCurrentCustomTemplate() {
   const idx = templates.value.findIndex((t) => t.id === activeTemplate.value.id)
   if (idx !== -1) {
-    const updated = JSON.parse(JSON.stringify(activeTemplate.value))
+    const updated: LabelTemplate = {
+      ...JSON.parse(JSON.stringify(activeTemplate.value)),
+      sheetFormat: activeSheetFormat.value,
+    }
     templates.value[idx] = updated
     saveTemplates()
     emit('template-saved', updated)
@@ -1637,24 +1528,31 @@ function importJSON(e: Event) {
 }
 
 // Data Barang yang Akan Dicetak
-const itemsToPrint = computed(() => {
-  const targetIds = props.selectedIds.length > 0 ? props.selectedIds : [sampleItem.value.id]
-  const list: any[] = []
-  targetIds.forEach((id) => {
-    const item = props.items.find((i) => i.id === id) || sampleItem.value
-    for (let c = 0; c < Math.max(1, copies.value); c++) {
-      list.push(item)
-    }
-  })
-  return list
+const resolvedItemsToPrint = computed(() => {
+  if (props.selectedIds.length === 0) {
+    return [sampleItem.value]
+  }
+  const byId = new Map(props.items.map((i) => [i.id, i]))
+  return props.selectedIds.map((id) => byId.get(id) || { id, name: id, sku: id })
 })
 
-function printLabels() {
+async function printLabels() {
   isPrinting.value = true
-  setTimeout(() => {
-    window.print()
+  try {
+    await printCustomLabels(activeTemplate.value, resolvedItemsToPrint.value, {
+      copies: copies.value,
+      offset: offset.value,
+    })
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Gagal Mencetak Label',
+      detail: err?.message || 'Tidak dapat menyiapkan dokumen cetak.',
+      life: 3000,
+    })
+  } finally {
     isPrinting.value = false
-  }, 350)
+  }
 }
 </script>
 
@@ -1731,6 +1629,18 @@ function printLabels() {
             v-tooltip.top="'Hapus Template Kustom Ini'"
             class="!p-1 shrink-0"
             @click="deleteCurrentCustomTemplate"
+          />
+        </div>
+
+        <!-- Format Kertas / Lembar -->
+        <div class="flex items-center gap-1.5 shrink-0">
+          <span class="text-txt-dim font-semibold">Kertas:</span>
+          <Select
+            v-model="activeSheetFormat"
+            :options="SHEET_FORMAT_OPTIONS"
+            optionLabel="label"
+            optionValue="value"
+            class="w-56 !text-xs"
           />
         </div>
 
@@ -1841,7 +1751,7 @@ function printLabels() {
 
         <span class="h-4 w-px bg-line mx-0.5 shrink-0" />
 
-        <!-- Print Action: Copies + Cetak Button -->
+        <!-- Print Action: Copies + Offset + Cetak Button -->
         <div class="flex items-center gap-1.5 shrink-0">
           <div class="flex items-center gap-1 bg-panel-2 px-1.5 py-1 rounded-md border border-line" title="Jumlah rangkap cetak per barang">
             <span class="text-txt-dim text-[11px] font-medium">&times;</span>
@@ -1854,10 +1764,26 @@ function printLabels() {
               class="w-10 text-center t-num font-bold text-xs bg-panel text-txt rounded border border-line py-0.5 focus:ring-1 focus:ring-acc-500 focus:outline-hidden"
             />
           </div>
+          <div
+            v-if="activeSheetSpec.isSheet"
+            class="flex items-center gap-1 bg-panel-2 px-1.5 py-1 rounded-md border border-line"
+            title="Lewati slot stiker yang sudah terpakai di lembar pertama"
+          >
+            <span class="text-txt-dim text-[11px] font-medium">Offset:</span>
+            <input
+              type="number"
+              v-model.number="offset"
+              min="0"
+              :max="Math.max(0, activeSheetSpec.perSheet - 1)"
+              aria-label="Lewati slot stiker terpakai"
+              class="w-10 text-center t-num font-bold text-xs bg-panel text-txt rounded border border-line py-0.5 focus:ring-1 focus:ring-acc-500 focus:outline-hidden"
+            />
+          </div>
           <Button
             label="Cetak Label Ini"
             icon="pi pi-print"
             size="small"
+            :loading="isPrinting"
             class="!text-xs !py-1.5 !px-3 font-semibold shrink-0"
             @click="printLabels"
           />
@@ -2771,7 +2697,7 @@ function printLabels() {
                 <!-- QR Code Column (Right) -->
                 <div
                   v-if="activeTemplate.tableConfig.qrPosition === 'right'"
-                  class="shrink-0 flex flex-col items-center justify-center p-1"
+                  class="shrink-0 flex flex-col items-center justify-between overflow-hidden"
                   :style="{
                     width: `${activeTemplate.tableConfig.qrWidthMm * MM_TO_PX * zoom}px`,
                     borderLeft: activeTemplate.tableConfig.showColBorder
@@ -2779,15 +2705,61 @@ function printLabels() {
                       : 'none',
                   }"
                 >
-                  <img
-                    v-if="activeTemplate.tableConfig.qrType === 'qr'"
-                    :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
-                    class="w-full h-full object-contain pointer-events-none"
-                    alt="QR"
-                  />
-                  <div v-else class="w-full h-full flex flex-col items-center justify-center">
-                    <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-[70%] object-contain pointer-events-none" alt="BC" />
-                    <span class="font-mono font-bold leading-none text-center" :style="{ fontSize: `${5.5 * (zoom / 2.2)}pt` }">{{ sampleItem.sku }}</span>
+                  <div
+                    v-if="activeTemplate.tableConfig.showLogo"
+                    class="w-full flex-1 flex flex-col items-center justify-center p-0.5 overflow-hidden"
+                    :style="{
+                      borderBottom: `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`,
+                      minHeight: `${(activeTemplate.tableConfig.logoWidthMm || 10) * MM_TO_PX * (zoom / 2.2) * 0.6}px`,
+                    }"
+                  >
+                    <img
+                      v-if="activeTemplate.tableConfig.logoUrl"
+                      :src="activeTemplate.tableConfig.logoUrl"
+                      class="max-w-full max-h-full object-contain pointer-events-none"
+                      alt="Logo"
+                    />
+                    <svg
+                      v-else
+                      viewBox="0 0 100 120"
+                      class="w-full h-full max-h-12 object-contain pointer-events-none"
+                    >
+                      <path d="M14 10 H86 V72 C86 98 50 114 50 114 C50 114 14 98 14 72 Z" fill="#ffffff" stroke="#1e293b" stroke-width="3" />
+                      <path d="M16 12 H84 V56 C84 56 50 64 50 64 C50 64 16 56 16 56 Z" fill="#38bdf8" />
+                      <polygon points="50,17 53,24 61,24 54,29 57,36 50,31 43,36 46,29 39,24 47,24" fill="#facc15" stroke="#ca8a04" stroke-width="0.8" />
+                      <rect x="22" y="38" width="56" height="14" fill="#1e293b" />
+                      <rect x="25" y="34" width="8" height="4" fill="#1e293b" />
+                      <rect x="37" y="34" width="8" height="4" fill="#1e293b" />
+                      <rect x="49" y="34" width="8" height="4" fill="#1e293b" />
+                      <rect x="61" y="34" width="8" height="4" fill="#1e293b" />
+                      <path d="M16 56 Q33 50 50 58 Q67 66 84 56 V72 C84 96 50 112 50 112 C50 112 16 96 16 72 Z" fill="#0284c7" />
+                      <path d="M16 66 Q33 60 50 68 Q67 76 84 66 V76 C84 96 50 112 50 112 C50 112 16 96 16 76 Z" fill="#0369a1" />
+                      <path d="M38 72 C32 68 36 60 48 62 C58 64 63 70 58 76 C52 82 42 80 38 74" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" />
+                      <circle cx="56" cy="71" r="2.5" fill="#f97316" />
+                      <path d="M22 96 Q50 88 78 96" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
+                      <text x="50" y="98" font-size="5" font-weight="900" text-anchor="middle" fill="#0f172a" font-family="sans-serif">CIREBON</text>
+                    </svg>
+                  </div>
+
+                  <div class="w-full flex-1 flex flex-col items-center justify-center p-1 overflow-hidden">
+                    <img
+                      v-if="activeTemplate.tableConfig.qrType === 'qr'"
+                      :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
+                      class="w-full h-full object-contain pointer-events-none"
+                      alt="QR"
+                    />
+                    <div v-else class="w-full h-full flex flex-col items-center justify-center">
+                      <img :src="`/api/barcode/${sampleItem.id}.png?fmt=code128`" class="w-full h-[70%] object-contain pointer-events-none" alt="BC" />
+                      <span class="font-mono font-bold leading-none text-center" :style="{ fontSize: `${5.5 * (zoom / 2.2)}pt` }">{{ sampleItem.sku }}</span>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="activeTemplate.tableConfig.showItemNameUnderLogo"
+                    class="w-full py-0.5 px-0.5 text-center truncate font-bold text-slate-800 border-t border-slate-300"
+                    :style="{ fontSize: `${5 * (zoom / 2.2)}pt` }"
+                  >
+                    - {{ sampleItem.name }}
                   </div>
                 </div>
               </div>
@@ -3355,302 +3327,6 @@ function printLabels() {
       </div>
     </form>
   </Dialog>
-
-  <!-- PURE PRINT ENGINE (Direnter khusus saat window.print) -->
-  <teleport to="body">
-    <div v-if="isPrinting" id="custom-print-sheet">
-      <div
-        v-for="(it, iIdx) in itemsToPrint"
-        :key="iIdx"
-        class="custom-print-label"
-        :style="{
-          width: `${activeTemplate.widthMm}mm`,
-          height: `${activeTemplate.heightMm}mm`,
-        }"
-      >
-        <!-- 1. Print Mode: Native HTML Table with Real Print Borders & Dynamic Cells -->
-        <table
-          v-if="activeTemplate.layoutMode === 'table'"
-          class="custom-print-table"
-          :style="{
-            border: activeTemplate.tableConfig.showOuterBorder
-              ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-              : 'none',
-          }"
-        >
-          <!-- Kop Row -->
-          <tr v-if="activeTemplate.tableConfig.showHeader">
-            <th
-              colspan="2"
-              class="print-header-cell"
-              :class="activeTemplate.tableConfig.headerStyle === 'inverted' ? 'print-inverted-kop' : ''"
-              :style="{
-                fontSize: `${activeTemplate.tableConfig.headerFontSize}pt`,
-                borderBottom: activeTemplate.tableConfig.showHeaderBorder !== false
-                  ? activeTemplate.tableConfig.headerStyle === 'double_line'
-                    ? `${activeTemplate.tableConfig.borderWidth * 2}pt double ${activeTemplate.tableConfig.borderColor}`
-                    : `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                  : 'none',
-              }"
-            >
-              <div>{{ activeTemplate.tableConfig.headerText }}</div>
-              <div v-if="activeTemplate.tableConfig.headerSubText" style="font-weight: 600; font-size: 85%;">
-                {{ activeTemplate.tableConfig.headerSubText }}
-              </div>
-            </th>
-          </tr>
-
-          <!-- Body Row: QR Column + Subtable of Rows -->
-          <tr>
-            <!-- Left QR Cell -->
-            <td
-              v-if="activeTemplate.tableConfig.qrPosition === 'left'"
-              class="print-qr-cell"
-              :style="{
-                width: `${activeTemplate.tableConfig.qrWidthMm}mm`,
-                borderRight: activeTemplate.tableConfig.showColBorder
-                  ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                  : 'none',
-                padding: '0',
-                verticalAlign: 'top',
-              }"
-            >
-              <div style="display: flex; flex-direction: column; height: 100%; width: 100%; justify-content: space-between; box-sizing: border-box;">
-                <!-- Lambang Kota / Logo Atas -->
-                <div
-                  v-if="activeTemplate.tableConfig.showLogo"
-                  style="width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; padding: 1mm 0.5mm; box-sizing: border-box;"
-                  :style="{
-                    borderBottom: `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`,
-                  }"
-                >
-                  <img
-                    v-if="activeTemplate.tableConfig.logoUrl"
-                    :src="activeTemplate.tableConfig.logoUrl"
-                    style="max-width: 95%; max-height: 12mm; object-fit: contain;"
-                    alt="Logo"
-                  />
-                  <svg v-else viewBox="0 0 100 120" style="max-width: 90%; max-height: 12mm; object-fit: contain;">
-                    <path d="M14 10 H86 V72 C86 98 50 114 50 114 C50 114 14 98 14 72 Z" fill="#ffffff" stroke="#1e293b" stroke-width="3" />
-                    <path d="M16 12 H84 V56 C84 56 50 64 50 64 C50 64 16 56 16 56 Z" fill="#38bdf8" />
-                    <polygon points="50,17 53,24 61,24 54,29 57,36 50,31 43,36 46,29 39,24 47,24" fill="#facc15" stroke="#ca8a04" stroke-width="0.8" />
-                    <rect x="22" y="38" width="56" height="14" fill="#1e293b" />
-                    <rect x="25" y="34" width="8" height="4" fill="#1e293b" />
-                    <rect x="37" y="34" width="8" height="4" fill="#1e293b" />
-                    <rect x="49" y="34" width="8" height="4" fill="#1e293b" />
-                    <rect x="61" y="34" width="8" height="4" fill="#1e293b" />
-                    <path d="M16 56 Q33 50 50 58 Q67 66 84 56 V72 C84 96 50 112 50 112 C50 112 16 96 16 72 Z" fill="#0284c7" />
-                    <path d="M16 66 Q33 60 50 68 Q67 76 84 66 V76 C84 96 50 112 50 112 C50 112 16 96 16 76 Z" fill="#0369a1" />
-                    <path d="M38 72 C32 68 36 60 48 62 C58 64 63 70 58 76 C52 82 42 80 38 74" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" />
-                    <circle cx="56" cy="71" r="2.5" fill="#f97316" />
-                    <path d="M22 96 Q50 88 78 96" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
-                    <text x="50" y="98" font-size="5" font-weight="900" text-anchor="middle" fill="#0f172a" font-family="sans-serif">CIREBON</text>
-                  </svg>
-                </div>
-
-                <!-- QR Code di Bawah Lambang -->
-                <div style="width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; padding: 1mm 0.5mm; box-sizing: border-box;">
-                  <img
-                    v-if="activeTemplate.tableConfig.qrType === 'qr'"
-                    :src="`/api/barcode/${it.id}.png?fmt=qr`"
-                    class="print-qr-img"
-                    style="width: 90%; height: 90%; object-fit: contain;"
-                    alt="QR"
-                  />
-                  <div v-else class="print-barcode-box">
-                    <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="print-barcode-img" alt="BC" />
-                    <span class="print-barcode-sku">{{ it.sku }}</span>
-                  </div>
-                </div>
-
-                <!-- Nama Barang di Bawah Kotak (- Nama) -->
-                <div
-                  v-if="activeTemplate.tableConfig.showItemNameUnderLogo"
-                  style="width: 100%; font-size: 5pt; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0.5mm 0; border-top: 0.5pt solid #cbd5e1;"
-                >
-                  - {{ it.name }}
-                </div>
-              </div>
-            </td>
-
-            <!-- Data Rows Subtable Cell -->
-            <td class="print-data-cell">
-              <table class="print-subtable">
-                <tr
-                  v-for="(r, rIdx) in activeTemplate.tableConfig.rows"
-                  :key="r.id"
-                  class="print-data-row"
-                  :style="{
-                    borderBottom: (activeTemplate.tableConfig.showGridLines && rIdx < activeTemplate.tableConfig.rows.length - 1) || r.hasBottomBorder
-                      ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                      : 'none',
-                  }"
-                >
-                  <!-- BARCODE STRIP ROW -->
-                  <template v-if="r.type === 'barcode_strip'">
-                    <td colspan="10" style="text-align: center; padding: 0.5mm 1mm;">
-                      <img :src="`/api/barcode/${it.id}.png?fmt=code128`" style="width: 90%; height: 6mm; object-fit: contain;" alt="BC" />
-                      <div style="font-family: monospace; font-weight: bold; font-size: 5.5pt; line-height: 1;">{{ it.sku }}</div>
-                    </td>
-                  </template>
-
-                  <!-- DYNAMIC MULTI-CELL ROW -->
-                  <template v-else>
-                    <td
-                      v-for="(cell, cIdx) in getRowCells(r)"
-                      :key="cell.id || cIdx"
-                      class="print-cell"
-                      :style="{
-                        fontSize: `${cell.fontSize || r.fontSize || activeTemplate.tableConfig.defaultFontSize}pt`,
-                        borderRight: activeTemplate.tableConfig.showLabelColBorder && cIdx < getRowCells(r).length - 1
-                          ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                          : 'none',
-                        padding: `${activeTemplate.tableConfig.cellPaddingMm}mm 1mm`,
-                        backgroundColor: cell.bgColor === 'light_gray' ? '#f1f5f9' : cell.bgColor === 'dark' ? '#1e293b' : 'transparent',
-                        color: cell.bgColor === 'dark' ? '#ffffff' : '#000000',
-                        textAlign: cell.align || 'left',
-                      }"
-                    >
-                      <div style="display: flex; align-items: center; width: 100%; overflow: hidden;">
-                        <b v-if="cell.label" style="padding-right: 1mm; shrink: 0; white-space: nowrap;">{{ cell.label }}:</b>
-                        <span
-                          :style="{
-                            fontWeight: cell.bold ? 'bold' : 'normal',
-                            fontFamily: cell.field === 'sku' ? 'monospace' : 'inherit',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }"
-                        >
-                          {{ cell.customText || resolveFieldValue(it, cell.field) }}
-                        </span>
-                      </div>
-                    </td>
-                  </template>
-                </tr>
-              </table>
-            </td>
-
-            <!-- Right QR Cell -->
-            <td
-              v-if="activeTemplate.tableConfig.qrPosition === 'right'"
-              class="print-qr-cell"
-              :style="{
-                width: `${activeTemplate.tableConfig.qrWidthMm}mm`,
-                borderLeft: activeTemplate.tableConfig.showColBorder
-                  ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                  : 'none',
-              }"
-            >
-              <img
-                v-if="activeTemplate.tableConfig.qrType === 'qr'"
-                :src="`/api/barcode/${it.id}.png?fmt=qr`"
-                class="print-qr-img"
-                alt="QR"
-              />
-              <div v-else class="print-barcode-box">
-                <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="print-barcode-img" alt="BC" />
-                <span class="print-barcode-sku">{{ it.sku }}</span>
-              </div>
-            </td>
-          </tr>
-
-          <!-- Footer Row -->
-          <tr v-if="activeTemplate.tableConfig.showFooter">
-            <td
-              colspan="2"
-              class="print-footer-cell"
-              :style="{
-                fontSize: `${activeTemplate.tableConfig.footerFontSize}pt`,
-                borderTop: activeTemplate.tableConfig.showFooterBorder
-                  ? `${activeTemplate.tableConfig.borderWidth}pt ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`
-                  : 'none',
-              }"
-            >
-              {{ activeTemplate.tableConfig.footerText }}
-            </td>
-          </tr>
-        </table>
-
-        <!-- 2. Print Mode: Free Form Absolute Positions -->
-        <template v-else>
-          <div
-            v-for="el in activeTemplate.elements"
-            :key="el.id"
-            class="custom-print-el"
-            :style="{
-              left: `${el.x}mm`,
-              top: `${el.y}mm`,
-              width: `${el.w}mm`,
-              height: `${el.h}mm`,
-            }"
-          >
-            <img
-              v-if="el.type === 'qr'"
-              :src="`/api/barcode/${it.id}.png?fmt=qr`"
-              class="w-full h-full object-contain"
-              alt="QR"
-            />
-            <div v-else-if="el.type === 'code128'" class="w-full h-full flex flex-col items-center justify-center">
-              <img :src="`/api/barcode/${it.id}.png?fmt=code128`" class="w-full h-[75%] object-contain" alt="BC" />
-              <span class="text-[7pt] font-mono font-bold leading-none truncate">{{ it.sku }}</span>
-            </div>
-            <div
-              v-else-if="el.type === 'header'"
-              class="w-full h-full flex items-center uppercase tracking-wide leading-tight truncate"
-              :class="[
-                el.border ? 'border-b border-black' : '',
-                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-              ]"
-              :style="{
-                fontSize: `${el.fontSize || 6.5}pt`,
-                fontWeight: el.bold ? 800 : 600,
-              }"
-            >
-              {{ el.text }}
-            </div>
-            <div
-              v-else-if="el.type === 'field'"
-              class="w-full h-full flex items-center leading-tight truncate"
-              :class="[
-                el.border ? 'border border-black' : '',
-                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-              ]"
-              :style="{
-                fontSize: `${el.fontSize || 7}pt`,
-                fontWeight: el.bold ? 700 : 400,
-                fontFamily: el.field === 'sku' ? 'monospace' : 'inherit',
-              }"
-            >
-              {{ resolveFieldValue(it, el.field, el.prefix) }}
-            </div>
-            <div
-              v-else-if="el.type === 'static_text'"
-              class="w-full h-full flex items-center leading-tight truncate"
-              :class="[
-                el.align === 'center' ? 'justify-center text-center' : el.align === 'right' ? 'justify-end text-right' : 'justify-start text-left',
-              ]"
-              :style="{
-                fontSize: `${el.fontSize || 7}pt`,
-                fontWeight: el.bold ? 700 : 400,
-              }"
-            >
-              {{ el.text }}
-            </div>
-            <div
-              v-else-if="el.type === 'line'"
-              class="border-black my-auto"
-              :class="[el.lineOrientation === 'vertical' ? 'h-full mx-auto border-l' : 'w-full border-t']"
-            />
-            <div v-else-if="el.type === 'logo'" class="w-full h-full flex items-center justify-center">
-              <img v-if="el.logoUrl" :src="el.logoUrl" class="max-w-full max-h-full object-contain" alt="Logo" />
-              <div v-else class="w-full h-full border border-dashed border-black flex items-center justify-center text-[5pt] text-black">Logo</div>
-            </div>
-          </div>
-        </template>
-      </div>
-    </div>
-  </teleport>
 </template>
 
 <style scoped>
@@ -3693,119 +3369,5 @@ function printLabels() {
   background-color: var(--panel-2);
   border-color: var(--acc-500);
   box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
-}
-</style>
-
-<style>
-@media print {
-  body * {
-    visibility: hidden !important;
-  }
-  #custom-print-sheet,
-  #custom-print-sheet * {
-    visibility: visible !important;
-  }
-  #custom-print-sheet {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
-  }
-  .custom-print-label {
-    position: relative !important;
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-    background: #ffffff !important;
-    page-break-after: always !important;
-    break-after: page !important;
-  }
-  .custom-print-el {
-    position: absolute !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    overflow: hidden !important;
-  }
-
-  /* Table Mode Print Styling */
-  .custom-print-table {
-    width: 100% !important;
-    height: 100% !important;
-    border-collapse: collapse !important;
-    table-layout: fixed !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  .print-header-cell {
-    padding: 0.8mm 1.5mm !important;
-    text-align: center !important;
-    font-weight: 800 !important;
-    text-transform: uppercase !important;
-    vertical-align: middle !important;
-  }
-  .print-inverted-kop {
-    background-color: #000000 !important;
-    color: #ffffff !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  .print-qr-cell {
-    padding: 1mm !important;
-    text-align: center !important;
-    vertical-align: middle !important;
-  }
-  .print-qr-img {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: contain !important;
-  }
-  .print-barcode-box {
-    width: 100% !important;
-    height: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-  .print-barcode-img {
-    width: 100% !important;
-    height: 70% !important;
-    object-fit: contain !important;
-  }
-  .print-barcode-sku {
-    font-family: monospace !important;
-    font-size: 6pt !important;
-    font-weight: bold !important;
-  }
-  .print-data-cell {
-    padding: 0 !important;
-    vertical-align: top !important;
-  }
-  .print-subtable {
-    width: 100% !important;
-    height: 100% !important;
-    border-collapse: collapse !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  .print-data-row {
-    height: 1% !important;
-    box-sizing: border-box !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  .print-cell {
-    vertical-align: middle !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
-  }
-  .print-footer-cell {
-    padding: 0.8mm 1mm !important;
-    text-align: center !important;
-    vertical-align: middle !important;
-    box-sizing: border-box !important;
-  }
 }
 </style>

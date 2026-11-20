@@ -1047,6 +1047,7 @@ type LabelTemplatePayload struct {
 	WidthMm     float64                `json:"widthMm"`
 	HeightMm    float64                `json:"heightMm"`
 	LayoutMode  string                 `json:"layoutMode"`
+	SheetFormat string                 `json:"sheetFormat,omitempty"`
 	Config      map[string]interface{} `json:"config,omitempty"`
 	TableConfig map[string]interface{} `json:"tableConfig,omitempty"`
 	Elements    []interface{}          `json:"elements,omitempty"`
@@ -1086,6 +1087,20 @@ func (h *BarcodeHandler) ListTemplates(c *gin.Context) {
 			if el, ok := config["elements"]; ok {
 				item["elements"] = el
 			}
+			if sf, ok := config["sheetFormat"].(string); ok && sf != "" {
+				item["sheetFormat"] = sf
+			} else if bl, ok := config["baseLayout"].(string); ok && bl != "" {
+				item["sheetFormat"] = bl
+			}
+			metaCfg := make(map[string]interface{})
+			for k, v := range config {
+				if k != "tableConfig" && k != "elements" {
+					metaCfg[k] = v
+				}
+			}
+			if len(metaCfg) > 0 {
+				item["config"] = metaCfg
+			}
 			list = append(list, item)
 		}
 	}
@@ -1122,6 +1137,9 @@ func (h *BarcodeHandler) SaveTemplate(c *gin.Context) {
 	cfg := p.Config
 	if cfg == nil {
 		cfg = make(map[string]interface{})
+	}
+	if p.SheetFormat != "" {
+		cfg["sheetFormat"] = p.SheetFormat
 	}
 	if p.TableConfig != nil {
 		cfg["tableConfig"] = p.TableConfig

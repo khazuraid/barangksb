@@ -138,7 +138,11 @@ func (h *ItemHandler) List(c *gin.Context) {
 			COALESCE(material, ''),
 			COALESCE(location_code, ''),
 			COALESCE(merk, ''),
-			COALESCE(type_model, '')
+			COALESCE(type_model, ''),
+			COALESCE(serial_number, ''),
+			COALESCE(procurement_year, ''),
+			COALESCE(funding_source, ''),
+			COALESCE(description, '')
 		FROM inventory_items%s %s LIMIT $%d OFFSET $%d`, where, orderClause, len(args)-1, len(args))
 
 	rows, err := h.pool.Query(c, queryStr, args...)
@@ -149,29 +153,33 @@ func (h *ItemHandler) List(c *gin.Context) {
 	defer rows.Close()
 
 	type itemRow struct {
-		ID             string   `json:"id"`
-		SKU            string   `json:"sku"`
-		Name           string   `json:"name"`
-		Category       string   `json:"category"`
-		Location       string   `json:"location"`
-		LocationCode   string   `json:"location_code"`
-		CurrentStock   int32    `json:"current_stock"`
-		MinStock       int32    `json:"min_stock"`
-		Unit           string   `json:"unit"`
-		PricePerUnit   int64    `json:"price_per_unit"`
-		Condition      string   `json:"condition_status"`
-		IsAvailable    bool     `json:"is_available"`
-		PhotoURL       string   `json:"photo_url"`
-		ItemCode       string   `json:"item_code"`
-		RegisterNumber string   `json:"register_number"`
-		Size           string   `json:"size"`
-		Material       string   `json:"material"`
-		Merk           string   `json:"merk"`
-		TypeModel      string   `json:"type_model"`
-		GeoLat         *float64 `json:"geo_lat"`
-		GeoLng         *float64 `json:"geo_lng"`
-		GeoName        string   `json:"geo_name"`
-		TrackStock     bool     `json:"track_stock"`
+		ID              string   `json:"id"`
+		SKU             string   `json:"sku"`
+		Name            string   `json:"name"`
+		Category        string   `json:"category"`
+		Location        string   `json:"location"`
+		LocationCode    string   `json:"location_code"`
+		CurrentStock    int32    `json:"current_stock"`
+		MinStock        int32    `json:"min_stock"`
+		Unit            string   `json:"unit"`
+		PricePerUnit    int64    `json:"price_per_unit"`
+		Condition       string   `json:"condition_status"`
+		IsAvailable     bool     `json:"is_available"`
+		PhotoURL        string   `json:"photo_url"`
+		ItemCode        string   `json:"item_code"`
+		RegisterNumber  string   `json:"register_number"`
+		Size            string   `json:"size"`
+		Material        string   `json:"material"`
+		Merk            string   `json:"merk"`
+		TypeModel       string   `json:"type_model"`
+		SerialNumber    string   `json:"serial_number"`
+		ProcurementYear string   `json:"procurement_year"`
+		FundingSource   string   `json:"funding_source"`
+		Description     string   `json:"description"`
+		GeoLat          *float64 `json:"geo_lat"`
+		GeoLng          *float64 `json:"geo_lng"`
+		GeoName         string   `json:"geo_name"`
+		TrackStock      bool     `json:"track_stock"`
 	}
 	items := make([]itemRow, 0, perPage)
 	for rows.Next() {
@@ -182,7 +190,8 @@ func (h *ItemHandler) List(c *gin.Context) {
 			&it.Condition, &it.IsAvailable, &it.PhotoURL, &it.GeoLat,
 			&it.GeoLng, &it.GeoName, &it.TrackStock, &it.ItemCode,
 			&it.RegisterNumber, &it.Size, &it.Material, &it.LocationCode,
-			&it.Merk, &it.TypeModel,
+			&it.Merk, &it.TypeModel, &it.SerialNumber, &it.ProcurementYear,
+			&it.FundingSource, &it.Description,
 		); err != nil {
 			continue
 		}
