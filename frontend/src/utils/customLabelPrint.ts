@@ -73,7 +73,7 @@ export interface TableLayoutConfig {
   showLogo: boolean
   logoUrl?: string
   logoWidthMm: number
-  logoPosition?: 'above_qr' | 'top_left' | 'header'
+  logoPosition?: 'above_qr' | 'above_qr_only' | 'top_left' | 'header'
   showItemNameUnderLogo?: boolean
   qrPosition: 'left' | 'right' | 'none'
   qrType: 'qr' | 'code128'
@@ -343,6 +343,11 @@ export function getRowCells(row: TableRowConfig): TableCellConfig[] {
   return row.cells
 }
 
+export function isLogoInHeader(tc?: Partial<TableLayoutConfig> | null): boolean {
+  if (!tc || !tc.showLogo || !tc.showHeader) return false
+  return tc.logoPosition !== 'above_qr_only'
+}
+
 export function ensureTableConfig(tpl: LabelTemplate, fallbackTableConfig?: TableLayoutConfig) {
   if (!tpl.tableConfig) {
     tpl.tableConfig = fallbackTableConfig
@@ -358,19 +363,19 @@ export function ensureTableConfig(tpl: LabelTemplate, fallbackTableConfig?: Tabl
           cellPaddingMm: 0.8,
           labelColWidthPercent: 28,
           showHeader: true,
-          headerText: 'INVENTARIS KANTOR',
-          headerSubText: '',
-          headerFontSize: 7.5,
+          headerText: 'PEMERINTAH KOTA CIREBON',
+          headerSubText: 'PUSKESMAS KESAMBI',
+          headerFontSize: 7,
           headerStyle: 'standard',
           showHeaderBorder: true,
-          showLogo: false,
+          showLogo: true,
           logoUrl: '',
-          logoWidthMm: 12,
-          logoPosition: 'above_qr',
+          logoWidthMm: 8,
+          logoPosition: 'header',
           showItemNameUnderLogo: false,
           qrPosition: 'left',
           qrType: 'qr',
-          qrWidthMm: 18,
+          qrWidthMm: 21,
           showFooter: false,
           footerText: '',
           footerFontSize: 5.5,
@@ -421,15 +426,20 @@ export function ensureTableConfig(tpl: LabelTemplate, fallbackTableConfig?: Tabl
     if (tc.cellPaddingMm === undefined) tc.cellPaddingMm = 0.8
     if (tc.labelColWidthPercent === undefined) tc.labelColWidthPercent = 28
     if (tc.headerSubText === undefined) tc.headerSubText = ''
+    if (tc.headerSubText && tc.headerSubText.trim().toUpperCase() === 'PUSKESAMS KESAMBI') {
+      tc.headerSubText = 'PUSKESMAS KESAMBI'
+    }
     if (tc.headerFontSize === undefined) tc.headerFontSize = 7.5
     if (!tc.headerStyle) tc.headerStyle = 'standard'
     if (tc.showHeaderBorder === undefined) tc.showHeaderBorder = true
-    if (tc.logoWidthMm === undefined) tc.logoWidthMm = 12
-    if (!tc.logoPosition) tc.logoPosition = 'above_qr'
+    if (tc.logoWidthMm === undefined) tc.logoWidthMm = 8
+    if (!tc.logoPosition || (tc.showHeader && tc.logoPosition === 'above_qr')) {
+      tc.logoPosition = tc.showHeader ? 'header' : 'above_qr'
+    }
     if (tc.showItemNameUnderLogo === undefined) tc.showItemNameUnderLogo = false
     if (!tc.qrPosition) tc.qrPosition = 'left'
     if (!tc.qrType) tc.qrType = 'qr'
-    if (tc.qrWidthMm === undefined) tc.qrWidthMm = 18
+    if (tc.qrWidthMm === undefined) tc.qrWidthMm = 21
     if (tc.footerFontSize === undefined) tc.footerFontSize = 5.5
     if (tc.showFooterBorder === undefined) tc.showFooterBorder = true
     if (tc.defaultFontSize === undefined) tc.defaultFontSize = 7
@@ -549,8 +559,9 @@ function renderQrColumnHtml(tc: TableLayoutConfig, item: any, origin: string, si
   const qrUrl = resolveAssetUrl(`/api/barcode/${encodeURIComponent(item.id)}.png?fmt=${tc.qrType === 'code128' ? 'code128' : 'qr'}`, origin)
   const logoUrl = tc.logoUrl ? resolveAssetUrl(tc.logoUrl, origin) : ''
   const logoMaxH = Math.max(5, (Number(tc.logoWidthMm) || 10) * 0.65)
+  const showLogoAboveQr = tc.showLogo && !isLogoInHeader(tc)
 
-  const logoHtml = tc.showLogo
+  const logoHtml = showLogoAboveQr
     ? `<div style="width:100%;flex:0 0 auto;max-height:${logoMaxH}mm;display:flex;align-items:center;justify-content:center;padding:0.6mm 0.5mm;box-sizing:border-box;border-bottom:${bw}pt ${bs} ${bc};overflow:hidden;">
         ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" style="max-width:95%;max-height:${logoMaxH - 1}mm;object-fit:contain;" alt="Logo" />` : DEFAULT_CREST_SVG}
       </div>`
@@ -558,19 +569,19 @@ function renderQrColumnHtml(tc: TableLayoutConfig, item: any, origin: string, si
 
   const codeHtml =
     tc.qrType === 'qr'
-      ? `<img src="${escapeHtml(qrUrl)}" style="width:92%;height:92%;max-width:100%;max-height:100%;object-fit:contain;display:block;" alt="QR" />`
+      ? `<img src="${escapeHtml(qrUrl)}" style="width:98%;height:98%;max-width:100%;max-height:100%;object-fit:contain;display:block;" alt="QR" />`
       : `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
-          <img src="${escapeHtml(qrUrl)}" style="width:95%;height:70%;object-fit:contain;display:block;" alt="BC" />
+          <img src="${escapeHtml(qrUrl)}" style="width:96%;height:74%;object-fit:contain;display:block;" alt="BC" />
           <span style="font-family:monospace;font-weight:700;font-size:5.5pt;line-height:1;margin-top:0.4mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${escapeHtml(item.sku || '')}</span>
         </div>`
 
   const nameUnderHtml = tc.showItemNameUnderLogo
-    ? `<div style="width:100%;flex:0 0 auto;font-size:5pt;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0.4mm 0.5mm;border-top:0.5pt solid #cbd5e1;box-sizing:border-box;">- ${escapeHtml(item.name || '')}</div>`
+    ? `<div style="width:100%;flex:0 0 auto;font-size:5pt;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0.35mm 0.5mm;border-top:0.5pt solid #cbd5e1;box-sizing:border-box;">- ${escapeHtml(item.name || '')}</div>`
     : ''
 
-  return `<div style="width:${Number(tc.qrWidthMm) || 18}mm;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:space-between;overflow:hidden;box-sizing:border-box;${colBorder}">
+  return `<div style="width:${Number(tc.qrWidthMm) || 20}mm;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:space-between;overflow:hidden;box-sizing:border-box;${colBorder}">
     ${logoHtml}
-    <div style="width:100%;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0.8mm;box-sizing:border-box;overflow:hidden;">
+    <div style="width:100%;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0.4mm;box-sizing:border-box;overflow:hidden;">
       ${codeHtml}
     </div>
     ${nameUnderHtml}
@@ -640,11 +651,29 @@ export function renderCustomLabelHtml(rawTpl: LabelTemplate, item: any, origin =
         : ''
     const hdrFs = Number(tc.headerFontSize) || 7.5
     const subHtml = tc.headerSubText
-      ? `<span style="font-weight:600;font-size:${Math.max(4.5, hdrFs - 1)}pt;opacity:0.9;line-height:1.1;">${escapeHtml(tc.headerSubText)}</span>`
+      ? `<span style="font-weight:700;font-size:${Math.max(4.5, hdrFs - 0.5)}pt;opacity:0.92;line-height:1.1;">${escapeHtml(tc.headerSubText)}</span>`
       : ''
-    headerHtml = `<div style="width:100%;flex:0 0 auto;padding:0.6mm 1.5mm;text-align:center;font-weight:800;text-transform:uppercase;letter-spacing:-0.01em;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;${hdrBg}${hdrBorder}">
-      <span style="font-size:${hdrFs}pt;line-height:1.15;">${escapeHtml(tc.headerText || '')}</span>
-      ${subHtml}
+    const logoInHdr = isLogoInHeader(tc)
+    const logoUrl = tc.logoUrl ? resolveAssetUrl(tc.logoUrl, origin) : ''
+    const hdrLogoH = Number(
+      Math.max(6.2, Math.min(8.5, hdrFs * 0.3528 * (tc.headerSubText ? 2.65 : 1.75))).toFixed(2)
+    )
+    const hdrLogoHtml = logoInHdr
+      ? `<div style="width:${hdrLogoH}mm;height:${hdrLogoH}mm;flex:0 0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+          ${
+            logoUrl
+              ? `<img src="${escapeHtml(logoUrl)}" style="width:100%;height:100%;object-fit:contain;display:block;" alt="Logo" />`
+              : DEFAULT_CREST_SVG
+          }
+        </div>`
+      : ''
+
+    headerHtml = `<div style="width:100%;flex:0 0 auto;padding:0.55mm 1.5mm;text-align:center;font-weight:800;text-transform:uppercase;letter-spacing:-0.01em;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:1.4mm;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;${hdrBg}${hdrBorder}">
+      ${hdrLogoHtml}
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;text-align:center;">
+        <span style="font-size:${hdrFs}pt;line-height:1.12;">${escapeHtml(tc.headerText || '')}</span>
+        ${subHtml}
+      </div>
     </div>`
   }
 

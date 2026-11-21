@@ -24,6 +24,7 @@ import {
   getPrintMode,
   getShowCutBorder,
   getRowCells,
+  isLogoInHeader,
   ensureTableConfig,
   resolveFieldValue,
   printCustomLabels,
@@ -346,6 +347,24 @@ watch(
   (val) => {
     if (val && activeTemplate.value.tableConfig) {
       activeTemplate.value.tableConfig.showHeaderBorder = true
+      if (activeTemplate.value.tableConfig.logoPosition !== 'above_qr_only') {
+        activeTemplate.value.tableConfig.logoPosition = 'header'
+      }
+    }
+  }
+)
+
+watch(
+  () => activeTemplate.value.tableConfig?.logoPosition,
+  (pos) => {
+    if (pos === 'header' && activeTemplate.value.tableConfig && !activeTemplate.value.tableConfig.showHeader) {
+      activeTemplate.value.tableConfig.showHeader = true
+      if (!activeTemplate.value.tableConfig.headerText?.trim()) {
+        activeTemplate.value.tableConfig.headerText = 'PEMERINTAH KOTA CIREBON'
+      }
+      if (!activeTemplate.value.tableConfig.headerSubText?.trim()) {
+        activeTemplate.value.tableConfig.headerSubText = 'PUSKESMAS KESAMBI'
+      }
     }
   }
 )
@@ -1828,14 +1847,27 @@ async function printLabels() {
                 </div>
               </div>
 
-              <!-- Lambang Kota / Logo di Atas Barcode / QR -->
+              <!-- Lambang Kota / Logo Instansi -->
               <div class="pt-2 border-t border-line flex flex-col gap-2">
                 <label class="flex items-center gap-1.5 cursor-pointer text-txt font-bold text-xs">
                   <Checkbox v-model="activeTemplate.tableConfig.showLogo" binary />
-                  <span>Lambang Kota di Atas QR (Atas-Bawah)</span>
+                  <span>Tampilkan Lambang Kota Cirebon / Logo</span>
                 </label>
 
                 <div v-if="activeTemplate.tableConfig.showLogo" class="flex flex-col gap-2 pl-4 border-l-2 border-[var(--acc-border)]">
+                  <div class="flex flex-col gap-1">
+                    <label class="text-[10px] text-txt-dim font-semibold">Posisi Lambang / Logo:</label>
+                    <Select
+                      v-model="activeTemplate.tableConfig.logoPosition"
+                      :options="[
+                        { label: 'Di Sebelah Tulisan Kop / Header (Barcode Besar)', value: 'header' },
+                        { label: 'Di Atas Barcode / QR (Kolom Samping)', value: 'above_qr_only' },
+                      ]"
+                      optionLabel="label"
+                      optionValue="value"
+                      class="w-full !text-xs"
+                    />
+                  </div>
                   <input type="file" ref="tableLogoFileInput" accept="image/*" class="hidden" @change="onTableLogoSelected" />
                   <div class="flex items-center gap-1.5">
                     <Button
@@ -1865,11 +1897,12 @@ async function printLabels() {
                     <label class="text-[10px] text-txt-dim font-semibold">Atau Masukkan URL Logo:</label>
                     <InputText v-model="activeTemplate.tableConfig.logoUrl" placeholder="Kosongkan untuk Lambang Kota Cirebon" class="w-full !text-xs !py-1" />
                   </div>
-                  <label class="flex items-center gap-1.5 cursor-pointer text-txt text-xs">
-                    <Checkbox v-model="activeTemplate.tableConfig.showItemNameUnderLogo" binary />
-                    <span>Tampilkan Nama Barang di Bawah (- Nama)</span>
-                  </label>
                 </div>
+
+                <label class="flex items-center gap-1.5 cursor-pointer text-txt text-xs pt-0.5">
+                  <Checkbox v-model="activeTemplate.tableConfig.showItemNameUnderLogo" binary />
+                  <span>Tampilkan Nama Barang di Bawah QR (- Nama)</span>
+                </label>
               </div>
             </div>
           </div>
@@ -2097,9 +2130,10 @@ async function printLabels() {
               <!-- Kop / Header Table Row -->
               <div
                 v-if="activeTemplate.tableConfig.showHeader"
-                class="w-full px-2 py-0.5 text-center font-extrabold uppercase tracking-tight shrink-0 flex flex-col items-center justify-center"
+                class="w-full px-2 py-0.5 text-center font-extrabold uppercase tracking-tight shrink-0 flex flex-row items-center justify-center"
                 :class="activeTemplate.tableConfig.headerStyle === 'inverted' ? 'bg-black text-white' : 'bg-slate-50/70 text-slate-900'"
                 :style="{
+                  gap: `${1.4 * MM_TO_PX * zoom}px`,
                   borderBottom: activeTemplate.tableConfig.showHeaderBorder !== false
                     ? activeTemplate.tableConfig.headerStyle === 'double_line'
                       ? `${activeTemplate.tableConfig.borderWidth * 2.2 * (zoom / 2.2)}px double ${activeTemplate.tableConfig.borderColor}`
@@ -2107,16 +2141,58 @@ async function printLabels() {
                     : 'none',
                 }"
               >
-                <span :style="{ fontSize: `${activeTemplate.tableConfig.headerFontSize * (zoom / 2.2)}pt` }">
-                  {{ activeTemplate.tableConfig.headerText }}
-                </span>
-                <span
-                  v-if="activeTemplate.tableConfig.headerSubText"
-                  class="font-semibold text-[85%] opacity-90 tracking-normal"
-                  :style="{ fontSize: `${(activeTemplate.tableConfig.headerFontSize - 1) * (zoom / 2.2)}pt` }"
+                <!-- Lambang Kota Cirebon di Sebelah Tulisan Kop -->
+                <div
+                  v-if="isLogoInHeader(activeTemplate.tableConfig)"
+                  class="shrink-0 flex items-center justify-center overflow-hidden"
+                  :style="{
+                    width: `${Math.max(6.2, Math.min(8.5, (activeTemplate.tableConfig.headerFontSize || 7) * 0.3528 * (activeTemplate.tableConfig.headerSubText ? 2.65 : 1.75))) * MM_TO_PX * zoom}px`,
+                    height: `${Math.max(6.2, Math.min(8.5, (activeTemplate.tableConfig.headerFontSize || 7) * 0.3528 * (activeTemplate.tableConfig.headerSubText ? 2.65 : 1.75))) * MM_TO_PX * zoom}px`,
+                  }"
                 >
-                  {{ activeTemplate.tableConfig.headerSubText }}
-                </span>
+                  <img
+                    v-if="activeTemplate.tableConfig.logoUrl"
+                    :src="activeTemplate.tableConfig.logoUrl"
+                    class="w-full h-full object-contain pointer-events-none"
+                    alt="Logo"
+                  />
+                  <svg
+                    v-else
+                    viewBox="0 0 100 120"
+                    class="w-full h-full object-contain pointer-events-none"
+                  >
+                    <path d="M14 10 H86 V72 C86 98 50 114 50 114 C50 114 14 98 14 72 Z" fill="#ffffff" stroke="#1e293b" stroke-width="3" />
+                    <path d="M16 12 H84 V56 C84 56 50 64 50 64 C50 64 16 56 16 56 Z" fill="#38bdf8" />
+                    <polygon points="50,17 53,24 61,24 54,29 57,36 50,31 43,36 46,29 39,24 47,24" fill="#facc15" stroke="#ca8a04" stroke-width="0.8" />
+                    <rect x="22" y="38" width="56" height="14" fill="#1e293b" />
+                    <rect x="25" y="34" width="8" height="4" fill="#1e293b" />
+                    <rect x="37" y="34" width="8" height="4" fill="#1e293b" />
+                    <rect x="49" y="34" width="8" height="4" fill="#1e293b" />
+                    <rect x="61" y="34" width="8" height="4" fill="#1e293b" />
+                    <path d="M16 56 Q33 50 50 58 Q67 66 84 56 V72 C84 96 50 112 50 112 C50 112 16 96 16 72 Z" fill="#0284c7" />
+                    <path d="M16 66 Q33 60 50 68 Q67 76 84 66 V76 C84 96 50 112 50 112 C50 112 16 96 16 76 Z" fill="#0369a1" />
+                    <path d="M38 72 C32 68 36 60 48 62 C58 64 63 70 58 76 C52 82 42 80 38 74" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" />
+                    <circle cx="56" cy="71" r="2.5" fill="#f97316" />
+                    <path d="M22 96 Q50 88 78 96" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" />
+                    <text x="50" y="98" font-size="5" font-weight="900" text-anchor="middle" fill="#0f172a" font-family="sans-serif">CIREBON</text>
+                  </svg>
+                </div>
+
+                <div class="flex flex-col items-center justify-center min-w-0 text-center">
+                  <span
+                    class="leading-[1.12]"
+                    :style="{ fontSize: `${activeTemplate.tableConfig.headerFontSize * (zoom / 2.2)}pt` }"
+                  >
+                    {{ activeTemplate.tableConfig.headerText }}
+                  </span>
+                  <span
+                    v-if="activeTemplate.tableConfig.headerSubText"
+                    class="font-bold opacity-90 tracking-normal leading-[1.1]"
+                    :style="{ fontSize: `${Math.max(4.5, activeTemplate.tableConfig.headerFontSize - 0.5) * (zoom / 2.2)}pt` }"
+                  >
+                    {{ activeTemplate.tableConfig.headerSubText }}
+                  </span>
+                </div>
               </div>
 
               <!-- Main Table Body: QR Column + Data Rows -->
@@ -2132,9 +2208,9 @@ async function printLabels() {
                       : 'none',
                   }"
                 >
-                  <!-- Lambang Kota di Atas jika showLogo aktif -->
+                  <!-- Lambang Kota di Atas jika showLogo aktif dan bukan di Kop -->
                   <div
-                    v-if="activeTemplate.tableConfig.showLogo"
+                    v-if="activeTemplate.tableConfig.showLogo && !isLogoInHeader(activeTemplate.tableConfig)"
                     class="w-full flex-1 flex flex-col items-center justify-center p-0.5 overflow-hidden"
                     :style="{
                       borderBottom: `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`,
@@ -2169,8 +2245,8 @@ async function printLabels() {
                     </svg>
                   </div>
 
-                  <!-- QR Code di Bawah Lambang -->
-                  <div class="w-full flex-1 flex flex-col items-center justify-center p-1 overflow-hidden">
+                  <!-- QR Code (Diperbesar Penuh saat Logo di Kop) -->
+                  <div class="w-full flex-1 min-h-0 flex flex-col items-center justify-center p-0.5 overflow-hidden">
                     <img
                       v-if="activeTemplate.tableConfig.qrType === 'qr'"
                       :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
@@ -2370,7 +2446,7 @@ async function printLabels() {
                   }"
                 >
                   <div
-                    v-if="activeTemplate.tableConfig.showLogo"
+                    v-if="activeTemplate.tableConfig.showLogo && !isLogoInHeader(activeTemplate.tableConfig)"
                     class="w-full flex-1 flex flex-col items-center justify-center p-0.5 overflow-hidden"
                     :style="{
                       borderBottom: `${activeTemplate.tableConfig.borderWidth * (zoom / 2.2)}px ${activeTemplate.tableConfig.borderStyle} ${activeTemplate.tableConfig.borderColor}`,
@@ -2405,7 +2481,7 @@ async function printLabels() {
                     </svg>
                   </div>
 
-                  <div class="w-full flex-1 flex flex-col items-center justify-center p-1 overflow-hidden">
+                  <div class="w-full flex-1 min-h-0 flex flex-col items-center justify-center p-0.5 overflow-hidden">
                     <img
                       v-if="activeTemplate.tableConfig.qrType === 'qr'"
                       :src="`/api/barcode/${sampleItem.id}.png?fmt=qr`"
