@@ -695,10 +695,10 @@ func (h *BarcodeHandler) renderSheetHTML(rawItems []LabelItem, layout, fmtType, 
 	var cssPage, cssContainer, cssCard string
 	switch layout {
 	case "tj_103":
-		// Tom & Jerry No. 103 (3 cols x 4 rows, 64x32 mm per sticker) on A4 portrait with zero browser margin
+		// Tom & Jerry No. 103 (3 cols x 4 rows, calibrated 60x28.5 mm safe print box inside 64x32 mm die-cut sticker)
 		cssPage = `@page { size: 210mm 297mm; margin: 0; }`
-		cssContainer = `width: 210mm; box-sizing: border-box; padding: 6mm 5mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 64mm); gap: 3.5mm 4mm; justify-content: center; align-content: start;`
-		cssCard = fmt.Sprintf(`width: 64mm; height: 32mm; %s border-radius: 4px; box-sizing: border-box; padding: 2mm 2.5mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
+		cssContainer = `width: 210mm; box-sizing: border-box; padding: 3.5mm 3.2mm; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 60mm); gap: 5.7mm 5.8mm; justify-content: start; align-content: start;`
+		cssCard = fmt.Sprintf(`width: 60mm; height: 28.5mm; %s border-radius: 4px; box-sizing: border-box; padding: 1.5mm 2mm; display: flex; flex-direction: row; align-items: center; justify-content: space-between; overflow: hidden; background: #fff;`, borderStyle)
 
 	case "tj_107":
 		// Tom & Jerry No. 107 (3 cols x 8 rows, 50x18 mm per sticker)

@@ -171,7 +171,7 @@ export function inferSheetFormat(tpl?: Partial<LabelTemplate> | null): SheetForm
   const w = Number(tpl.widthMm || 0)
   const h = Number(tpl.heightMm || 0)
   const hint = `${tpl.id || ''} ${tpl.name || ''}`
-  if ((w === 64 && h === 32) || /tom\s*&?\s*jerry.*103|t&j\s*103|tj[\s_-]*103/i.test(hint)) return 'tj_103'
+  if ((w === 64 && h === 32) || (w === 60 && h === 28.5) || /tom\s*&?\s*jerry.*103|t&j\s*103|tj[\s_-]*103/i.test(hint)) return 'tj_103'
   if ((w === 50 && h === 18) || /tom\s*&?\s*jerry.*107|t&j\s*107|tj[\s_-]*107/i.test(hint)) return 'tj_107'
   if ((w === 38 && h === 18) || /tom\s*&?\s*jerry.*108|t&j\s*108|tj[\s_-]*108/i.test(hint)) return 'tj_108'
   if ((w === 75 && h === 38) || /tom\s*&?\s*jerry.*121|t&j\s*121|tj[\s_-]*121/i.test(hint)) return 'tj_121'
@@ -196,11 +196,11 @@ export function getSheetSpec(format: SheetFormatId, widthMm = 64, heightMm = 32)
         cols: 3,
         rows: 4,
         perSheet: 12,
-        labelW: 64,
-        labelH: 32,
-        rowGapMm: 3.5,
-        colGapMm: 4,
-        pageMargin: '6mm 5mm',
+        labelW: 60,
+        labelH: 28.5,
+        rowGapMm: 5.7,
+        colGapMm: 5.8,
+        pageMargin: '3.5mm 3.2mm',
         isYellowBacking: true,
       }
     case 'tj_107':
@@ -649,14 +649,20 @@ export function renderCustomLabelHtml(rawTpl: LabelTemplate, item: any, origin =
           ? `border-bottom:${(bw * 2.2).toFixed(2)}pt double ${bc};`
           : `border-bottom:${bw}pt ${bs} ${bc};`
         : ''
-    const hdrFs = Number(tc.headerFontSize) || 7.5
-    const subHtml = tc.headerSubText
-      ? `<span style="font-weight:700;font-size:${Math.max(4.5, hdrFs - 0.5)}pt;opacity:0.92;line-height:1.1;">${escapeHtml(tc.headerSubText)}</span>`
-      : ''
     const logoInHdr = isLogoInHeader(tc)
     const logoUrl = tc.logoUrl ? resolveAssetUrl(tc.logoUrl, origin) : ''
+    const rawHdrFs = Number(tc.headerFontSize) || 7
+    const prelimLogoH = Math.max(5.5, Math.min(7.5, rawHdrFs * 0.3528 * (tc.headerSubText ? 2.45 : 1.7)))
+    const availTextW = Math.max(20, w - (logoInHdr ? prelimLogoH + 3.8 : 2.5))
+    const maxChars = Math.max((tc.headerText || '').trim().length, (tc.headerSubText || '').trim().length * 0.92)
+    const maxSafeFs = maxChars > 0 ? Number((availTextW / (maxChars * 0.295)).toFixed(2)) : 9
+    const hdrFs = Math.max(4.8, Math.min(rawHdrFs, maxSafeFs))
+    const subFs = Number(Math.max(4.5, hdrFs - 0.5).toFixed(2))
+    const subHtml = tc.headerSubText
+      ? `<span style="font-weight:700;font-size:${subFs}pt;opacity:0.92;line-height:1.1;white-space:nowrap;">${escapeHtml(tc.headerSubText)}</span>`
+      : ''
     const hdrLogoH = Number(
-      Math.max(6.2, Math.min(8.5, hdrFs * 0.3528 * (tc.headerSubText ? 2.65 : 1.75))).toFixed(2)
+      Math.max(5.4, Math.min(7.4, hdrFs * 0.3528 * (tc.headerSubText ? 2.45 : 1.7))).toFixed(2)
     )
     const hdrLogoHtml = logoInHdr
       ? `<div style="width:${hdrLogoH}mm;height:${hdrLogoH}mm;flex:0 0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;">
@@ -668,10 +674,10 @@ export function renderCustomLabelHtml(rawTpl: LabelTemplate, item: any, origin =
         </div>`
       : ''
 
-    headerHtml = `<div style="width:100%;flex:0 0 auto;padding:0.55mm 1.5mm;text-align:center;font-weight:800;text-transform:uppercase;letter-spacing:-0.01em;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:1.4mm;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;${hdrBg}${hdrBorder}">
+    headerHtml = `<div style="width:100%;flex:0 0 auto;padding:0.5mm 1.2mm;text-align:center;font-weight:800;text-transform:uppercase;letter-spacing:-0.015em;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:1.1mm;box-sizing:border-box;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;${hdrBg}${hdrBorder}">
       ${hdrLogoHtml}
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;text-align:center;">
-        <span style="font-size:${hdrFs}pt;line-height:1.12;">${escapeHtml(tc.headerText || '')}</span>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;text-align:center;overflow:hidden;">
+        <span style="font-size:${hdrFs}pt;line-height:1.12;white-space:nowrap;">${escapeHtml(tc.headerText || '')}</span>
         ${subHtml}
       </div>
     </div>`
@@ -847,6 +853,7 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
     const sheetBg = spec.isYellowBacking ? '#fef08a' : '#ffffff'
     const sheetBorder = spec.isYellowBacking ? '#facc15' : '#e2e8f0'
     const slotBorderCss = showCutBorder ? 'border: 1px dashed #cbd5e1; border-radius: 4px;' : ''
+    const gridJustify = spec.id === 'tj_103' ? 'start' : 'center'
     pageCss = `
       @page { size: 210mm 297mm; margin: 0; }
       .sheet-page {
@@ -861,7 +868,7 @@ export function buildCustomPrintDocument(rawTpl: LabelTemplate, items: any[], op
         display: grid;
         grid-template-columns: repeat(${spec.cols}, ${slotW}mm);
         gap: ${spec.rowGapMm}mm ${spec.colGapMm}mm;
-        justify-content: center;
+        justify-content: ${gridJustify};
         align-content: start;
       }
       .label-slot {

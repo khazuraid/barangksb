@@ -369,6 +369,19 @@ watch(
   }
 )
 
+const effectiveCanvasHeaderFs = computed(() => {
+  const tc = activeTemplate.value.tableConfig
+  if (!tc) return 7
+  const rawFs = Number(tc.headerFontSize) || 7
+  const logoInHdr = isLogoInHeader(tc)
+  const w = Number(activeTemplate.value.widthMm) || 60
+  const prelimLogoH = Math.max(5.5, Math.min(7.5, rawFs * 0.3528 * (tc.headerSubText ? 2.45 : 1.7)))
+  const availTextW = Math.max(20, w - (logoInHdr ? prelimLogoH + 3.8 : 2.5))
+  const maxChars = Math.max((tc.headerText || '').trim().length, (tc.headerSubText || '').trim().length * 0.92)
+  const maxSafeFs = maxChars > 0 ? availTextW / (maxChars * 0.295) : 9
+  return Number(Math.max(4.8, Math.min(rawFs, maxSafeFs)).toFixed(2))
+})
+
 const isTableMode = computed(() => activeTemplate.value.layoutMode === 'table')
 
 const activeElement = computed(() => {
@@ -2146,8 +2159,8 @@ async function printLabels() {
                   v-if="isLogoInHeader(activeTemplate.tableConfig)"
                   class="shrink-0 flex items-center justify-center overflow-hidden"
                   :style="{
-                    width: `${Math.max(6.2, Math.min(8.5, (activeTemplate.tableConfig.headerFontSize || 7) * 0.3528 * (activeTemplate.tableConfig.headerSubText ? 2.65 : 1.75))) * MM_TO_PX * zoom}px`,
-                    height: `${Math.max(6.2, Math.min(8.5, (activeTemplate.tableConfig.headerFontSize || 7) * 0.3528 * (activeTemplate.tableConfig.headerSubText ? 2.65 : 1.75))) * MM_TO_PX * zoom}px`,
+                    width: `${Math.max(5.4, Math.min(7.4, effectiveCanvasHeaderFs * 0.3528 * (activeTemplate.tableConfig.headerSubText ? 2.45 : 1.7))) * MM_TO_PX * zoom}px`,
+                    height: `${Math.max(5.4, Math.min(7.4, effectiveCanvasHeaderFs * 0.3528 * (activeTemplate.tableConfig.headerSubText ? 2.45 : 1.7))) * MM_TO_PX * zoom}px`,
                   }"
                 >
                   <img
@@ -2178,17 +2191,17 @@ async function printLabels() {
                   </svg>
                 </div>
 
-                <div class="flex flex-col items-center justify-center min-w-0 text-center">
+                <div class="flex flex-col items-center justify-center min-w-0 text-center overflow-hidden">
                   <span
-                    class="leading-[1.12]"
-                    :style="{ fontSize: `${activeTemplate.tableConfig.headerFontSize * (zoom / 2.2)}pt` }"
+                    class="leading-[1.12] whitespace-nowrap"
+                    :style="{ fontSize: `${effectiveCanvasHeaderFs * (zoom / 2.2)}pt` }"
                   >
                     {{ activeTemplate.tableConfig.headerText }}
                   </span>
                   <span
                     v-if="activeTemplate.tableConfig.headerSubText"
-                    class="font-bold opacity-90 tracking-normal leading-[1.1]"
-                    :style="{ fontSize: `${Math.max(4.5, activeTemplate.tableConfig.headerFontSize - 0.5) * (zoom / 2.2)}pt` }"
+                    class="font-bold opacity-90 tracking-normal leading-[1.1] whitespace-nowrap"
+                    :style="{ fontSize: `${Math.max(4.5, effectiveCanvasHeaderFs - 0.5) * (zoom / 2.2)}pt` }"
                   >
                     {{ activeTemplate.tableConfig.headerSubText }}
                   </span>
